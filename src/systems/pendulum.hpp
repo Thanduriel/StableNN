@@ -1,4 +1,6 @@
 #pragma once
+
+#include "state.hpp"
 #include <cmath>
 
 namespace systems {
@@ -19,14 +21,14 @@ namespace systems {
 			: m_mass(_mass), m_gravity(_gravity), m_length(_len)
 		{}
 
-		T rhs (T _angle) const
+		T rhs (const State& _state) const
 		{
-			return -m_gravity / m_length * std::sin(_angle);
+			return -m_gravity / m_length * std::sin(_state.position);
 		}
 
 		T energy(const State& _state) const
 		{
-			return 0.5 * m_mass * m_length * m_length * _state.velocity * _state.velocity 
+			return 0.5 * m_mass * m_length * m_length * _state.velocity * _state.velocity
 				+ m_mass * m_gravity * m_length * (1.0 - std::cos(_state.position));
 		}
 

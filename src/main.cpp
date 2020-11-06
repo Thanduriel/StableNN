@@ -75,7 +75,7 @@ void evaluate(Network& _network)
 
 	discretization::LeapFrog<systems::Pendulum<double>> leapFrog(pendulum, 0.1);
 	discretization::ForwardEuler<systems::Pendulum<double>> forwardEuler(pendulum, 0.1);
-	nn::Integrator<Network, systems::Pendulum<double>::State> neuralNet(_network);
+	nn::Integrator<Network, double> neuralNet(_network);
 
 	std::cout << "initial energy: " << pendulum.energy(state) << std::endl;
 
@@ -143,7 +143,7 @@ int main()
 			torch::Tensor output = net.forward(batch.data);
 			torch::Tensor loss = torch::mse_loss(output, batch.target);
 			loss.backward();
-
+			
 			totalLoss += loss;
 
 			optimizer.step();
