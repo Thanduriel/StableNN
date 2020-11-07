@@ -108,10 +108,18 @@ int main()
 	Integrator integrator(pendulum, 0.001);
 
 	State state{ 1.5, 0.0 };
-	State state2{ -1.2, 0.2 };
-	State state3{ 0.5, -7.01 };
+	State state2{ -2.8, 0.2 };
+	State state3{ 0.5, -1.01 };
 
 	State validState{ -1.3, 0.01 };
+
+/*	visual::PendulumRenderer renderer(0.1);
+	renderer.addIntegrator([&, state= state3]() mutable
+		{
+			state = integrator(state);
+			return state.position;
+		});
+	renderer.run();*/
 
 	auto dataset = generateDataset(pendulum, integrator, std::vector{ state, state2, state3 })
 		.map(torch::data::transforms::Stack<>());
@@ -125,7 +133,7 @@ int main()
 		std::move(validationSet),
 		torch::data::DataLoaderOptions().batch_size(64));
 
-	nn::MultiLayerPerceptron net(2, 2);
+	nn::MultiLayerPerceptron net(2, 2, 0, 0);
 	nn::MultiLayerPerceptron bestNet;
 	net.to(torch::kDouble);
 	torch::optim::Adam optimizer(net.parameters(), torch::optim::AdamOptions(0.0001));
@@ -142,11 +150,11 @@ int main()
 			std::cout << s.position << ", " << s.velocity << std::endl;*/
 			torch::Tensor output = net.forward(batch.data);
 			torch::Tensor loss = torch::mse_loss(output, batch.target);
-			loss.backward();
+		//	loss.backward();
 			
 			totalLoss += loss;
 
-			optimizer.step();
+		//	optimizer.step();
 		}
 		// validation
 		torch::Tensor validLoss = torch::zeros({ 1 });
@@ -164,7 +172,7 @@ int main()
 			bestLoss = totalLossD;
 			std::cout << totalLossD << "\n";
 		}
-		//std::cout << "finished epoch\n";
+		std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 	}
 
 	std::cout << "finished training!";

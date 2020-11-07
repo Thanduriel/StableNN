@@ -39,12 +39,12 @@ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT p
 find_package(Torch REQUIRED)
 target_link_libraries(pendulum "${TORCH_LIBRARIES}")
 if (MSVC)
-	file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
-	add_custom_command(TARGET pendulum
-                     POST_BUILD
-                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                     ${TORCH_DLLS}
-                     $<TARGET_FILE_DIR:pendulum>)
+	#file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
+	#add_custom_command(TARGET pendulum
+    #                 POST_BUILD
+    #                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    #                 ${TORCH_DLLS}
+    #                 $<TARGET_FILE_DIR:pendulum>)
 endif (MSVC)
 
 set(SFML_BUILD_GRAPHICS TRUE)
@@ -56,8 +56,4 @@ set(SFML_BUILD_DOC FALSE)
 set(SFML_BUILD_NETWORK FALSE)
 target_include_directories(pendulum PRIVATE "dependencies/SFML/include")
 add_subdirectory("dependencies/SFML")
-#tinclude_directories("dependencies/SFML/include")
 target_link_libraries(pendulum sfml-system sfml-graphics sfml-window)
-#add_subdirectory ("${CMAKE_CURRENT_SOURCE_DIR}/../AcaEngine/" "dependencies")
-#target_link_libraries(Solzard PUBLIC AcaEngine)
-#target_include_directories(Solzard PRIVATE "src")
