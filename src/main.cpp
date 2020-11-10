@@ -4,65 +4,14 @@
 #include "nn/dataset.hpp"
 #include "nn/nnintegrator.hpp"
 #include "visualisation/renderer.hpp"
+#include "nn/hyperparam.hpp"
+#include "generator.hpp"
+#include "nn/antisymmetric.hpp"
 
 #include <type_traits>
 #include <torch/torch.h>
 #include <chrono>
 #include <iostream>
-
-template<typename System, typename Integrator, typename State>
-auto runSimulation(const System& _system, 
-	const Integrator& _integrator, 
-	const State& _initialState,
-	int _steps,
-	int _subSteps = 1)
-{
-	typename System::State state{ _initialState };
-	std::vector<System::State> results;
-	results.reserve(_steps);
-	results.push_back(state);
-
-	for (int i = 0; i < _steps; ++i)
-	{
-		state = _integrator(state);
-		if(i % _subSteps == 0)
-			results.push_back(state);
-	}
-
-	return results;
-}
-
-template<typename System, typename Integrator, typename States>
-nn::Dataset generateDataset(const System& _system,
-	const Integrator& _integrator,
-	const States& _initStates)
-{
-	assert(_initStates.size() > 1);
-
-	torch::Tensor inputs;
-	torch::Tensor outputs;
-
-	for (auto& state : _initStates)
-	{
-		auto results = runSimulation(_system, _integrator, state, 100000, 100);
-		const int64_t size = static_cast<int64_t>(results.size()) - 1;
-		torch::Tensor in = torch::from_blob(results.data(), { size, 2 }, c10::TensorOptions(c10::ScalarType::Double));
-		torch::Tensor out = torch::from_blob(&results[1], { size, 2 }, c10::TensorOptions(c10::ScalarType::Double));
-
-		if (!inputs.defined())
-		{
-			inputs = in.clone();
-			outputs = out.clone();
-		}
-		else
-		{
-			inputs = torch::cat({ inputs, in });
-			outputs = torch::cat({ outputs, out });
-		}
-	}
-
-	return { inputs, outputs };
-}
 
 template<typename Network>
 void evaluate(Network& _network)
@@ -87,15 +36,19 @@ void evaluate(Network& _network)
 		});
 	renderer.run();
 
-	for (int i = 0; i < 64; ++i)
+	// long term energy behaviour
+	for (int i = 0; i < 128; ++i)
 	{
-		state1 = leapFrog(state1);
-		state2 = forwardEuler(state2);
-		state3 = neuralNet(state3);
+		for (int j = 0; j < 1; ++j)
+		{
+			state1 = leapFrog(state1);
+			state2 = forwardEuler(state2);
+			state3 = neuralNet(state3);
+		}
 
 	//	std::cout << state1.position << "; " << state1.velocity << std::endl;
 	//	std::cout << state3.position << ", " << state3.velocity << std::endl;
-	//	std::cout << pendulum.energy(state1) << ", " << pendulum.energy(state2) << ", " << pendulum.energy(state3) << "\n";
+		std::cout << pendulum.energy(state1) << ", " << pendulum.energy(state2) << ", " << pendulum.energy(state3) << "\n";
 	}
 }
 
@@ -121,69 +74,91 @@ int main()
 		});
 	renderer.run();*/
 
-	auto dataset = generateDataset(pendulum, integrator, std::vector{ state, state2, state3 })
+	DataGenerator generator(pendulum, integrator);
+
+	auto dataset = generator.generate({ state, state2, state3 }, 256, 100, 1)
 		.map(torch::data::transforms::Stack<>());
 	auto data_loader = torch::data::make_data_loader(
 		std::move(dataset),
 		torch::data::DataLoaderOptions().batch_size(64));
 
-	auto validationSet = generateDataset(pendulum, integrator, std::vector{ state, state2, state3 })
+	auto validationSet = generator.generate({ validState }, 256, 100, 1)
 		.map(torch::data::transforms::Stack<>());
 	auto validationLoader = torch::data::make_data_loader(
 		std::move(validationSet),
 		torch::data::DataLoaderOptions().batch_size(64));
+	nn::AntiSymmetricNet bestNet;
 
-	nn::MultiLayerPerceptron net(2, 2, 0, 0);
-	nn::MultiLayerPerceptron bestNet;
-	net.to(torch::kDouble);
-	torch::optim::Adam optimizer(net.parameters(), torch::optim::AdamOptions(0.0001));
-	double bestLoss = std::numeric_limits<double>::max();
-
-	for (int64_t epoch = 1; epoch <= 256; ++epoch)
+	auto trainNetwork = [&](const nn::HyperParams& _params)
 	{
-		torch::Tensor totalLoss = torch::zeros({ 1 });
-		for (torch::data::Example<>& batch : *data_loader)
-		{
-		/*	std::cout << "\n=======\n" << batch.data[0] << "\n" << batch.target[0] << "\n";
-			Integrator testInt(pendulum, 0.1);
-			auto s = testInt(*reinterpret_cast<State*>(batch.data[0].data<double>()));
-			std::cout << s.position << ", " << s.velocity << std::endl;*/
-			torch::Tensor output = net.forward(batch.data);
-			torch::Tensor loss = torch::mse_loss(output, batch.target);
-		//	loss.backward();
-			
-			totalLoss += loss;
+		//nn::MultiLayerPerceptron net(2, 2, 32, 8);
+		nn::AntiSymmetricNet net(2, 32, 0.001, 10.0, true);
+		net.to(torch::kDouble);
 
-		//	optimizer.step();
-		}
-		// validation
-		torch::Tensor validLoss = torch::zeros({ 1 });
-		for (torch::data::Example<>& batch : *validationLoader)
+		torch::optim::Adam optimizer(net.parameters(), 
+			torch::optim::AdamOptions(_params.get<double>("lr", 0.0001))
+				.weight_decay(_params.get<double>("weight_decay", 0.0))
+				.amsgrad(_params.get<bool>("amsgrad", false)));
+		double bestLoss = std::numeric_limits<double>::max();
+
+		for (int64_t epoch = 1; epoch <= 512; ++epoch)
 		{
-			torch::Tensor output = net.forward(batch.data);
-			torch::Tensor loss = torch::mse_loss(output, batch.target);
-			validLoss += loss;
+			torch::Tensor totalLoss = torch::zeros({ 1 });
+			for (torch::data::Example<>& batch : *data_loader)
+			{
+				/*	std::cout << "\n=======\n" << batch.data[0] << "\n" << batch.target[0] << "\n";
+					Integrator testInt(pendulum, 0.1);
+					auto s = testInt(*reinterpret_cast<State*>(batch.data[0].data<double>()));
+					std::cout << s.position << ", " << s.velocity << std::endl;*/
+				torch::Tensor output = net.forward(batch.data);
+				torch::Tensor loss = torch::mse_loss(output, batch.target);
+				loss.backward();
+
+				totalLoss += loss;
+
+				optimizer.step();
+			}
+			// validation
+			torch::Tensor validLoss = torch::zeros({ 1 });
+			for (torch::data::Example<>& batch : *validationLoader)
+			{
+				torch::Tensor output = net.forward(batch.data);
+				torch::Tensor loss = torch::mse_loss(output, batch.target);
+				validLoss += loss;
+			}
+
+			const double totalLossD = validLoss.item<double>();
+			if (totalLossD < bestLoss)
+			{
+				bestNet = net;
+				bestLoss = totalLossD;
+				std::cout << totalLossD << "\n";
+			}
+		//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 		}
 
-		const double totalLossD = validLoss.item<double>();
-		if (totalLossD < bestLoss)
-		{
-			bestNet = net;
-			bestLoss = totalLossD;
-			std::cout << totalLossD << "\n";
-		}
-		std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
-	}
+		return bestLoss;
+	};
+	/*
+	auto trainTest = [count = 10.0](const nn::HyperParams& param) mutable
+	{
+		std::cout << param.get<double>("decay", 0.0) << std::endl;
+		return --count;
+	};*/
+	nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
+		{ {"lr", {1.0e-4, 1.0e-5, 1.0e-6}},
+		  {"weight_decay", {0.0, 1.0e-4, 1.0e-5, 1.0e-6}},
+		  {"amsgrad", {false, true}} });
+
+	//hyperOptimizer.run();
+
+	nn::HyperParams params;
+	params["lr"] = 1e-05;
+	params["weight_decay"] = 1e-6;
+
+	//({ std::pair{"lr", 1e-05}, std::pair{"weight_decay", 1e-06} });
+	std::cout << trainNetwork(params) << " ";
 
 	std::cout << "finished training!";
 	evaluate(bestNet);
-
-	/*
-	for(int i = 0; i < 300 * 1000; ++i)
-	{
-		state = integrator(state);
-	}
-	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << state.position << ", " << state.velocity << std::endl;
-	std::cout << std::chrono::duration<float>(end - start).count();*/
 }

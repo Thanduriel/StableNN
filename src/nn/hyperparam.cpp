@@ -29,12 +29,41 @@ namespace nn {
 
 	std::ostream& operator<<(std::ostream& _out, const HyperParams& _params)
 	{
+		std::cout << "{";
 		for (const auto& [name, value] : _params.data)
 		{
-			_out << name;
-			serialize<void, int, double, float, int32_t, int64_t, uint32_t>(_out, value);
-			std::cout << "\n";
+			_out << name << " : ";
+			serialize<void, int, double, float, int32_t, int64_t, uint32_t, std::string, bool>(_out, value);
+			std::cout << ", ";
 		}
+		std::cout << "}";
+
+		return _out;
+	}
+
+	std::pair<size_t, size_t> GridSearchOptimizer::decomposeFlatIndex(size_t flatIndex, int _k) const
+	{
+		size_t reminder = flatIndex;
+
+		size_t flatInd = 0;
+		size_t dimSize = 1;
+		for (int j = 0; j < _k; ++j)
+		{
+			const size_t sizeJ = m_hyperGrid[j].second.size();
+			size_t indJ = reminder % sizeJ;
+			reminder /= sizeJ;
+
+			flatInd += dimSize * indJ;
+			dimSize *= sizeJ;
+		}
+
+		const size_t sizeK = m_hyperGrid[_k].second.size();
+		const size_t indK = reminder % sizeK;
+		reminder /= sizeK;
+
+		flatInd += reminder * dimSize;
+
+		return { indK, flatInd };
 	}
 
 	void GridSearchOptimizer::run()
@@ -46,6 +75,7 @@ namespace nn {
 		}
 		std::vector<double> results(numOptions);
 		size_t bestResult = 0;
+		HyperParams bestParams;
 
 		for (size_t i = 0; i < numOptions; ++i) 
 		{
@@ -63,14 +93,40 @@ namespace nn {
 			}
 			params["name"] = fileName + ".pt";
 
+			std::cout << "Starting training with " << params << std::endl;
 			const double loss = m_trainFunc(params);
+			std::cout << "loss: " << loss << std::endl;
 			results[i] = loss;
 			if (loss < results[bestResult])
+			{
 				bestResult = i;
+				bestParams = params;
+			}
 		}
 
 		// print results
-		size_t remainder = bestResult;
+
+		// combined results over each parameter
+		for (size_t k = 0; k < m_hyperGrid.size(); ++k)
+		{
+			const auto& [name, values] = m_hyperGrid[k];
+			std::vector<double> losses(values.size(), 0.0);
+
+			for (size_t i = 0; i < numOptions; ++i)
+			{
+				const auto& [indK, indOth] = decomposeFlatIndex(i, k);
+				losses[indK] += results[i];
+			}
+			
+			std::cout << name << ": ";
+			for (double loss : losses)
+				std::cout << loss << ", ";
+			std::cout << "\n";
+		}
+
+		std::cout << "\n============================\n best result:\n" << bestParams << "\n"
+			<< "loss: " << results[bestResult] << std::endl;
+	/*	size_t remainder = bestResult;
 		for (const auto& [name, values] : m_hyperGrid) 
 		{
 			const size_t ind = remainder % values.size();
@@ -85,7 +141,7 @@ namespace nn {
 				std::cout << " (" << std::any_cast<double>(val) << ")";
 
 			std::cout << "\n";
-		}
+		}*/
 	}
 
 	RandomSearchOptimizer::RandomSearchOptimizer(const TrainFn& _trainFn, uint32_t _seed)
@@ -95,6 +151,9 @@ namespace nn {
 
 	void RandomSearchOptimizer::run(int _tries)
 	{
+		HyperParams bestParams;
+		double bestLoss = std::numeric_limits<double>::max();
+
 		for (int i = 0; i < _tries; ++i)
 		{
 			HyperParams params;
@@ -104,8 +163,16 @@ namespace nn {
 			}
 
 			const double loss = m_trainFn(params);
-			std::cout << params;
+			std::cout << params << "\nwith loss: " << loss << std::endl;
+			if (loss < bestLoss)
+			{
+				bestLoss = loss;
+				bestParams = params;
+			}
 		}
+
+		std::cout << "\n============================\n best result:\n" << bestParams << "\n"
+			<< "loss: " << bestLoss << std::endl;
 	}
 
 /*

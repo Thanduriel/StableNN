@@ -12,13 +12,18 @@ namespace nn {
 	class HyperParams
 	{
 	public:
+		template<typename... Args>
+		HyperParams(Args&&... _args)
+			: data(std::forward<Args>(_args)...)
+		{}
+
 		std::any& operator[](const std::string& key) { return data[key]; }
 
 		template<typename T>
-		T get(const std::string& key, const T& default_value) const
+		T get(const std::string& _key, const T& _defaultValue) const
 		{
-			const auto it = data.find(key);
-			return it != data.end() ? std::any_cast<T>(it->second) : default_value;
+			const auto it = data.find(_key);
+			return it != data.end() ? std::any_cast<T>(it->second) : _defaultValue;
 		}
 
 		friend std::ostream& operator<<(std::ostream& _out, const HyperParams& _params);
@@ -42,6 +47,8 @@ namespace nn {
 
 		void run();
 	private:
+		std::pair<size_t, size_t> decomposeFlatIndex(size_t _flatIndex, int _k) const;
+
 		HyperParamGrid m_hyperGrid;
 		TrainFn m_trainFunc;
 	};
