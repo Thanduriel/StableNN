@@ -1,6 +1,7 @@
 #pragma once
 
 #include <torch/torch.h>
+#include "activation.hpp"
 
 namespace nn {
 
@@ -32,12 +33,14 @@ namespace nn {
 			int64_t _hiddenLayers = 1,
 			double _diffusion = 0.0,
 			double _totalTime = 1.0,
-			bool _useBias = false);
+			bool _useBias = false,
+			ActivationFn _activation = torch::tanh);
 
 		torch::Tensor forward(torch::Tensor x);
 
 		double timeStep;
 		std::vector<AntiSymmetric> hiddenLayers;
+		ActivationFn activation;
 	};
 
 }

@@ -45,7 +45,7 @@ namespace nn {
 			: m_hyperGrid(_paramGrid), m_trainFunc(_trainFn)
 		{}
 
-		void run();
+		void run(unsigned _numThreads = 1);
 	private:
 		std::pair<size_t, size_t> decomposeFlatIndex(size_t _flatIndex, int _k) const;
 

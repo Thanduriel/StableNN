@@ -1,6 +1,8 @@
 #include "hyperparam.hpp"
 #include <random>
 #include <iostream>
+#include <thread>
+#include <mutex>
 
 
 namespace nn {
@@ -23,7 +25,7 @@ namespace nn {
 	template<typename Dummy>
 	static void serialize(std::ostream& _out, const std::any& _val)
 	{
-		_out << "Could not serialize value of type " << _val.type().name();
+		_out << "Unknown type " << _val.type().name();
 	}
 
 
@@ -66,7 +68,7 @@ namespace nn {
 		return { indK, flatInd };
 	}
 
-	void GridSearchOptimizer::run()
+	void GridSearchOptimizer::run(unsigned numThreads)
 	{
 		size_t numOptions = 1;
 		for (const auto& [name, values] : m_hyperGrid) 
@@ -76,34 +78,54 @@ namespace nn {
 		std::vector<double> results(numOptions);
 		size_t bestResult = 0;
 		HyperParams bestParams;
+		std::mutex mutex;
 
-		for (size_t i = 0; i < numOptions; ++i) 
+		auto work = [&](size_t begin, size_t end) 
 		{
-			HyperParams params;
-			std::string fileName = "";
-
-			// setup param file
-			size_t remainder = i;
-			for (const auto& [name, values] : m_hyperGrid) 
+			for (size_t i = begin; i < end; ++i)
 			{
-				const size_t ind = remainder % values.size();
-				remainder /= values.size();
-				params[name] = values[ind];
-				fileName += std::to_string(ind) + "_";
-			}
-			params["name"] = fileName + ".pt";
+				HyperParams params;
+				std::string fileName = "";
 
-			std::cout << "Starting training with " << params << std::endl;
-			const double loss = m_trainFunc(params);
-			std::cout << "loss: " << loss << std::endl;
-			results[i] = loss;
-			if (loss < results[bestResult])
-			{
-				bestResult = i;
-				bestParams = params;
+				// setup param file
+				size_t remainder = i;
+				for (const auto& [name, values] : m_hyperGrid)
+				{
+					const size_t ind = remainder % values.size();
+					remainder /= values.size();
+					params[name] = values[ind];
+					fileName += std::to_string(ind) + "_";
+				}
+				params["name"] = fileName + ".pt";
+
+				const double loss = m_trainFunc(params);
+				results[i] = loss;
+
+				std::lock_guard<std::mutex> guard(mutex);
+				std::cout << "training with " << params << std::endl;
+				std::cout << "loss: " << loss << std::endl;
+
+				if (loss < results[bestResult])
+				{
+					bestResult = i;
+					bestParams = params;
+				}
 			}
+		};
+		if (numThreads == 1)
+			work(0, numOptions);
+		else
+		{
+			std::vector<std::thread> threads;
+			const size_t numRuns = numOptions / numThreads;
+			for (unsigned i = 0; i < numThreads - 1; ++i)
+				threads.emplace_back(work, i * numRuns, (i + 1) * numRuns);
+			work((numThreads - 1) * numRuns, numOptions);
+			for (auto& t : threads)
+				t.join();
 		}
-
+		
+		
 		// print results
 
 		// combined results over each parameter

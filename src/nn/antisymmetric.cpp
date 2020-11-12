@@ -45,7 +45,7 @@ namespace nn {
 
 	Tensor AntiSymmetricImpl::forward(const Tensor& input)
 	{
-		return torch::nn::functional::linear(input, 0.5 * (weight - weight.transpose(0,1) - diffusion), bias);
+		return torch::nn::functional::linear(input, 0.5 * (weight - weight.t() - diffusion), bias);
 	}
 
 	// ********************************************************* //
@@ -53,14 +53,15 @@ namespace nn {
 		int64_t _hiddenLayers,
 		double _diffusion,
 		double _totalTime,
-		bool _useBias)
-		: timeStep(_totalTime / _hiddenLayers)
+		bool _useBias,
+		ActivationFn _activation)
+		: timeStep(_totalTime / _hiddenLayers), activation(std::move(_activation))
 	{
 		hiddenLayers.reserve(_hiddenLayers);
 
 		for (int64_t i = 0; i < _hiddenLayers; ++i)
 		{
-			hiddenLayers.emplace_back(_inputs, _diffusion);
+			hiddenLayers.emplace_back(_inputs, _diffusion, _useBias);
 			register_module("hidden" + std::to_string(i), hiddenLayers.back());
 		}
 	}
@@ -68,7 +69,7 @@ namespace nn {
 	torch::Tensor AntiSymmetricNet::forward(torch::Tensor x)
 	{
 		for (auto& layer : hiddenLayers)
-			x = x + timeStep * torch::tanh(layer(x));
+			x = x + timeStep * activation(layer(x));
 		return x;
 	}
 

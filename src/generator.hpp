@@ -30,7 +30,7 @@ public:
 
 		for (auto& state : _initialStates)
 		{
-			auto results = runSimulation(state, (_numSamples+_numInputSteps) * _downSampleRate, _downSampleRate);
+			auto results = runSimulation(state, (_numSamples+_numInputSteps-1) * _downSampleRate, _downSampleRate);
 			std::vector<SysState> timeSeries;
 			timeSeries.reserve(_numSamples * _numInputSteps);
 			for(size_t i = 0; i < _numSamples; ++i)
@@ -40,7 +40,7 @@ public:
 				}
 
 			const int64_t size = static_cast<int64_t>(results.size()) - _numInputSteps;
-			torch::Tensor in = torch::from_blob(timeSeries.data(), { size, _numInputSteps * stateSize }, c10::TensorOptions(c10::ScalarType::Double));
+			torch::Tensor in = torch::from_blob(results.data(), { size, _numInputSteps * stateSize }, c10::TensorOptions(c10::ScalarType::Double));
 			torch::Tensor out = torch::from_blob(results.data() + _numInputSteps, { size, stateSize }, c10::TensorOptions(c10::ScalarType::Double));
 
 			if (!inputs.defined())
