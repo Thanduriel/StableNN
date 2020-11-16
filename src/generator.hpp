@@ -40,7 +40,7 @@ public:
 				}
 
 			const int64_t size = static_cast<int64_t>(results.size()) - _numInputSteps;
-			torch::Tensor in = torch::from_blob(results.data(), { size, _numInputSteps * stateSize }, c10::TensorOptions(c10::ScalarType::Double));
+			torch::Tensor in = torch::from_blob(timeSeries.data(), { size, _numInputSteps * stateSize }, c10::TensorOptions(c10::ScalarType::Double));
 			torch::Tensor out = torch::from_blob(results.data() + _numInputSteps, { size, stateSize }, c10::TensorOptions(c10::ScalarType::Double));
 
 			if (!inputs.defined())

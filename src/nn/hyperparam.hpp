@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <functional>
 #include <random>
+#include <optional>
 
 namespace nn {
 
@@ -24,6 +25,15 @@ namespace nn {
 		{
 			const auto it = data.find(_key);
 			return it != data.end() ? std::any_cast<T>(it->second) : _defaultValue;
+		}
+
+		template<typename T>
+		std::optional<T> get(const std::string& _key)
+		{
+			const auto it = data.find(_key);
+			if (it != data.end() && it->second.type() == typeid(T))
+				return std::any_cast<T>(it->second);
+			else return {};
 		}
 
 		friend std::ostream& operator<<(std::ostream& _out, const HyperParams& _params);

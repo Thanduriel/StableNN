@@ -38,7 +38,7 @@ namespace discretization {
 
 		State operator()(const State& _state)
 		{
-			State next{};
+			State next;
 
 			const auto a0 = m_system.rhs(_state);
 			next.position = _state.position + _state.velocity * m_dt;

@@ -20,10 +20,10 @@ namespace nn {
 		ActivationFn activation;
 	};
 
-	class HamiltonianImpl : public torch::nn::Cloneable<HamiltonianImpl>
+	class HamiltonianCellImpl : public torch::nn::Cloneable<HamiltonianCellImpl>
 	{
 	public:
-		HamiltonianImpl(int64_t _stateSize, int64_t _augmentSize, bool _bias = true);
+		HamiltonianCellImpl(int64_t _stateSize, int64_t _augmentSize, bool _bias = true);
 
 		void reset() override;
 		void reset_parameters();
@@ -41,29 +41,41 @@ namespace nn {
 		bool useBias;
 	};
 
-	TORCH_MODULE(Hamiltonian);
+	TORCH_MODULE(HamiltonianCell);
 
-	class HamiltonianAugmentedNet : public torch::nn::Module
+	struct HamiltonianOptions
+	{
+		HamiltonianOptions(int64_t _inputSize) : input_size_(_inputSize) {}
+
+		TORCH_ARG(int64_t, input_size);
+		TORCH_ARG(int64_t, num_layers) = 1;
+		TORCH_ARG(bool, bias) = true;
+		TORCH_ARG(int64_t, augment_size) = 1;
+		TORCH_ARG(double, total_time) = 1.0;
+		TORCH_ARG(ActivationFn, activation) = torch::tanh;
+	};
+
+	class HamiltonianAugmentedImpl : public torch::nn::Cloneable<HamiltonianAugmentedImpl>
 	{
 	public:
-		HamiltonianAugmentedNet(
-			int64_t _inputs = 2,
-			int64_t _hiddenLayers = 32,
-			double _totalTime = 1.0,
-			bool _useBias = true,
-			ActivationFn _activation = torch::tanh,
-			int64_t _augmentSize = 2);
+		HamiltonianAugmentedImpl(int64_t _inputs = 2) : HamiltonianAugmentedImpl(HamiltonianOptions(_inputs)){}
+
+		explicit HamiltonianAugmentedImpl(const HamiltonianOptions& _options);
+
+		void reset() override;
 
 	//	HamiltonianAugmentedNet(torch::serialize::InputArchive& archive);
 	//	void save(torch::serialize::OutputArchive& archive) const override;
 
 		torch::Tensor forward(const torch::Tensor& _input);
 
-		double timeStep;
-		ActivationFn activation;
+		HamiltonianOptions options;
 	private:
-		std::vector<Hamiltonian> layers;
-		torch::nn::Linear outputLayer;
-		int64_t augmentSize;
+		double timeStep;
+		std::vector<HamiltonianCell> layers;
+
 	};
+
+	//TORCH_MODULE(HamiltonianAugmented);
+	using HamiltonianAugmented = HamiltonianAugmentedImpl;
 }

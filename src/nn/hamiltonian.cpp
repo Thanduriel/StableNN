@@ -34,13 +34,13 @@ namespace nn {
 
 
 	// ****************************************************************** //
-	HamiltonianImpl::HamiltonianImpl(int64_t _stateSize, int64_t _augmentSize, bool _bias)
+	HamiltonianCellImpl::HamiltonianCellImpl(int64_t _stateSize, int64_t _augmentSize, bool _bias)
 		: size(_stateSize), augmentSize(_augmentSize), useBias(_bias)
 	{
 		reset();
 	}
 
-	void HamiltonianImpl::reset()
+	void HamiltonianCellImpl::reset()
 	{
 		weight = register_parameter("weight",
 			torch::empty({ size, augmentSize }));
@@ -56,7 +56,7 @@ namespace nn {
 		reset_parameters();
 	}
 
-	void HamiltonianImpl::reset_parameters()
+	void HamiltonianCellImpl::reset_parameters()
 	{
 		torch::nn::init::kaiming_uniform_(weight, std::sqrt(5));
 		if (biasY.defined())
@@ -69,41 +69,38 @@ namespace nn {
 		}
 	}
 
-	void HamiltonianImpl::pretty_print(std::ostream& stream) const {
+	void HamiltonianCellImpl::pretty_print(std::ostream& stream) const {
 		stream << std::boolalpha
 			<< "nn::Hamiltonian(size=" << size
 			<< ", augmentSize=" << augmentSize
 			<< ", bias=" << useBias << ")";
 	}
 
-	Tensor HamiltonianImpl::forwardY(const Tensor& input)
+	Tensor HamiltonianCellImpl::forwardY(const Tensor& input)
 	{
 		return torch::nn::functional::linear(input, weight.t(), biasZ);
 	}
 
-	Tensor HamiltonianImpl::forwardZ(const Tensor& input)
+	Tensor HamiltonianCellImpl::forwardZ(const Tensor& input)
 	{
 		return torch::nn::functional::linear(input, weight, biasY);
 	}
 
-	HamiltonianAugmentedNet::HamiltonianAugmentedNet(int64_t _inputs, 
-		int64_t _hiddenLayers, 
-		double _totalTime, 
-		bool _useBias, 
-		ActivationFn _activation,
-		int64_t _augmentSize)
-		: timeStep(_totalTime / _hiddenLayers),
-		activation(std::move(_activation)),
-		augmentSize(_augmentSize),
-		outputLayer(torch::nn::LinearOptions(_inputs + _augmentSize, _inputs).bias(_useBias))
+	HamiltonianAugmentedImpl::HamiltonianAugmentedImpl(const HamiltonianOptions& _options)
+		: options(_options)
 	{
-		for (int64_t i = 0; i < _hiddenLayers; ++i)
-		{
-			layers.emplace_back(_inputs, _augmentSize, _useBias);
-			register_module("hidden" + std::to_string(i), layers.back());
-		}
+		reset();
+	}
 
-	//	register_module("output", outputLayer);
+	void HamiltonianAugmentedImpl::reset()
+	{
+		timeStep = options.total_time() / options.num_layers();
+		layers.reserve(options.num_layers());
+		for (int64_t i = 0; i < options.num_layers(); ++i)
+		{
+			layers.emplace_back(options.input_size(), options.augment_size(), options.bias());
+			register_module("layer" + std::to_string(i), layers.back());
+		}
 	}
 
 	template<typename T>
@@ -115,8 +112,8 @@ namespace nn {
 		return value.to<T>();
 	}
 
-	/*
-	HamiltonianAugmentedNet::HamiltonianAugmentedNet(torch::serialize::InputArchive& archive)
+	
+/*	HamiltonianAugmentedNet::HamiltonianAugmentedNet(torch::serialize::InputArchive& archive)
 		: HamiltonianAugmentedNet(
 			loadValue<int64_t>(archive, "inputs"),
 			loadValue<int64_t>(archive, "hiddenLayers"),
@@ -125,11 +122,11 @@ namespace nn {
 			torch::tanh,
 			loadValue<int64_t>(archive, "augmentSize"))
 	{
-	}
+	}*/
 	
-	void HamiltonianAugmentedNet::save(torch::serialize::OutputArchive& archive) const
+	/*void HamiltonianAugmentedImpl::save(torch::serialize::OutputArchive& archive) const
 	{
-		archive.write("inputs", c10::IValue(int64_t(2)));
+		archive.write("inputs", c10::IValue(options.input_size));
 		archive.write("hiddenLayers", c10::IValue(static_cast<int64_t>(layers.size())));
 		archive.write("totalTime", c10::IValue(timeStep * layers.size()));
 		archive.write("augmentSize", c10::IValue(augmentSize));
@@ -137,13 +134,14 @@ namespace nn {
 		torch::nn::Module::save(archive);
 	}*/
 
-	torch::Tensor HamiltonianAugmentedNet::forward(const Tensor& _input)
+	torch::Tensor HamiltonianAugmentedImpl::forward(const Tensor& _input)
 	{
 		auto size = _input.sizes().vec();
-		size.back() = augmentSize;
+		size.back() = options.augment_size();
 		Tensor z = torch::zeros(size, c10::TensorOptions(c10::kDouble)); // z_{j-1/2}
 		Tensor y = _input; // y_j
 
+		auto& activation = options.activation();
 		for (auto& layer : layers)
 		{
 			z = z - timeStep * activation(layer->forwardY(y));
