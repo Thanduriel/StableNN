@@ -3,13 +3,13 @@
 namespace nn {
 	using namespace torch;
 
-	AntiSymmetricImpl::AntiSymmetricImpl(int64_t _size, double _gamma, bool _bias)
+	AntiSymmetricCellImpl::AntiSymmetricCellImpl(int64_t _size, double _gamma, bool _bias)
 		: size(_size), gamma(_gamma), useBias(_bias)
 	{
 		reset();
 	}
 
-	void AntiSymmetricImpl::reset()
+	void AntiSymmetricCellImpl::reset()
 	{
 		weight = register_parameter("weight",
 			torch::empty({ size, size }));
@@ -19,12 +19,12 @@ namespace nn {
 		else {
 			bias = register_parameter("bias", {}, false);
 		}
-		diffusion = register_parameter("diffusion", torch::eye(size) * gamma);
+		diffusion = register_parameter("diffusion", torch::eye(size) * gamma, false);
 
 		reset_parameters();
 	}
 
-	void AntiSymmetricImpl::reset_parameters()
+	void AntiSymmetricCellImpl::reset_parameters()
 	{
 		torch::nn::init::kaiming_uniform_(weight, std::sqrt(5));
 		if (bias.defined()) 
@@ -36,20 +36,25 @@ namespace nn {
 		}
 	}
 
-	void AntiSymmetricImpl::pretty_print(std::ostream& stream) const {
+	void AntiSymmetricCellImpl::pretty_print(std::ostream& stream) const {
 		stream << std::boolalpha
 			<< "nn::AntiSymmetric(size=" << size
 			<< ", gamma=" << gamma
 			<< ", bias=" << useBias << ")";
 	}
 
-	Tensor AntiSymmetricImpl::forward(const Tensor& input)
+	Tensor AntiSymmetricCellImpl::forward(const Tensor& input)
 	{
-		return torch::nn::functional::linear(input, 0.5 * (weight - weight.t() - diffusion), bias);
+		return torch::nn::functional::linear(input, system_matrix(), bias);
+	}
+
+	Tensor AntiSymmetricCellImpl::system_matrix() const
+	{
+		return 0.5 * (weight - weight.t() - diffusion);
 	}
 
 	// ********************************************************* //
-	AntiSymmetricNet::AntiSymmetricNet(int64_t _inputs,
+	AntiSymmetricImpl::AntiSymmetricImpl(int64_t _inputs,
 		int64_t _hiddenLayers,
 		double _diffusion,
 		double _totalTime,
@@ -57,18 +62,18 @@ namespace nn {
 		ActivationFn _activation)
 		: timeStep(_totalTime / _hiddenLayers), activation(std::move(_activation))
 	{
-		hiddenLayers.reserve(_hiddenLayers);
+		layers.reserve(_hiddenLayers);
 
 		for (int64_t i = 0; i < _hiddenLayers; ++i)
 		{
-			hiddenLayers.emplace_back(_inputs, _diffusion, _useBias);
-			register_module("hidden" + std::to_string(i), hiddenLayers.back());
+			layers.emplace_back(_inputs, _diffusion, _useBias);
+			register_module("layer" + std::to_string(i), layers.back());
 		}
 	}
 
-	torch::Tensor AntiSymmetricNet::forward(torch::Tensor x)
+	torch::Tensor AntiSymmetricImpl::forward(torch::Tensor x)
 	{
-		for (auto& layer : hiddenLayers)
+		for (auto& layer : layers)
 			x = x + timeStep * activation(layer(x));
 		return x;
 	}

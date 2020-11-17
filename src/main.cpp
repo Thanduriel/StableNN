@@ -3,7 +3,8 @@
 #include "nn/mlp.hpp"
 #include "nn/dataset.hpp"
 #include "nn/nnintegrator.hpp"
-#include "visualisation/renderer.hpp"
+#include "evaluation/renderer.hpp"
+#include "evaluation/evaluation.hpp"
 #include "nn/hyperparam.hpp"
 #include "generator.hpp"
 #include "nn/antisymmetric.hpp"
@@ -16,6 +17,8 @@
 #include <cmath>
 
 
+constexpr size_t NUM_TIME_STEPS = 4;
+
 template<typename Network>
 void evaluate(Network& _network)
 {
@@ -25,74 +28,27 @@ void evaluate(Network& _network)
 
 	discretization::LeapFrog<System> leapFrog(pendulum, 0.1);
 	discretization::ForwardEuler<System> forwardEuler(pendulum, 0.1);
-	nn::Integrator<Network, double> neuralNet(_network);
 
-/*	for (int i = 0; i < 1; ++i)
+	std::array<System::State, NUM_TIME_STEPS-1> initialStates;
+	initialStates[0] = initialState;
+	for (size_t i = 1; i < initialStates.size(); ++i)
 	{
-		visual::PendulumRenderer renderer(0.1);
-		renderer.addIntegrator([&, state]() mutable
+		initialStates[i] = leapFrog(initialStates[i-1]);
+	}
+	nn::Integrator<System, Network, 4> neuralNet(_network, initialStates);
+
+	for (int i = 0; i < 1; ++i)
+	{
+		eval::PendulumRenderer renderer(0.1);
+		renderer.addIntegrator([&, state= leapFrog(initialStates.back())]() mutable
 			{
 				state = neuralNet(state);
 				return state.position;
 			});
 		renderer.run();
-	}*/
-
-	evaluate(pendulum, initialState, leapFrog, forwardEuler, neuralNet);
-}
-
-template<typename System, typename State, typename... Integrators>
-void evaluate(const System& _system, const State& _initialState, Integrators&&... _integrators)
-{
-	constexpr size_t numIntegrators = sizeof...(_integrators);
-
-	std::array<System::State, numIntegrators> currentState;
-	for (auto& state : currentState) state = _initialState;
-
-	std::ofstream spaceTimeFile("spacetime.txt");
-
-	std::cout << "initial energy: " << _system.energy(_initialState) << std::endl;
-	// short term
-	for (int i = 0; i < 512; ++i)
-	{
-		evaluateStep<0>(currentState, _integrators...);
-
-		for (auto& state : currentState)
-		{
-			std::cout << _system.energy(state) << ", ";
-			spaceTimeFile << std::fmod(state.position, 2.0 * 3.1415) << ", ";
-		}
-		std::cout << "\n";
-		spaceTimeFile << "\n";
 	}
 
-	// long term energy behaviour
-	std::cout << "longterm=======================================" << "\n";
-	for (int i = 0; i < 1; ++i)
-	{
-		for (int j = 0; j < 2048; ++j)
-		{
-			evaluateStep<0>(currentState, _integrators...);
-		}
-
-	//	std::cout << state1.position << "; " << state1.velocity << std::endl;
-	//	std::cout << state3.position << ", " << state3.velocity << std::endl;
-		for (auto& state : currentState)
-			std::cout << _system.energy(state) << ", ";
-		std::cout << "\n";
-	}
-}
-
-template<size_t Ind, typename StateArray, typename Integrator, typename... Integrators>
-void evaluateStep(StateArray& _states, Integrator& _integrator, Integrators&... _integrators)
-{
-	_states[Ind] = _integrator(_states[Ind]);
-	evaluateStep<Ind + 1>(_states, _integrators...);
-}
-
-template<size_t Ind, typename StateArray>
-void evaluateStep(StateArray& _states)
-{
+	eval::evaluate(pendulum, leapFrog(initialStates.back()), leapFrog, forwardEuler, neuralNet);
 }
 
 int main()
@@ -120,12 +76,12 @@ int main()
 
 	DataGenerator generator(pendulum, integrator);
 
-	auto dataset = generator.generate({ state, state2, state3 }, 256, 100, 1)
+	auto dataset = generator.generate({ state, state2, state3 }, 256, 100, 4, false)
 		.map(torch::data::transforms::Stack<>());
-	auto validationSet = generator.generate({ validState1, validState2 }, 256, 100, 1)
+	auto validationSet = generator.generate({ validState1, validState2 }, 256, 100, 4, false)
 		.map(torch::data::transforms::Stack<>());
 
-	nn::MultiLayerPerceptron bestNet;
+	nn::AntiSymmetric bestNet;
 
 	auto trainNetwork = [=, &bestNet](const nn::HyperParams& _params)
 	{
@@ -136,13 +92,13 @@ int main()
 			validationSet,
 			torch::data::DataLoaderOptions().batch_size(64));
 
-		nn::MultiLayerPerceptron net(2, 2, 2, 32, true);
-		/*nn::AntiSymmetricNet net(2,
+		//nn::MultiLayerPerceptron net(2, 2, 2, 32, true);
+		nn::AntiSymmetric net(8,
 			_params.get<int>("depth", 32),
 			_params.get<double>("diffusion", 0.0),
 			_params.get<double>("time", 10.0),
 			_params.get<bool>("bias", true),
-			_params.get<nn::ActivationFn>("activation", torch::tanh));*/
+			_params.get<nn::ActivationFn>("activation", torch::tanh));
 		/*nn::HamiltonianAugmented net(nn::HamiltonianOptions(2)
 			.num_layers(_params.get<int>("depth", 32))
 			.total_time(_params.get<double>("time", 1.0))
@@ -158,21 +114,15 @@ int main()
 
 		double bestLoss = std::numeric_limits<double>::max();
 
-		std::ofstream lossFile("loss.txt");
+		//std::ofstream lossFile("loss.txt");
 
-		for (int64_t epoch = 1; epoch <= 12; ++epoch)
+		for (int64_t epoch = 1; epoch <= 512; ++epoch)
 		{
 			torch::Tensor totalLoss = torch::zeros({ 1 });
 			for (torch::data::Example<>& batch : *data_loader)
 			{
-				/*	std::cout << "\n=======\n" << batch.data[0] << "\n" << batch.target[0] << "\n";
-					Integrator testInt(pendulum, 0.1);
-					auto s = testInt(*reinterpret_cast<State*>(batch.data[0].data<double>()));
-					std::cout << s.position << ", " << s.velocity << std::endl;*/
 				torch::Tensor output = net.forward(batch.data);
 				torch::Tensor loss = torch::mse_loss(output, batch.target);
-			//	std::cout << loss.grad_fn()->name();
-			//	return 0.0;
 				loss.backward();
 
 				totalLoss += loss;
@@ -189,17 +139,17 @@ int main()
 			}
 
 			const double totalLossD = validLoss.item<double>();
-			if (totalLossD < bestLoss && epoch < 2)
+			if (totalLossD < bestLoss)
 			{
 				bestNet = net;
 				bestLoss = totalLossD;
 				std::cout << totalLossD << "\n";
 			}
 
-			lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
+		//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
 		//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 		}
-	//	if (bestLoss < 2.0)
+		if (bestLoss < 2.0)
 		{
 		//	torch::save(bestNet, _params.get<std::string>("name", "net.pt"));
 			torch::serialize::OutputArchive outputArchive;
@@ -228,21 +178,22 @@ int main()
 
 //	hyperOptimizer.run(8);
 	nn::HyperParams params;
-//	params["lr"] = 1e-05;
-//	params["weight_decay"] = 1e-6;
+	params["lr"] = 1e-04;
+	params["weight_decay"] = 1e-6;
 	params["depth"] = 32;
-	params["diffusion"] = 0.1;
-	params["bias"] = false;
+	params["diffusion"] = 0.0;
+	params["bias"] = true;
 	params["time"] = 4.0;
 
-	//({ std::pair{"lr", 1e-05}, std::pair{"weight_decay", 1e-06} });
 	std::cout << trainNetwork(params) << " ";
-	torch::serialize::InputArchive archive;
+	const auto& [eigenvalues, _] = torch::eig(bestNet.layers[0]->system_matrix());
+	std::cout << eigenvalues;
+/*	torch::serialize::InputArchive archive;
 	archive.load_from("net.pt");
-	nn::MultiLayerPerceptron savedNet(2, 2, 2, 2, true);
+	nn::AntiSymmetricNet savedNet(2, 2, 2, 2, true);
 	savedNet.to(c10::kDouble);
 //	torch::load(savedNet, "net.pt");
 	savedNet.load(archive);
-	evaluate(savedNet);
+	evaluate(savedNet);*/
 	evaluate(bestNet);
 }

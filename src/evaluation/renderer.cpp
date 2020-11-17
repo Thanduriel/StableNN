@@ -1,7 +1,7 @@
 #include "renderer.hpp"
 #include <SFML/Graphics.hpp>
 
-namespace visual {
+namespace eval {
 
 	PendulumRenderer::PendulumRenderer(double _deltaTime)
 		: m_window(sf::VideoMode(512,512), "pendulum"),

@@ -19,8 +19,7 @@ namespace nn {
 	{
 		Tensor y0 = _input;
 		Tensor y1 = y0 + 0.5 * timeStep * timeStep * activation(layers[0](_input));
-		//2.0 * _input + timeStep * timeStep * activation(layers[0](_input));
-		for (auto it = layers.begin(); it != layers.end(); ++it)
+		for (auto it = layers.begin()+1; it != layers.end(); ++it)
 		{
 			auto& layer = *it;
 			Tensor yTemp = y1.clone();

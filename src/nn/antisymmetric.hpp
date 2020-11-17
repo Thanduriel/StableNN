@@ -5,10 +5,10 @@
 
 namespace nn {
 
-	class AntiSymmetricImpl : public torch::nn::Cloneable<AntiSymmetricImpl>
+	class AntiSymmetricCellImpl : public torch::nn::Cloneable<AntiSymmetricCellImpl>
 	{
 	public:
-		AntiSymmetricImpl(int64_t _size, double _gamma, bool _bias = true);
+		AntiSymmetricCellImpl(int64_t _size, double _gamma, bool _bias = true);
 
 		void reset() override;
 		void reset_parameters();
@@ -16,6 +16,7 @@ namespace nn {
 		void pretty_print(std::ostream& stream) const override;
 
 		torch::Tensor forward(const torch::Tensor& input);
+		torch::Tensor system_matrix() const;
 
 		torch::Tensor weight;
 		torch::Tensor diffusion;
@@ -25,11 +26,11 @@ namespace nn {
 		bool useBias;
 	};
 
-	TORCH_MODULE(AntiSymmetric);
+	TORCH_MODULE(AntiSymmetricCell);
 
-	struct AntiSymmetricNet : torch::nn::Module
+	struct AntiSymmetricImpl : torch::nn::Module
 	{
-		AntiSymmetricNet(int64_t _inputs = 2,
+		AntiSymmetricImpl(int64_t _inputs = 2,
 			int64_t _hiddenLayers = 1,
 			double _diffusion = 0.0,
 			double _totalTime = 1.0,
@@ -39,8 +40,10 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor x);
 
 		double timeStep;
-		std::vector<AntiSymmetric> hiddenLayers;
+		std::vector<AntiSymmetricCell> layers;
 		ActivationFn activation;
 	};
+
+	using AntiSymmetric = AntiSymmetricImpl;
 
 }

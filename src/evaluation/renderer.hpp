@@ -3,7 +3,7 @@
 #include <SFML/Graphics.hpp>
 #include <functional>
 
-namespace visual {
+namespace eval {
 
 	class PendulumRenderer
 	{
