@@ -35,7 +35,7 @@ namespace nn {
 		for (const auto& [name, value] : _params.data)
 		{
 			_out << name << " : ";
-			serialize<void, int, double, float, int32_t, int64_t, uint32_t, std::string, bool>(_out, value);
+			serialize<void, int, double, float, int32_t, int64_t, uint32_t, size_t, std::string, bool>(_out, value);
 			std::cout << ", ";
 		}
 		std::cout << "}";

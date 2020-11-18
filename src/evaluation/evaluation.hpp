@@ -6,6 +6,7 @@
 
 namespace eval {
 
+	// Simulates the given system with different integrators to observe energy over time.
 	template<typename System, typename State, typename... Integrators>
 	void evaluate(const System& _system, const State& _initialState, Integrators&&... _integrators)
 	{
@@ -18,7 +19,7 @@ namespace eval {
 
 		std::cout << "initial energy: " << _system.energy(_initialState) << std::endl;
 		// short term
-		for (int i = 0; i < 64; ++i)
+		for (int i = 0; i < 256; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
 
@@ -30,10 +31,11 @@ namespace eval {
 			std::cout << "\n";
 			spaceTimeFile << "\n";
 		}
+		spaceTimeFile.flush();
 
 		// long term energy behavior
 		std::cout << "longterm=======================================" << "\n";
-		for (int i = 0; i < 1; ++i)
+		for (int i = 0; i < 8; ++i)
 		{
 			for (int j = 0; j < 2048; ++j)
 			{

@@ -22,7 +22,7 @@ public:
 		int64_t _downSampleRate = 1,
 		int64_t _numInputSteps = 1,
 		bool _useSingleOutput = true,
-		int64_t _inOutShift = 1)
+		int64_t _inOutShift = 1) const
 	{
 		assert(_initialStates.size() >= 1);
 
@@ -73,7 +73,7 @@ public:
 private:
 	auto runSimulation( const SysState& _initialState,
 		size_t _steps,
-		size_t _subSteps)
+		size_t _subSteps) const
 	{
 		SysState state{ _initialState };
 		std::vector<System::State> results;
