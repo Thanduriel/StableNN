@@ -32,6 +32,9 @@ namespace systems {
 				+ m_mass * m_gravity * m_length * (1.0 - std::cos(_state.position));
 		}
 
+		T mass() const { return m_mass; }
+		T gravity() const { return m_gravity; }
+		T length() const { return m_length; }
 	private:
 		T m_mass;
 		T m_gravity;

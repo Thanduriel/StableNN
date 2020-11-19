@@ -16,14 +16,15 @@
 #include <chrono>
 #include <iostream>
 #include <cmath>
+#include <random>
 
+using System = systems::Pendulum<double>;
 
 template<size_t NumTimeSteps, typename Network>
 void evaluate(Network& _network)
 {
-	using System = systems::Pendulum<double>;
 	System pendulum(0.1, 9.81, 0.5);
-	System::State initialState{ -0.5, -0.0 };
+	System::State initialState{ -2.5, -0.0 };
 
 	discretization::LeapFrog<System> leapFrog(pendulum, 0.1);
 	discretization::ForwardEuler<System> forwardEuler(pendulum, 0.1);
@@ -76,30 +77,55 @@ nn::AntiSymmetric getAntiSymmetric01()
 	return net;
 }
 
+using State = System::State;
+
+std::vector<State> generateStates(const System& _system, size_t _numStates)
+{
+	std::vector<State> states;
+	states.reserve(_numStates);
+
+	std::default_random_engine rng(0x612FF6AE);
+	constexpr double MAX_POS = 3.14159 - 0.14;
+	State maxState{ MAX_POS, 0.0 };
+	const double maxEnergy = _system.energy(maxState);
+	std::uniform_real_distribution<double> energy(0, maxEnergy);
+	std::uniform_real_distribution<double> potEnergy(0.0, 1.0);
+	std::bernoulli_distribution sign;
+
+	for(size_t i = 0; i < _numStates; ++i)
+	{
+		const double e = energy(rng);
+		const double potE = potEnergy(rng);
+		const double v = std::sqrt(2.0 * (1.0-potE) * e / (_system.mass() * _system.length() * _system.length()));
+		const double p = std::acos(1.0 - potE * e / (_system.mass() * _system.gravity() * _system.length()));
+		states.push_back({ sign(rng) ? p : -p, sign(rng) ? v : -v });
+	}
+
+	return states;
+}
+
 int main()
 {
 	auto start = std::chrono::high_resolution_clock::now();
 	systems::Pendulum<double> pendulum(0.1, 9.81, 0.5);
 	using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
-	using State = systems::Pendulum<double>::State;
-	Integrator integrator(pendulum, 0.001);
-
-	State state{ 1.5, 0.0 };
-	State state2{ -2.8, 0.2 };
-	State state3{ 0.5, -1.01 };
-	State state4{ -0.2, 0.02 };
+	Integrator integrator(pendulum, 0.1);
 
 
 	State validState1{ 1.3, 2.01 };
 	State validState2{ -1.5, 0.0 };
-	
-/*	visual::PendulumRenderer renderer(0.1);
-	renderer.addIntegrator([&, state= state3]() mutable
-		{
-			state = integrator(state);
-			return state.position;
-		});
-	renderer.run();*/
+
+	auto trainingStates = generateStates(pendulum, 128);
+/*	for (auto& state : trainingStates)
+	{
+		eval::PendulumRenderer renderer(0.1);
+		renderer.addIntegrator([&, state] () mutable
+			{
+				state = integrator(state);
+				return state.position;
+			});
+		renderer.run();
+	}*/
 
 	constexpr size_t NUM_INPUTS = 2;
 	constexpr int64_t NUM_LOOPS = 1;
@@ -110,9 +136,9 @@ int main()
 	{
 		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
 
-		nn::MultiLayerPerceptron net( numInputsNet, numInputsNet, numInputsNet-2, 
-			_params.get<int>("depth", 32), 
-			_params.get<bool>("bias", false));
+		/*nn::MultiLayerPerceptron net( numInputsNet, numInputsNet, numInputsNet, 
+			_params.get<int>("depth", 32)-2, 
+			_params.get<bool>("bias", false));*/
 		/*nn::AntiSymmetric net(numInputsNet,
 			_params.get<int>("depth", 32),
 			_params.get<double>("diffusion", 0.001),
@@ -120,12 +146,12 @@ int main()
 			_params.get<bool>("bias", false),
 			_params.get<nn::ActivationFn>("activation", torch::tanh));*/
 			//nn::AntiSymmetric net = getAntiSymmetric01();
-		/*nn::HamiltonianAugmented net(nn::HamiltonianOptions(numInputsNet)
+		nn::HamiltonianAugmented net(nn::HamiltonianOptions(numInputsNet)
 			.num_layers(_params.get<int>("depth", 32))
 			.total_time(_params.get<double>("time", 4.0))
 			.bias(_params.get<bool>("bias", false))
 			.activation(torch::tanh)
-			.augment_size(_params.get<int>("augment", 2)));*/
+			.augment_size(_params.get<int>("augment", 2)));
 		/*nn::HamiltonianNet net(numInputsNet,
 			_params.get<int>("depth", 32),
 			_params.get<double>("time", 10.0),
@@ -142,7 +168,7 @@ int main()
 	auto trainNetwork = [=, &bestNet](const nn::HyperParams& _params)
 	{
 		const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
-		auto dataset = generator.generate({ state, state2, state3, state4 }, 128, 100, numInputs, false, NUM_LOOPS)
+		auto dataset = generator.generate(trainingStates, 16, 100, numInputs, false, NUM_LOOPS)
 			.map(torch::data::transforms::Stack<>());
 		auto validationSet = generator.generate({ validState1 }, 128, 100, numInputs, false, NUM_LOOPS)
 			.map(torch::data::transforms::Stack<>());
@@ -234,14 +260,15 @@ int main()
 //	hyperOptimizer.run(8);
 	
 	nn::HyperParams params;
-	params["lr"] = 1e-04;
+	params["lr"] = 1e-03;
 	params["weight_decay"] = 1e-6;
-	params["depth"] = 16;
-	params["diffusion"] = 0.5;
+	params["depth"] = 8;
+	params["diffusion"] = 0.0;
 	params["bias"] = false;
-	params["time"] = 3.0;
+	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
-	params["name"] = std::string("linear.pt");
+	params["augment"] = 2;
+	params["name"] = std::string("hamiltonian16.pt");
 
 	std::cout << trainNetwork(params) << "\n";
 
@@ -249,14 +276,14 @@ int main()
 	for(auto& layer : bestNet.hiddenLayers)
 		eval::checkLayerStability(layer);
 	eval::checkLayerStability(bestNet.outputLayer);*/
-//	eval::checkModuleStability(bestNet);
+	//eval::checkModuleStability(bestNet);
 
 	
 	torch::serialize::InputArchive archive;
 	archive.load_from(*params.get<std::string>("name"));
 	bestNet = makeNetwork(params);
-//	nn::AntiSymmetric savedNet = getAntiSymmetric01();
-//	bestNet.to(c10::kDouble);
+//	bestNet = getAntiSymmetric01();
+	bestNet.to(c10::kDouble);
 	bestNet.load(archive);
 	evaluate<NUM_INPUTS>(bestNet);
 }
