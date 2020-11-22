@@ -52,7 +52,7 @@ public:
 			const int64_t size = _numSamples;
 			torch::Tensor in = torch::from_blob(timeSeries.data(), { size, inputSize }, c10::TensorOptions(c10::ScalarType::Double));
 			torch::Tensor out = torch::from_blob(
-				_useSingleOutput ? results.data() + _numInputSteps : timeSeries.data() + _numInputSteps * _inOutShift, 
+				_useSingleOutput ? (results.data() + _numInputSteps + _inOutShift - 1) : (timeSeries.data() + _numInputSteps * _inOutShift),
 				{ size, outputSize }, 
 				c10::TensorOptions(c10::ScalarType::Double));
 

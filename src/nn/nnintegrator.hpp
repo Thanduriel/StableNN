@@ -16,7 +16,7 @@ namespace nn{
 		Integrator(Network& _network, const std::array<State, NumStates-1>& _initialState = {})
 			: m_network(_network)
 		{
-			_network.to(c10::CppTypeToScalarType<T>());
+			_network->to(c10::CppTypeToScalarType<T>());
 			for (size_t i = 1; i < NumStates; ++i)
 				m_states[i] = _initialState[i - 1];
 		}
@@ -30,7 +30,7 @@ namespace nn{
 
 			constexpr size_t stateSize = sizeof(State) / sizeof(T);
 
-			torch::Tensor next = m_network.forward(torch::from_blob(m_states.data(),
+			torch::Tensor next = m_network->forward(torch::from_blob(m_states.data(),
 				{ static_cast<int64_t>(stateSize * NumStates) },
 				c10::TensorOptions(c10::CppTypeToScalarType<T>())));
 

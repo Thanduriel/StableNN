@@ -76,6 +76,6 @@ namespace nn {
 
 	};
 
-	//TORCH_MODULE(HamiltonianAugmented);
-	using HamiltonianAugmented = HamiltonianAugmentedImpl;
+	//using HamiltonianAugmented = HamiltonianAugmentedImpl;
+	TORCH_MODULE(HamiltonianAugmented);
 }

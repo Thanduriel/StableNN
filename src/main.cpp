@@ -18,6 +18,11 @@
 #include <cmath>
 #include <random>
 
+constexpr size_t NUM_INPUTS = 8;
+constexpr int64_t NUM_FORWARDS = 2;
+constexpr double TARGET_TIME_STEP = 0.05;
+constexpr int64_t HYPER_SAMPLE_RATE = 100;
+
 using System = systems::Pendulum<double>;
 
 template<size_t NumTimeSteps, typename Network>
@@ -26,14 +31,14 @@ void evaluate(Network& _network)
 	System pendulum(0.1, 9.81, 0.5);
 	System::State initialState{ -2.5, -0.0 };
 
-	discretization::LeapFrog<System> leapFrog(pendulum, 0.1);
-	discretization::ForwardEuler<System> forwardEuler(pendulum, 0.1);
+	discretization::LeapFrog<System> leapFrog(pendulum, TARGET_TIME_STEP);
+	discretization::ForwardEuler<System> forwardEuler(pendulum, TARGET_TIME_STEP);
 
 	auto forwardIntegrate = [&](const System::State _state)
 	{
-		discretization::LeapFrog<System> forward(pendulum, 0.001);
+		discretization::LeapFrog<System> forward(pendulum, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 		auto state = _state;
-		for (int i = 0; i < 100; ++i)
+		for (int64_t i = 0; i < HYPER_SAMPLE_RATE; ++i)
 			state = forward(state);
 		return state;
 	};
@@ -53,10 +58,11 @@ void evaluate(Network& _network)
 
 	for (int i = 0; i < 1; ++i)
 	{
-		eval::PendulumRenderer renderer(0.1);
+		nn::Integrator<System, Network, NumTimeSteps> drawIntegrator(_network, initialStates);
+		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
 		renderer.addIntegrator([&, state= initialState]() mutable
 			{
-				state = neuralNet(state);
+				state = drawIntegrator(state);
 				return state.position;
 			});
 		renderer.run();
@@ -106,10 +112,9 @@ std::vector<State> generateStates(const System& _system, size_t _numStates)
 
 int main()
 {
-	auto start = std::chrono::high_resolution_clock::now();
 	systems::Pendulum<double> pendulum(0.1, 9.81, 0.5);
 	using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
-	Integrator integrator(pendulum, 0.1);
+	Integrator integrator(pendulum, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 
 
 	State validState1{ 1.3, 2.01 };
@@ -118,7 +123,7 @@ int main()
 	auto trainingStates = generateStates(pendulum, 128);
 /*	for (auto& state : trainingStates)
 	{
-		eval::PendulumRenderer renderer(0.1);
+		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
 		renderer.addIntegrator([&, state] () mutable
 			{
 				state = integrator(state);
@@ -126,9 +131,6 @@ int main()
 			});
 		renderer.run();
 	}*/
-
-	constexpr size_t NUM_INPUTS = 2;
-	constexpr int64_t NUM_LOOPS = 1;
 
 	DataGenerator generator(pendulum, integrator);
 
@@ -158,19 +160,22 @@ int main()
 			_params.get<bool>("bias", false),
 			_params.get<nn::ActivationFn>("activation", torch::tanh));*/
 
-		net.to(torch::kDouble);
+		net->to(torch::kDouble);
 
 		return net;
 	};
 
+	using NetworkType = decltype(makeNetwork(nn::HyperParams()));
+	using NetworkTypeImpl = typename NetworkType::ContainedType;
 	auto bestNet = makeNetwork(nn::HyperParams());
+	auto othNet = makeNetwork(nn::HyperParams());
 
 	auto trainNetwork = [=, &bestNet](const nn::HyperParams& _params)
 	{
 		const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
-		auto dataset = generator.generate(trainingStates, 16, 100, numInputs, false, NUM_LOOPS)
+		auto dataset = generator.generate(trainingStates, 16, HYPER_SAMPLE_RATE, numInputs, numInputs == 1, NUM_FORWARDS)
 			.map(torch::data::transforms::Stack<>());
-		auto validationSet = generator.generate({ validState1 }, 128, 100, numInputs, false, NUM_LOOPS)
+		auto validationSet = generator.generate({ validState1 }, 128, HYPER_SAMPLE_RATE, numInputs, numInputs == 1, 1)
 			.map(torch::data::transforms::Stack<>());
 
 		auto data_loader = torch::data::make_data_loader(
@@ -182,72 +187,67 @@ int main()
 
 		
 		auto net = makeNetwork(_params);
-		
 
-		torch::optim::Adam optimizer(net.parameters(), 
+		torch::optim::Adam optimizer(net->parameters(), 
 			torch::optim::AdamOptions(_params.get<double>("lr", 1.e-4))
 				.weight_decay(_params.get<double>("weight_decay", 1.e-6))
 				.amsgrad(_params.get<bool>("amsgrad", false)));
 
-		double bestLoss = std::numeric_limits<double>::max();
+		double bestValidLoss = std::numeric_limits<double>::max();
 
 		//std::ofstream lossFile("loss.txt");
 
-		for (int64_t epoch = 1; epoch <= 1024; ++epoch)
+		for (int64_t epoch = 1; epoch <= 5; ++epoch)
 		{
 			torch::Tensor totalLoss = torch::zeros({ 1 });
 			for (torch::data::Example<>& batch : *data_loader)
 			{
-				torch::Tensor output = batch.data;
-				for(int64_t i = 0; i < NUM_LOOPS; ++i)
-					output = net.forward(output);
+				net->zero_grad();
+				torch::Tensor output = net->forward(batch.data);
+				for(int64_t i = 1; i < NUM_FORWARDS; ++i)
+					output = net->forward(output);
 				torch::Tensor loss = torch::mse_loss(output, batch.target);
-				loss.backward();
-
 				totalLoss += loss;
 
+				loss.backward();
 				optimizer.step();
 			}
+
 			// validation
 			torch::Tensor validLoss = torch::zeros({ 1 });
 			for (torch::data::Example<>& batch : *validationLoader)
 			{
-				torch::Tensor output = net.forward(batch.data);
+				torch::Tensor output = net->forward(batch.data);
 				torch::Tensor loss = torch::mse_loss(output, batch.target);
 				validLoss += loss;
 			}
+			
 
-			const double totalLossD = validLoss.item<double>();
-			if (totalLossD < bestLoss)
+			const double totalValidLossD = validLoss.item<double>();
+			if (totalValidLossD < bestValidLoss)
 			{
-				bestNet = net;
-				bestLoss = totalLossD;
-				std::cout << totalLossD << "\n";
+				std::cout << validLoss.item<double>() << "\n";
+				bestNet = NetworkType(std::dynamic_pointer_cast<NetworkTypeImpl>(net->clone()));
+				bestValidLoss = totalValidLossD;
+				torch::serialize::OutputArchive outputArchive;
+				net->save(outputArchive);
+				outputArchive.save_to(_params.get<std::string>("name", "net.pt"));
 			}
 
 		//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
 		//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 		}
-		if (bestLoss < 2.0)
+	//	if (bestLoss < 2.0)
 		{
-		//	torch::save(bestNet, _params.get<std::string>("name", "net.pt"));
+		//	torch::save(bestNet, _params.get<std::string>("name", "net->pt"));
 			torch::serialize::OutputArchive outputArchive;
-			net.save(outputArchive);
-			outputArchive.save_to(_params.get<std::string>("name", "net.pt"));
+			bestNet->save(outputArchive);
+		//	outputArchive.save_to(_params.get<std::string>("name", "net.pt"));
 		}
 
-		return bestLoss;
+		return bestValidLoss;
 	};
 	
-/*	auto trainTest = [count = 10.0](const nn::HyperParams& param) mutable
-	{
-	//	std::cout << param.get<double>("decay", 0.0) << std::endl;
-		return --count;
-	};*/
-	/*nn::GridSearchOptimizer hyperOptimizer(trainTest,
-		{ {"lr", {1.0e-4, 1.0e-5, 1.0e-6}},
-		  {"weight_decay", {0.0, 1.0e-4, 1.0e-5, 1.0e-6}},
-		  {"amsgrad", {false, true}} });*/
 	nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 		{ {"depth", {42, 64}},
 		  {"time", { 5.0, 7.0}},
@@ -260,30 +260,33 @@ int main()
 //	hyperOptimizer.run(8);
 	
 	nn::HyperParams params;
-	params["lr"] = 1e-03;
-	params["weight_decay"] = 1e-6;
+	params["lr"] = 1e-04;
+	params["weight_decay"] = 1e-5;
 	params["depth"] = 8;
-	params["diffusion"] = 0.0;
+	params["diffusion"] = 0.1;
 	params["bias"] = false;
-	params["time"] = 2.0;
+	params["time"] = 4.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["augment"] = 2;
-	params["name"] = std::string("hamiltonian16.pt");
+	params["name"] = std::string("linear31.pt"); // linear32.pt actually hamiltonian
 
 	std::cout << trainNetwork(params) << "\n";
 
-/*	eval::checkLayerStability(bestNet.inputLayer);
-	for(auto& layer : bestNet.hiddenLayers)
+/*	eval::checkLayerStability(bestnet->inputLayer);
+	for(auto& layer : bestnet->hiddenLayers)
 		eval::checkLayerStability(layer);
-	eval::checkLayerStability(bestNet.outputLayer);*/
+	eval::checkLayerStability(bestnet->outputLayer);*/
 	//eval::checkModuleStability(bestNet);
 
 	
 	torch::serialize::InputArchive archive;
 	archive.load_from(*params.get<std::string>("name"));
-	bestNet = makeNetwork(params);
+	othNet = makeNetwork(params);
 //	bestNet = getAntiSymmetric01();
-	bestNet.to(c10::kDouble);
-	bestNet.load(archive);
+	othNet->load(archive);
+	othNet->to(c10::kDouble);
 	evaluate<NUM_INPUTS>(bestNet);
+	evaluate<NUM_INPUTS>(othNet);
+	evaluate<NUM_INPUTS>(bestNet);
+	evaluate<NUM_INPUTS>(othNet);
 }

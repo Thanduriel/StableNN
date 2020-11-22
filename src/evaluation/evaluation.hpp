@@ -19,14 +19,14 @@ namespace eval {
 
 		std::cout << "initial energy: " << _system.energy(_initialState) << std::endl;
 		// short term
-		for (int i = 0; i < 256; ++i)
+		for (int i = 0; i < 1; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
 
 			for (auto& state : currentState)
 			{
 				std::cout << _system.energy(state) << ", ";
-				spaceTimeFile << std::fmod(state.position, 2.0 * 3.1415) << ", ";
+				spaceTimeFile << std::fmod(state.position, 2.0 * 3.14159) << ", ";
 			}
 			std::cout << "\n";
 			spaceTimeFile << "\n";
@@ -35,7 +35,7 @@ namespace eval {
 
 		// long term energy behavior
 		std::cout << "longterm=======================================" << "\n";
-		for (int i = 0; i < 8; ++i)
+		for (int i = 0; i < 1; ++i)
 		{
 			for (int j = 0; j < 2048; ++j)
 			{

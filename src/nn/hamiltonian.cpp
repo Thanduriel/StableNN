@@ -93,8 +93,11 @@ namespace nn {
 
 	void HamiltonianAugmentedImpl::reset()
 	{
-		timeStep = options.total_time() / options.num_layers();
+		layers.clear();
 		layers.reserve(options.num_layers());
+
+		timeStep = options.total_time() / options.num_layers();
+		
 		for (int64_t i = 0; i < options.num_layers(); ++i)
 		{
 			layers.emplace_back(options.input_size(), options.augment_size(), options.bias());
