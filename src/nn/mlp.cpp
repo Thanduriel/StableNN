@@ -2,32 +2,46 @@
 
 namespace nn {
 
-	MultiLayerPerceptronImpl::MultiLayerPerceptronImpl(
-		int64_t _inputs, int64_t _outputs, int64_t _hiddenLayerSize, int64_t _hiddenLayers, bool _useBias)
-		: inputLayer(torch::nn::LinearOptions(_inputs, _hiddenLayers ? _hiddenLayerSize : _outputs).bias(_useBias)),
-		outputLayer(torch::nn::LinearOptions(_hiddenLayers ? _hiddenLayerSize : _inputs, _outputs).bias(_useBias))
+	MultiLayerPerceptronImpl::MultiLayerPerceptronImpl(const MLPOptions& _options)
+		: options(_options),
+		inputLayer(nullptr),
+		outputLayer(nullptr)
 	{
-		register_module("input", inputLayer);
-		
-		torch::nn::LinearOptions options(_hiddenLayerSize, _hiddenLayerSize);
-		options.bias(_useBias);
+		reset();
+	}
 
-		for (int64_t i = 0; i < _hiddenLayers; ++i)
+	void MultiLayerPerceptronImpl::reset()
+	{
+		inputLayer = torch::nn::Linear(torch::nn::LinearOptions(
+			options.input_size(), 
+			options.hidden_layers() ? options.hidden_size() : options.output_size()).bias(options.bias()));
+		register_module("input", inputLayer);
+
+		torch::nn::LinearOptions hiddenOptions(options.hidden_size(), options.hidden_size());
+		hiddenOptions.bias(options.bias());
+		hiddenLayers.clear();
+		hiddenLayers.reserve(options.hidden_layers());
+
+		for (int64_t i = 0; i < options.hidden_layers(); ++i)
 		{
-		//	hiddenLayers->push_back(torch::nn::Linear(options));
-			hiddenLayers.emplace_back(torch::nn::Linear(options));
+			hiddenLayers.emplace_back(torch::nn::Linear(hiddenOptions));
 			register_module("hidden" + std::to_string(i), hiddenLayers.back());
 		}
-	//	register_module("hidden", hiddenLayers);
+
+		outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
+			options.hidden_layers() ? options.hidden_size() : options.input_size(),
+			options.output_size()).bias(options.bias()));
 		register_module("output", outputLayer);
 	}
+
+
 
 	torch::Tensor MultiLayerPerceptronImpl::forward(torch::Tensor x)
 	{
 		x = torch::tanh(inputLayer(x));
 		for (auto& layer : hiddenLayers)
 			x = x + torch::tanh(layer(x));
-		//	x = x + torch::tanh(layer->as<torch::nn::Linear>()->forward(x));
+
 		x = outputLayer(x);
 		return x;
 	}

@@ -4,21 +4,35 @@
 
 namespace nn {
 
-	class HamiltonianNet : public torch::nn::Module
+	struct HamiltonianOptions
+	{
+		HamiltonianOptions(int64_t _inputSize) : input_size_(_inputSize) {}
+
+		TORCH_ARG(int64_t, input_size);
+		TORCH_ARG(int64_t, num_layers) = 1;
+		TORCH_ARG(bool, bias) = true;
+		TORCH_ARG(int64_t, augment_size) = 1; // only used in HamiltonianAugmented
+		TORCH_ARG(double, total_time) = 1.0;
+		TORCH_ARG(ActivationFn, activation) = torch::tanh;
+	};
+
+	class HamiltonianImpl : public torch::nn::Cloneable<HamiltonianImpl>
 	{
 	public:
-		HamiltonianNet(int64_t _inputs = 2,
-			int64_t _hiddenLayers = 1,
-			double _totalTime = 1.0,
-			bool _useBias = true,
-			ActivationFn _activation = torch::tanh);
+		HamiltonianImpl(int64_t _inputs = 2) : HamiltonianImpl(HamiltonianOptions(_inputs)) {}
+		explicit HamiltonianImpl(const HamiltonianOptions& _options);
+
+		void reset() override;
 
 		torch::Tensor forward(const torch::Tensor& _input);
 
+		HamiltonianOptions options;
+	private:
 		double timeStep;
 		std::vector<torch::nn::Linear> layers;
-		ActivationFn activation;
 	};
+
+	TORCH_MODULE(Hamiltonian);
 
 	class HamiltonianCellImpl : public torch::nn::Cloneable<HamiltonianCellImpl>
 	{
@@ -42,18 +56,6 @@ namespace nn {
 	};
 
 	TORCH_MODULE(HamiltonianCell);
-
-	struct HamiltonianOptions
-	{
-		HamiltonianOptions(int64_t _inputSize) : input_size_(_inputSize) {}
-
-		TORCH_ARG(int64_t, input_size);
-		TORCH_ARG(int64_t, num_layers) = 1;
-		TORCH_ARG(bool, bias) = true;
-		TORCH_ARG(int64_t, augment_size) = 1;
-		TORCH_ARG(double, total_time) = 1.0;
-		TORCH_ARG(ActivationFn, activation) = torch::tanh;
-	};
 
 	class HamiltonianAugmentedImpl : public torch::nn::Cloneable<HamiltonianAugmentedImpl>
 	{

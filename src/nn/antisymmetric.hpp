@@ -28,22 +28,34 @@ namespace nn {
 
 	TORCH_MODULE(AntiSymmetricCell);
 
-	struct AntiSymmetricImpl : torch::nn::Module
+	struct AntiSymmetricOptions
 	{
-		AntiSymmetricImpl(int64_t _inputs = 2,
-			int64_t _hiddenLayers = 1,
-			double _diffusion = 0.0,
-			double _totalTime = 1.0,
-			bool _useBias = false,
-			ActivationFn _activation = torch::tanh);
+		AntiSymmetricOptions(int64_t _inputSize) : input_size_(_inputSize) {}
+
+		TORCH_ARG(int64_t, input_size);
+		TORCH_ARG(int64_t, num_layers) = 1;
+		TORCH_ARG(bool, bias) = true;
+		TORCH_ARG(double, diffusion) = 1;
+		TORCH_ARG(double, total_time) = 1.0;
+		TORCH_ARG(ActivationFn, activation) = torch::tanh;
+	};
+
+	struct AntiSymmetricImpl : torch::nn::Cloneable<AntiSymmetricImpl>
+	{
+		AntiSymmetricImpl(int64_t _inputs = 2) : AntiSymmetricImpl(AntiSymmetricOptions(_inputs)) {}
+		explicit AntiSymmetricImpl(const AntiSymmetricOptions& _options);
+
+		void reset() override;
 
 		torch::Tensor forward(torch::Tensor x);
 
+		AntiSymmetricOptions options;
+
+	private:
 		double timeStep;
 		std::vector<AntiSymmetricCell> layers;
-		ActivationFn activation;
 	};
 
-	using AntiSymmetric = AntiSymmetricImpl;
+	TORCH_MODULE(AntiSymmetric);
 
 }

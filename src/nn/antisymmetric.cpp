@@ -54,25 +54,29 @@ namespace nn {
 	}
 
 	// ********************************************************* //
-	AntiSymmetricImpl::AntiSymmetricImpl(int64_t _inputs,
-		int64_t _hiddenLayers,
-		double _diffusion,
-		double _totalTime,
-		bool _useBias,
-		ActivationFn _activation)
-		: timeStep(_totalTime / _hiddenLayers), activation(std::move(_activation))
+	AntiSymmetricImpl::AntiSymmetricImpl(const AntiSymmetricOptions& _options)
+		: options(_options)
 	{
-		layers.reserve(_hiddenLayers);
+		reset();
+	}
 
-		for (int64_t i = 0; i < _hiddenLayers; ++i)
+	void AntiSymmetricImpl::reset()
+	{
+		layers.clear();
+		layers.reserve(options.num_layers());
+
+		timeStep = options.total_time() / options.num_layers();
+		for (int64_t i = 0; i < options.num_layers(); ++i)
 		{
-			layers.emplace_back(_inputs, _diffusion, _useBias);
+			layers.emplace_back(options.input_size(), options.diffusion(), options.bias());
 			register_module("layer" + std::to_string(i), layers.back());
 		}
 	}
 
 	torch::Tensor AntiSymmetricImpl::forward(torch::Tensor x)
 	{
+		auto& activation = options.activation();
+
 		for (auto& layer : layers)
 			x = x + timeStep * activation(layer(x));
 		return x;

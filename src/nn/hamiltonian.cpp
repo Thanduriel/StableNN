@@ -4,19 +4,29 @@ namespace nn {
 
 	using namespace torch;
 
-	HamiltonianNet::HamiltonianNet(int64_t _inputs, int64_t _hiddenLayers, double _totalTime, bool _useBias, ActivationFn _activation)
-		: timeStep(_totalTime / _hiddenLayers),
-		activation(std::move(_activation))
+	HamiltonianImpl::HamiltonianImpl(const HamiltonianOptions& _options)
+		: options(_options)
 	{
-		for (int64_t i = 0; i < _hiddenLayers; ++i)
+		reset();
+	}
+
+	void HamiltonianImpl::reset()
+	{
+		layers.clear();
+		layers.reserve(options.num_layers());
+
+		timeStep = options.total_time() / options.num_layers();
+		for (int64_t i = 0; i < options.num_layers(); ++i)
 		{
-			layers.emplace_back(torch::nn::LinearOptions(_inputs, _inputs).bias(_useBias));
+			layers.emplace_back(torch::nn::LinearOptions(options.input_size(), options.input_size()).bias(options.bias()));
 			register_module("hidden" + std::to_string(i), layers.back());
 		}
 	}
 
-	torch::Tensor HamiltonianNet::forward(const Tensor& _input)
+	torch::Tensor HamiltonianImpl::forward(const Tensor& _input)
 	{
+		auto& activation = options.activation();
+
 		Tensor y0 = _input;
 		Tensor y1 = y0 + 0.5 * timeStep * timeStep * activation(layers[0](_input));
 		for (auto it = layers.begin()+1; it != layers.end(); ++it)
@@ -24,7 +34,6 @@ namespace nn {
 			auto& layer = *it;
 			Tensor yTemp = y1.clone();
 			y1 = 2.0 * y1 - y0 + timeStep * timeStep * activation(layer(y1));
-		//	y1 = 2.0 * y1 - y0 + timeStep * timeStep * activation(layer(y1));
 			y0 = yTemp;
 		}
 
