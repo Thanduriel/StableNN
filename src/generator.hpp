@@ -25,6 +25,7 @@ public:
 		int64_t _inOutShift = 1) const
 	{
 		assert(_initialStates.size() >= 1);
+		if (_numInputSteps == 1) _useSingleOutput = true;
 
 		const int64_t stateSize = sizeof(SysState) / sizeof(System::ValueT);
 		const int64_t inputSize = _numInputSteps * stateSize;
