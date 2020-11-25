@@ -9,6 +9,7 @@
 #include "generator.hpp"
 #include "nn/antisymmetric.hpp"
 #include "nn/hamiltonian.hpp"
+#include "nn/inoutwrapper.hpp"
 #include "nn/utils.hpp"
 #include "evaluation/stability.hpp"
 
@@ -19,27 +20,29 @@
 #include <cmath>
 #include <random>
 
-constexpr size_t NUM_INPUTS = 8;
-constexpr int64_t NUM_FORWARDS = 8;
+constexpr size_t NUM_INPUTS = 1;
+constexpr int64_t NUM_FORWARDS = 1;
 constexpr double TARGET_TIME_STEP = 0.05;
 constexpr int64_t HYPER_SAMPLE_RATE = 100;
 constexpr bool USE_SINGLE_OUTPUT = true;
 constexpr bool SAVE_NET = true;
+constexpr bool USE_WRAPPER = NUM_INPUTS == 1;
+constexpr int HIDDEN_SIZE = 2 * 8;
 
 using System = systems::Pendulum<double>;
 
 template<size_t NumTimeSteps, typename Network>
 void evaluate(Network& _network)
 {
-	System pendulum(0.1, 9.81, 0.5);
-	System::State initialState{ -2.5, -0.0 };
+	System system(0.1, 9.81, 0.5);
+	System::State initialState{ -1.5, -0.0 };
 
-	discretization::LeapFrog<System> leapFrog(pendulum, TARGET_TIME_STEP);
-	discretization::ForwardEuler<System> forwardEuler(pendulum, TARGET_TIME_STEP);
+	discretization::LeapFrog<System> leapFrog(system, TARGET_TIME_STEP);
+	discretization::ForwardEuler<System> forwardEuler(system, TARGET_TIME_STEP);
 
 	auto referenceIntegrate = [&](const System::State _state)
 	{
-		discretization::LeapFrog<System> forward(pendulum, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
+		discretization::LeapFrog<System> forward(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 		auto state = _state;
 		for (int64_t i = 0; i < HYPER_SAMPLE_RATE; ++i)
 			state = forward(state);
@@ -71,17 +74,17 @@ void evaluate(Network& _network)
 		renderer.run();
 	}
 
-	eval::evaluate(pendulum, initialState, referenceIntegrate, leapFrog, neuralNet);
+	eval::evaluate(system, initialState, referenceIntegrate, leapFrog, neuralNet);
 }
 
 using State = System::State;
 
-std::vector<State> generateStates(const System& _system, size_t _numStates)
+std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
 {
 	std::vector<State> states;
 	states.reserve(_numStates);
 
-	std::default_random_engine rng(0x612FF6AE);
+	std::default_random_engine rng(_seed);
 	constexpr double MAX_POS = 3.14159 - 0.14;
 	State maxState{ MAX_POS, 0.0 };
 	const double maxEnergy = _system.energy(maxState);
@@ -110,7 +113,8 @@ int main()
 	State validState1{ 1.3, 2.01 };
 	State validState2{ -1.5, 0.0 };
 
-	auto trainingStates = generateStates(pendulum, 128);
+	auto trainingStates = generateStates(pendulum, 128, 0x612FF6AEu);
+	auto validStates = generateStates(pendulum, 16, 0x195A4C);
 /*	for (auto& state : trainingStates)
 	{
 		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
@@ -128,33 +132,48 @@ int main()
 	{
 		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
 
-		nn::MultiLayerPerceptron net( nn::MLPOptions(numInputsNet) 
-			.hidden_layers(_params.get<int>("depth", 32)-2) 
-			.hidden_size(numInputsNet)
+	/*	auto options = nn::MLPOptions(numInputsNet)
+			.hidden_layers(_params.get<int>("depth", 32) - 2)
+			.hidden_size(numInputsNet * 8)
 			.bias(_params.get<bool>("bias", false))
-			.output_size(USE_SINGLE_OUTPUT ? 2 : numInputsNet));
-	/*	nn::AntiSymmetric net(nn::AntiSymmetricOptions(numInputsNet)
+			.output_size(USE_SINGLE_OUTPUT ? 2 : numInputsNet);
+		using nn = nn::MultiLayerPerceptron;*/
+
+		auto options = nn::AntiSymmetricOptions(numInputsNet)
 			.num_layers(_params.get<int>("depth", 32))
 			.diffusion(_params.get<double>("diffusion", 0.001))
 			.total_time(_params.get<double>("time", 10.0))
 			.bias(_params.get<bool>("bias", false))
-			.activation(_params.get<nn::ActivationFn>("activation", torch::tanh)));*/
-		auto options = nn::HamiltonianOptions(numInputsNet)
+			.activation(_params.get<nn::ActivationFn>("activation", torch::tanh));
+		using NetType = nn::AntiSymmetric;
+
+	/*	auto options = nn::HamiltonianOptions(numInputsNet)
 			.num_layers(_params.get<int>("depth", 32))
 			.total_time(_params.get<double>("time", 4.0))
 			.bias(_params.get<bool>("bias", false))
 			.activation(torch::tanh)
-			.augment_size(_params.get<int>("augment", 2));
-	//	nn::HamiltonianAugmented net(options);
-	//	nn::Hamiltonian net(options);
+			.augment_size(_params.get<int>("augment", 2));*/
+	//	using NetType = nn::Hamiltonian;
+	//	using NetType = nn::HamiltonianAugmented;
 
-		net->to(torch::kDouble);
-
-		return net;
+		if constexpr (USE_WRAPPER)
+		{
+			options.input_size() = HIDDEN_SIZE;
+			nn::InOutWrapper<NetType> net(
+				nn::InOutWrapperOptions(numInputsNet, HIDDEN_SIZE, USE_SINGLE_OUTPUT ? 2 : numInputsNet), options);
+			net->to(torch::kDouble);
+			return net;
+		}
+		else
+		{
+			nn::Hamiltonian net(options);
+			net->to(torch::kDouble);
+			return net;
+		}
 	};
 
 	using NetworkType = decltype(makeNetwork(nn::HyperParams()));
-	using NetworkTypeImpl = typename NetworkType::ContainedType;
+	using NetworkTypeImpl = typename NetworkType::Impl;
 	auto bestNet = makeNetwork(nn::HyperParams());
 
 	auto trainNetwork = [=, &bestNet](const nn::HyperParams& _params)
@@ -162,12 +181,12 @@ int main()
 		const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
 		auto dataset = generator.generate(trainingStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
 			.map(torch::data::transforms::Stack<>());
-		auto validationSet = generator.generate({ validState1 }, 128, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
+		auto validationSet = generator.generate(validStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
 			.map(torch::data::transforms::Stack<>());
 
 		auto data_loader = torch::data::make_data_loader(
 			dataset,
-			torch::data::DataLoaderOptions().batch_size(16));
+			torch::data::DataLoaderOptions().batch_size(32));
 		auto validationLoader = torch::data::make_data_loader(
 			validationSet,
 			torch::data::DataLoaderOptions().batch_size(64));
@@ -177,9 +196,9 @@ int main()
 	//	auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return torch::mse_loss(self, target); };
 		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 3); };
 
-		auto nextInput = [numInputs](const torch::Tensor& input, const torch::Tensor& output)
+		auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
 		{
-			return (USE_SINGLE_OUTPUT && numInputs > 1) ? nn::shiftTimeSeries(input, output, 2) : output;
+			return USE_WRAPPER ? nn::shiftTimeSeries(input, output, 2) : output;
 		};
 
 		torch::optim::Adam optimizer(net->parameters(), 
@@ -239,7 +258,7 @@ int main()
 			}
 
 		//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
-			std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
+		//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 		}
 		if (SAVE_NET)
 		{
@@ -261,21 +280,21 @@ int main()
 //	hyperOptimizer.run(8);
 	
 	nn::HyperParams params;
-	params["lr"] = 1e-04;
-	params["weight_decay"] = 1e-4;
+	params["lr"] = 1e-03;
+	params["weight_decay"] = 1e-6; //4
 	params["depth"] = 4;
-	params["diffusion"] = 0.5;
+	params["diffusion"] = 0.0;
 	params["bias"] = false;
 	params["time"] = 1.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["augment"] = 2;
-	params["name"] = std::string("linear_")
+	params["name"] = std::string("stateExtSym_")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(NUM_FORWARDS) + ".pt";
 
 
-	std::cout << trainNetwork(params) << "\n";
+//	std::cout << trainNetwork(params) << "\n";
 
 /*	eval::checkLayerStability(bestnet->inputLayer);
 	for(auto& layer : bestnet->hiddenLayers)

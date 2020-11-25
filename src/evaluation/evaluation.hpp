@@ -51,7 +51,7 @@ namespace eval {
 
 		// long term energy behavior
 		std::cout << "\nlongterm=======================================" << "\n";
-		for (int i = 0; i < 4; ++i)
+		for (int i = 0; i < 8; ++i)
 		{
 			for (int j = 0; j < 2048; ++j)
 			{
