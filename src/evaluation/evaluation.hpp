@@ -6,13 +6,29 @@
 
 namespace eval {
 
+	namespace details {
+		template<size_t Ind, typename StateArray, typename Integrator, typename... Integrators>
+		void evaluateStep(StateArray& _states, Integrator& _integrator, Integrators&... _integrators)
+		{
+			_states[Ind] = _integrator(_states[Ind]);
+
+			if constexpr (sizeof...(Integrators))
+				evaluateStep<Ind + 1>(_states, _integrators...);
+		}
+
+	/*	template<size_t Ind, typename StateArray>
+		void evaluateStep(StateArray& _states)
+		{
+		}*/
+	}
+
 	// Simulates the given system with different integrators to observe energy over time.
 	template<typename System, typename State, typename... Integrators>
 	void evaluate(const System& _system, const State& _initialState, Integrators&&... _integrators)
 	{
 		constexpr size_t numIntegrators = sizeof...(_integrators);
 
-		std::array<System::State, numIntegrators> currentState;
+		std::array<State, numIntegrators> currentState;
 		std::array<double, numIntegrators> cumulativeError;
 		for (auto& state : currentState) state = _initialState;
 
@@ -23,7 +39,7 @@ namespace eval {
 		std::cout << std::fixed;
 
 		// short term
-		constexpr int numSteps = 64;
+		constexpr int numSteps = 128;
 		for (int i = 0; i < numSteps; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
@@ -51,7 +67,7 @@ namespace eval {
 
 		// long term energy behavior
 		std::cout << "\nlongterm=======================================" << "\n";
-		for (int i = 0; i < 8; ++i)
+		for (int i = 0; i < 16; ++i)
 		{
 			for (int j = 0; j < 2048; ++j)
 			{
@@ -61,20 +77,6 @@ namespace eval {
 			for (auto& state : currentState)
 				std::cout << _system.energy(state) << ", ";
 			std::cout << "\n";
-		}
-	}
-
-	namespace details {
-		template<size_t Ind, typename StateArray, typename Integrator, typename... Integrators>
-		void evaluateStep(StateArray& _states, Integrator& _integrator, Integrators&... _integrators)
-		{
-			_states[Ind] = _integrator(_states[Ind]);
-			evaluateStep<Ind + 1>(_states, _integrators...);
-		}
-
-		template<size_t Ind, typename StateArray>
-		void evaluateStep(StateArray& _states)
-		{
 		}
 	}
 

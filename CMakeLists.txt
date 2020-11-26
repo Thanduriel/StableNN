@@ -30,30 +30,27 @@ set_target_properties(pendulum PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
 )
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT pendulum)
-
+if (MSVC)
+	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT pendulum)
+endif (MSVC)
 #---------------------------------------------------------------------------------------
 # libraries
 #---------------------------------------------------------------------------------------
 
 find_package(Torch REQUIRED)
 target_link_libraries(pendulum "${TORCH_LIBRARIES}")
-if (MSVC)
-	#file(GLOB TORCH_DLLS "${TORCH_INSTALL_PREFIX}/lib/*.dll")
-	#add_custom_command(TARGET pendulum
-    #                 POST_BUILD
-    #                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    #                 ${TORCH_DLLS}
-    #                 $<TARGET_FILE_DIR:pendulum>)
-endif (MSVC)
 
-set(SFML_BUILD_GRAPHICS TRUE)
-set(SFML_BUILD_WINDOW TRUE)
-set(BUILD_SHARED_LIBS TRUE)
-set(SFML_BUILD_AUDIO FALSE)
-set(SFML_BUILD_EXAMPLES FALSE)
-set(SFML_BUILD_DOC FALSE)
-set(SFML_BUILD_NETWORK FALSE)
-target_include_directories(pendulum PRIVATE "dependencies/SFML/include")
-add_subdirectory("dependencies/SFML")
+find_package(SFML COMPONENTS system graphics window QUIET)
+if (NOT SFML_FOUND)
+	message("SFML not found. Attempting to use local version.")
+	set(SFML_BUILD_GRAPHICS TRUE)
+	set(SFML_BUILD_WINDOW TRUE)
+	set(BUILD_SHARED_LIBS TRUE)
+	set(SFML_BUILD_AUDIO FALSE)
+	set(SFML_BUILD_EXAMPLES FALSE)
+	set(SFML_BUILD_DOC FALSE)
+	set(SFML_BUILD_NETWORK FALSE)
+	target_include_directories(pendulum PRIVATE "dependencies/SFML/include")
+	add_subdirectory("dependencies/SFML")
+endif()
 target_link_libraries(pendulum sfml-system sfml-graphics sfml-window)

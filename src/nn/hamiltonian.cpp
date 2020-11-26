@@ -69,7 +69,7 @@ namespace nn {
 		torch::nn::init::kaiming_uniform_(weight, std::sqrt(5));
 		if (biasY.defined())
 		{
-			auto& [fan_in, fan_out] =
+			const auto& [fan_in, fan_out] =
 				torch::nn::init::_calculate_fan_in_and_fan_out(weight);
 			const auto bound = 1 / std::sqrt(fan_in);
 			torch::nn::init::uniform_(biasY, -bound, bound);

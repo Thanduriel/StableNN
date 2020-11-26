@@ -27,7 +27,7 @@ public:
 		assert(_initialStates.size() >= 1);
 		if (_numInputSteps == 1) _useSingleOutput = true;
 
-		const int64_t stateSize = sizeof(SysState) / sizeof(System::ValueT);
+		const int64_t stateSize = sizeof(SysState) / sizeof(typename System::ValueT);
 		const int64_t inputSize = _numInputSteps * stateSize;
 		const int64_t outputSize = _useSingleOutput ? stateSize : inputSize;
 
@@ -77,7 +77,7 @@ private:
 		size_t _subSteps) const
 	{
 		SysState state{ _initialState };
-		std::vector<System::State> results;
+		std::vector<typename System::State> results;
 		results.reserve(_steps);
 		results.push_back(state);
 

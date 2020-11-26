@@ -2,7 +2,7 @@
 
 #include "../systems/state.hpp"
 #include <torch/torch.h>
-#include <ATen/ScalarType.h>
+#include <c10/core/ScalarType.h>
 #include <array>
 
 namespace nn{
@@ -35,7 +35,7 @@ namespace nn{
 				c10::TensorOptions(c10::CppTypeToScalarType<T>())));
 
 			const int64_t resultOffset = next.numel() / stateSize - 1;
-			return *reinterpret_cast<State*>(next.data<T>() + resultOffset * stateSize);
+			return *reinterpret_cast<State*>(next.data_ptr<T>() + resultOffset * stateSize);
 		}
 	private:
 		std::array<State, NumStates> m_states; // series of previous time steps

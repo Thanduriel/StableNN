@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 #include <SFML/Graphics.hpp>
+#include <cmath>
 
 namespace eval {
 
@@ -26,6 +27,9 @@ namespace eval {
 		sf::RectangleShape line(sf::Vector2f(2.f, length));
 		line.setOrigin({ 1.f, 0.f });
 		line.setPosition(origin);
+
+	//	for(int i = 0; i < 16 * 2048; ++i)
+	//		m_integrator();
 
 		while (m_window.isOpen())
 		{

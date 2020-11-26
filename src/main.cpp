@@ -20,13 +20,13 @@
 #include <cmath>
 #include <random>
 
-constexpr size_t NUM_INPUTS = 1;
+constexpr size_t NUM_INPUTS = 8;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr double TARGET_TIME_STEP = 0.05;
 constexpr int64_t HYPER_SAMPLE_RATE = 100;
 constexpr bool USE_SINGLE_OUTPUT = true;
 constexpr bool SAVE_NET = true;
-constexpr bool USE_WRAPPER = NUM_INPUTS == 1;
+constexpr bool USE_WRAPPER = true;//NUM_INPUTS == 1;
 constexpr int HIDDEN_SIZE = 2 * 8;
 
 using System = systems::Pendulum<double>;
@@ -35,7 +35,7 @@ template<size_t NumTimeSteps, typename Network>
 void evaluate(Network& _network)
 {
 	System system(0.1, 9.81, 0.5);
-	System::State initialState{ -1.5, -0.0 };
+	System::State initialState{ -2.5, -0.0 };
 
 	discretization::LeapFrog<System> leapFrog(system, TARGET_TIME_STEP);
 	discretization::ForwardEuler<System> forwardEuler(system, TARGET_TIME_STEP);
@@ -134,10 +134,10 @@ int main()
 
 	/*	auto options = nn::MLPOptions(numInputsNet)
 			.hidden_layers(_params.get<int>("depth", 32) - 2)
-			.hidden_size(numInputsNet * 8)
+			.hidden_size(HIDDEN_SIZE)
 			.bias(_params.get<bool>("bias", false))
 			.output_size(USE_SINGLE_OUTPUT ? 2 : numInputsNet);
-		using nn = nn::MultiLayerPerceptron;*/
+		using NetType = nn::MultiLayerPerceptron;*/
 
 		auto options = nn::AntiSymmetricOptions(numInputsNet)
 			.num_layers(_params.get<int>("depth", 32))
@@ -166,7 +166,7 @@ int main()
 		}
 		else
 		{
-			nn::Hamiltonian net(options);
+			NetType net(options);
 			net->to(torch::kDouble);
 			return net;
 		}
@@ -198,7 +198,7 @@ int main()
 
 		auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
 		{
-			return USE_WRAPPER ? nn::shiftTimeSeries(input, output, 2) : output;
+			return /*USE_WRAPPER ? nn::shiftTimeSeries(input, output, 2) :*/ output;
 		};
 
 		torch::optim::Adam optimizer(net->parameters(), 
@@ -283,18 +283,18 @@ int main()
 	params["lr"] = 1e-03;
 	params["weight_decay"] = 1e-6; //4
 	params["depth"] = 4;
-	params["diffusion"] = 0.0;
+	params["diffusion"] = 0.4;
 	params["bias"] = false;
 	params["time"] = 1.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["augment"] = 2;
-	params["name"] = std::string("stateExtSym_")
+	params["name"] = std::string("linear_")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(NUM_FORWARDS) + ".pt";
 
 
-//	std::cout << trainNetwork(params) << "\n";
+	std::cout << trainNetwork(params) << "\n";
 
 /*	eval::checkLayerStability(bestnet->inputLayer);
 	for(auto& layer : bestnet->hiddenLayers)

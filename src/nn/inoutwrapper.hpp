@@ -30,21 +30,21 @@ namespace nn {
 
 		void reset() override
 		{
-			hiddenNet = register_module("hidden", HiddenNet(hiddenNet->options));
-			/*	outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
+			hiddenNet = this->register_module("hidden", HiddenNet(hiddenNet->options));
+			outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 					options.hidden_size(),
 					options.output_size()).bias(false));
-				register_module("out", outputLayer);*/
-			projection = register_parameter("projection", 
+			this->register_module("out", outputLayer);
+			projection = this->register_parameter("projection",
 				torch::eye(options.input_size(), options.hidden_size(), c10::TensorOptions(c10::kDouble)), false);
 		}
 
 		torch::Tensor forward(torch::Tensor x)
 		{
-			x = x.matmul(projection);
+		//	x = x.matmul(projection);
 			x = hiddenNet->forward(x);
-			return x.matmul(projection.t());
-		//	return outputLayer(x);
+		//	return x.matmul(projection.t());
+			return outputLayer(x);
 		}
 
 		InOutWrapperOptions options;

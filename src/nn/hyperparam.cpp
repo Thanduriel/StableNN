@@ -7,27 +7,19 @@
 
 namespace nn {
 
-/*	template<template<typename T, typename Types>
-	std::ostream& operator<<(std::ostream& _out, const std::any& _value);
-	{
-
-	}*/
-
 	template<typename Dummy, typename T, typename... Types>
 	static void serialize(std::ostream& _out, const std::any& _val)
 	{
 		if (_val.type() == typeid(T))
 			_out << std::any_cast<T>(_val);
 		else
-			serialize<Dummy, Types...>(_out, _val);
+		{
+			if constexpr (sizeof...(Types))
+				serialize<Dummy, Types...>(_out, _val);
+			else
+				_out << "Unknown type " << _val.type().name();
+		}
 	}
-
-	template<typename Dummy>
-	static void serialize(std::ostream& _out, const std::any& _val)
-	{
-		_out << "Unknown type " << _val.type().name();
-	}
-
 
 	std::ostream& operator<<(std::ostream& _out, const HyperParams& _params)
 	{
