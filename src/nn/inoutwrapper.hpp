@@ -12,6 +12,7 @@ namespace nn {
 		TORCH_ARG(int64_t, input_size);
 		TORCH_ARG(int64_t, output_size);
 		TORCH_ARG(int64_t, hidden_size);
+		TORCH_ARG(bool, train_out) = false;
 	};
 
 	template<typename HiddenNet>
@@ -31,20 +32,23 @@ namespace nn {
 		void reset() override
 		{
 			hiddenNet = this->register_module("hidden", HiddenNet(hiddenNet->options));
-			outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
+			if (options.train_out())
+			{
+				outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 					options.hidden_size(),
 					options.output_size()).bias(false));
-			this->register_module("out", outputLayer);
+				this->register_module("out", outputLayer);
+			}
 			projection = this->register_parameter("projection",
 				torch::eye(options.input_size(), options.hidden_size(), c10::TensorOptions(c10::kDouble)), false);
 		}
 
 		torch::Tensor forward(torch::Tensor x)
 		{
-		//	x = x.matmul(projection);
+			if(input_size != hidden_size)
+				x = x.matmul(projection);
 			x = hiddenNet->forward(x);
-		//	return x.matmul(projection.t());
-			return outputLayer(x);
+			return options.trained_out() ? outputLayer(x) : x.matmul(projection.t());
 		}
 
 		InOutWrapperOptions options;

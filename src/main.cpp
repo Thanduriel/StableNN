@@ -20,13 +20,17 @@
 #include <cmath>
 #include <random>
 
-constexpr size_t NUM_INPUTS = 8;
-constexpr int64_t NUM_FORWARDS = 1;
+// simulation related
 constexpr double TARGET_TIME_STEP = 0.05;
 constexpr int64_t HYPER_SAMPLE_RATE = 100;
+
+// network parameters
+constexpr size_t NUM_INPUTS = 1;
+constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool USE_SINGLE_OUTPUT = true;
 constexpr bool SAVE_NET = true;
-constexpr bool USE_WRAPPER = true;//NUM_INPUTS == 1;
+constexpr bool EXTEND_STATE = false;
+constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && NUM_INPUTS > 1;
 constexpr int HIDDEN_SIZE = 2 * 8;
 
 using System = systems::Pendulum<double>;
@@ -155,6 +159,7 @@ int main()
 			.augment_size(_params.get<int>("augment", 2));*/
 	//	using NetType = nn::Hamiltonian;
 	//	using NetType = nn::HamiltonianAugmented;
+	//	using NetType = nn::HamiltonianInterleafed;
 
 		if constexpr (USE_WRAPPER)
 		{
@@ -186,7 +191,7 @@ int main()
 
 		auto data_loader = torch::data::make_data_loader(
 			dataset,
-			torch::data::DataLoaderOptions().batch_size(32));
+			torch::data::DataLoaderOptions().batch_size(64));
 		auto validationLoader = torch::data::make_data_loader(
 			validationSet,
 			torch::data::DataLoaderOptions().batch_size(64));
@@ -198,7 +203,7 @@ int main()
 
 		auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
 		{
-			return /*USE_WRAPPER ? nn::shiftTimeSeries(input, output, 2) :*/ output;
+			return (USE_SINGLE_OUTPUT && NUM_FORWARDS > 1) ? nn::shiftTimeSeries(input, output, 2) : output;
 		};
 
 		torch::optim::Adam optimizer(net->parameters(), 
@@ -282,13 +287,13 @@ int main()
 	nn::HyperParams params;
 	params["lr"] = 1e-03;
 	params["weight_decay"] = 1e-6; //4
-	params["depth"] = 4;
-	params["diffusion"] = 0.4;
+	params["depth"] = 64;
+	params["diffusion"] = 0.0;
 	params["bias"] = false;
-	params["time"] = 1.0;
+	params["time"] = 8.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["augment"] = 2;
-	params["name"] = std::string("linear_")
+	params["name"] = std::string("interleafed_")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(NUM_FORWARDS) + ".pt";

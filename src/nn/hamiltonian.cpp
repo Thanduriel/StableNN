@@ -114,37 +114,6 @@ namespace nn {
 		}
 	}
 
-	template<typename T>
-	T loadValue(torch::serialize::InputArchive& archive, const std::string& name)
-	{
-		c10::IValue value;
-		archive.read(name, value);
-
-		return value.to<T>();
-	}
-
-	
-/*	HamiltonianAugmentedNet::HamiltonianAugmentedNet(torch::serialize::InputArchive& archive)
-		: HamiltonianAugmentedNet(
-			loadValue<int64_t>(archive, "inputs"),
-			loadValue<int64_t>(archive, "hiddenLayers"),
-			loadValue<double>(archive, "totalTime"),
-			false,
-			torch::tanh,
-			loadValue<int64_t>(archive, "augmentSize"))
-	{
-	}*/
-	
-	/*void HamiltonianAugmentedImpl::save(torch::serialize::OutputArchive& archive) const
-	{
-		archive.write("inputs", c10::IValue(options.input_size));
-		archive.write("hiddenLayers", c10::IValue(static_cast<int64_t>(layers.size())));
-		archive.write("totalTime", c10::IValue(timeStep * layers.size()));
-		archive.write("augmentSize", c10::IValue(augmentSize));
-
-		torch::nn::Module::save(archive);
-	}*/
-
 	torch::Tensor HamiltonianAugmentedImpl::forward(const Tensor& _input)
 	{
 		auto size = _input.sizes().vec();
@@ -160,5 +129,48 @@ namespace nn {
 		}
 
 		return y;
+	}
+
+	// ****************************************************************** //
+	HamiltonianInterleafedImpl::HamiltonianInterleafedImpl(const HamiltonianOptions& _options)
+		: options(_options)
+	{
+		reset();
+	}
+
+	void HamiltonianInterleafedImpl::reset()
+	{
+		layers.clear();
+		layers.reserve(options.num_layers());
+
+		timeStep = options.total_time() / options.num_layers();
+
+		const int64_t halfSize = options.input_size() / 2;
+		for (int64_t i = 0; i < options.num_layers(); ++i)
+		{
+			layers.emplace_back(halfSize, halfSize, options.bias());
+			register_module("layer" + std::to_string(i), layers.back());
+		}
+	}
+
+	torch::Tensor HamiltonianInterleafedImpl::forward(const Tensor& _input)
+	{
+		using namespace torch::indexing;
+		auto size = _input.sizes().vec();
+		size.back() = options.augment_size();
+		Tensor z = _input.index({"...", Slice(1, c10::nullopt, 2)}); // z_{j-1/2}
+		Tensor y = _input.index({ "...", Slice(0, c10::nullopt, 2) });; // y_j
+
+		auto& activation = options.activation();
+		for (auto& layer : layers)
+		{
+			z = z - timeStep * activation(layer->forwardY(y));
+			y = y + timeStep * activation(layer->forwardZ(z));
+		}
+
+		Tensor combined = torch::zeros_like(_input);
+		combined.index_put_({ "...", Slice(1, c10::nullopt, 2) }, z);
+		combined.index_put_({ "...", Slice(0, c10::nullopt, 2) }, y);
+		return combined;
 	}
 }

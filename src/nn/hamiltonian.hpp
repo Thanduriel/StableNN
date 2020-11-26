@@ -66,8 +66,24 @@ namespace nn {
 
 		void reset() override;
 
-	//	HamiltonianAugmentedNet(torch::serialize::InputArchive& archive);
-	//	void save(torch::serialize::OutputArchive& archive) const override;
+		torch::Tensor forward(const torch::Tensor& _input);
+
+		HamiltonianOptions options;
+	private:
+		double timeStep;
+		std::vector<HamiltonianCell> layers;
+	};
+
+	TORCH_MODULE(HamiltonianAugmented);
+
+	class HamiltonianInterleafedImpl : public torch::nn::Cloneable<HamiltonianInterleafedImpl>
+	{
+	public:
+		HamiltonianInterleafedImpl(int64_t _inputs = 2) : HamiltonianInterleafedImpl(HamiltonianOptions(_inputs)) {}
+
+		explicit HamiltonianInterleafedImpl(const HamiltonianOptions& _options);
+
+		void reset() override;
 
 		torch::Tensor forward(const torch::Tensor& _input);
 
@@ -75,9 +91,7 @@ namespace nn {
 	private:
 		double timeStep;
 		std::vector<HamiltonianCell> layers;
-
 	};
 
-	//using HamiltonianAugmented = HamiltonianAugmentedImpl;
-	TORCH_MODULE(HamiltonianAugmented);
+	TORCH_MODULE(HamiltonianInterleafed);
 }
