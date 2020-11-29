@@ -12,10 +12,10 @@ namespace nn {
 
 	void MultiLayerPerceptronImpl::reset()
 	{
-		inputLayer = torch::nn::Linear(torch::nn::LinearOptions(
+	/*	inputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 			options.input_size(), 
 			options.hidden_layers() ? options.hidden_size() : options.output_size()).bias(options.bias()));
-		register_module("input", inputLayer);
+		register_module("input", inputLayer);*/
 
 		torch::nn::LinearOptions hiddenOptions(options.hidden_size(), options.hidden_size());
 		hiddenOptions.bias(options.bias());
@@ -28,21 +28,21 @@ namespace nn {
 			register_module("hidden" + std::to_string(i), hiddenLayers.back());
 		}
 
-		outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
+	/*	outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 			options.hidden_layers() ? options.hidden_size() : options.input_size(),
 			options.output_size()).bias(options.bias()));
-		register_module("output", outputLayer);
+		register_module("output", outputLayer);*/
 	}
 
 
 
 	torch::Tensor MultiLayerPerceptronImpl::forward(torch::Tensor x)
 	{
-		x = x + torch::tanh(inputLayer(x));
+	//	x = x + torch::tanh(inputLayer(x));
 		for (auto& layer : hiddenLayers)
 			x = x + torch::tanh(layer(x));
 
-		x = outputLayer(x);
+	//	x = outputLayer(x);
 		return x;
 	}
 

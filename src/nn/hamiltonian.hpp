@@ -19,6 +19,7 @@ namespace nn {
 	class HamiltonianImpl : public torch::nn::Cloneable<HamiltonianImpl>
 	{
 	public:
+		using Options = HamiltonianOptions;
 		HamiltonianImpl(int64_t _inputs = 2) : HamiltonianImpl(HamiltonianOptions(_inputs)) {}
 		explicit HamiltonianImpl(const HamiltonianOptions& _options);
 
@@ -60,8 +61,8 @@ namespace nn {
 	class HamiltonianAugmentedImpl : public torch::nn::Cloneable<HamiltonianAugmentedImpl>
 	{
 	public:
+		using Options = HamiltonianOptions;
 		HamiltonianAugmentedImpl(int64_t _inputs = 2) : HamiltonianAugmentedImpl(HamiltonianOptions(_inputs)){}
-
 		explicit HamiltonianAugmentedImpl(const HamiltonianOptions& _options);
 
 		void reset() override;
@@ -79,8 +80,8 @@ namespace nn {
 	class HamiltonianInterleafedImpl : public torch::nn::Cloneable<HamiltonianInterleafedImpl>
 	{
 	public:
+		using Options = HamiltonianOptions;
 		HamiltonianInterleafedImpl(int64_t _inputs = 2) : HamiltonianInterleafedImpl(HamiltonianOptions(_inputs)) {}
-
 		explicit HamiltonianInterleafedImpl(const HamiltonianOptions& _options);
 
 		void reset() override;

@@ -2,6 +2,7 @@
 
 #include "state.hpp"
 #include <cmath>
+#include <vector>
 
 namespace systems {
 

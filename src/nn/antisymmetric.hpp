@@ -42,6 +42,7 @@ namespace nn {
 
 	struct AntiSymmetricImpl : torch::nn::Cloneable<AntiSymmetricImpl>
 	{
+		using Options = AntiSymmetricOptions;
 		AntiSymmetricImpl(int64_t _inputs = 2) : AntiSymmetricImpl(AntiSymmetricOptions(_inputs)) {}
 		explicit AntiSymmetricImpl(const AntiSymmetricOptions& _options);
 

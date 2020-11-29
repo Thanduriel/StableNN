@@ -26,20 +26,23 @@ constexpr int64_t HYPER_SAMPLE_RATE = 100;
 
 // network parameters
 constexpr size_t NUM_INPUTS = 1;
-constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool USE_SINGLE_OUTPUT = true;
-constexpr bool SAVE_NET = true;
 constexpr bool EXTEND_STATE = false;
-constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && NUM_INPUTS > 1;
 constexpr int HIDDEN_SIZE = 2 * 8;
+constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && NUM_INPUTS > 1 || HIDDEN_SIZE != NUM_INPUTS * 2;
+
+// training
+constexpr int64_t NUM_FORWARDS = 1;
+constexpr bool SAVE_NET = true;
 
 using System = systems::Pendulum<double>;
+using State = System::State;
 
 template<size_t NumTimeSteps, typename Network>
 void evaluate(Network& _network)
 {
 	System system(0.1, 9.81, 0.5);
-	System::State initialState{ -2.5, -0.0 };
+	System::State initialState{ -0.5, -0.0 };
 
 	discretization::LeapFrog<System> leapFrog(system, TARGET_TIME_STEP);
 	discretization::ForwardEuler<System> forwardEuler(system, TARGET_TIME_STEP);
@@ -81,8 +84,6 @@ void evaluate(Network& _network)
 	eval::evaluate(system, initialState, referenceIntegrate, leapFrog, neuralNet);
 }
 
-using State = System::State;
-
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
 {
 	std::vector<State> states;
@@ -96,11 +97,11 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	std::uniform_real_distribution<double> potEnergy(0.0, 1.0);
 	std::bernoulli_distribution sign;
 
-	for(size_t i = 0; i < _numStates; ++i)
+	for (size_t i = 0; i < _numStates; ++i)
 	{
 		const double e = energy(rng);
 		const double potE = potEnergy(rng);
-		const double v = std::sqrt(2.0 * (1.0-potE) * e / (_system.mass() * _system.length() * _system.length()));
+		const double v = std::sqrt(2.0 * (1.0 - potE) * e / (_system.mass() * _system.length() * _system.length()));
 		const double p = std::acos(1.0 - potE * e / (_system.mass() * _system.gravity() * _system.length()));
 		states.push_back({ sign(rng) ? p : -p, sign(rng) ? v : -v });
 	}
@@ -108,17 +109,88 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	return states;
 }
 
+template<typename T>
+struct MakeNetOptions;
+
+template<>
+struct MakeNetOptions<nn::MLPOptions>
+{
+	auto operator()(const nn::HyperParams& _params) const
+	{
+		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
+
+		return nn::MLPOptions(numInputsNet)
+			.hidden_layers(_params.get<int>("depth", 32) - 2)
+			.hidden_size(HIDDEN_SIZE)
+			.bias(_params.get<bool>("bias", false))
+			.output_size(USE_SINGLE_OUTPUT ? 2 : numInputsNet);
+	}
+};
+
+template<>
+struct MakeNetOptions<nn::AntiSymmetricOptions>
+{
+	nn::AntiSymmetricOptions operator()(const nn::HyperParams& _params) const
+	{
+		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
+
+		return nn::AntiSymmetricOptions(numInputsNet)
+			.num_layers(_params.get<int>("depth", 32))
+			.diffusion(_params.get<double>("diffusion", 0.001))
+			.total_time(_params.get<double>("time", 10.0))
+			.bias(_params.get<bool>("bias", false))
+			.activation(_params.get<nn::ActivationFn>("activation", torch::tanh));
+	}
+};
+
+template<>
+struct MakeNetOptions<nn::HamiltonianOptions>
+{
+	nn::HamiltonianOptions operator()(const nn::HyperParams& _params) const
+	{
+		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
+
+		return nn::HamiltonianOptions(numInputsNet)
+			.num_layers(_params.get<int>("depth", 32))
+			.total_time(_params.get<double>("time", 4.0))
+			.bias(_params.get<bool>("bias", false))
+			.activation(torch::tanh)
+			.augment_size(_params.get<int>("augment", 2));
+	}
+};
+
+template<typename Net>
+auto makeNetwork(const nn::HyperParams& _params)
+{
+	auto options = MakeNetOptions< typename Net::Impl::Options >()(_params);
+	if constexpr (USE_WRAPPER)
+	{
+		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
+		options.input_size() = HIDDEN_SIZE;
+		nn::InOutWrapper<Net> net(
+			nn::InOutWrapperOptions(numInputsNet, HIDDEN_SIZE, USE_SINGLE_OUTPUT ? 2 : numInputsNet), options);
+		net->to(torch::kDouble);
+		return net;
+	}
+	else
+	{
+		Net net(options);
+		net->to(torch::kDouble);
+		return net;
+	}
+}
+
 int main()
 {
-	systems::Pendulum<double> pendulum(0.1, 9.81, 0.5);
+	systems::Pendulum<double> system(0.1, 9.81, 0.5);
 	using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
-	Integrator integrator(pendulum, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
+	Integrator integrator(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 
 	State validState1{ 1.3, 2.01 };
 	State validState2{ -1.5, 0.0 };
 
-	auto trainingStates = generateStates(pendulum, 128, 0x612FF6AEu);
-	auto validStates = generateStates(pendulum, 16, 0x195A4C);
+	auto trainingStates = generateStates(system, 128, 0x612FF6AEu);
+	auto validStates = generateStates(system, 16, 0x195A4C);
 /*	for (auto& state : trainingStates)
 	{
 		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
@@ -130,56 +202,9 @@ int main()
 		renderer.run();
 	}*/
 
-	DataGenerator generator(pendulum, integrator);
-
-	auto makeNetwork = [=](const nn::HyperParams& _params)
-	{
-		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
-
-	/*	auto options = nn::MLPOptions(numInputsNet)
-			.hidden_layers(_params.get<int>("depth", 32) - 2)
-			.hidden_size(HIDDEN_SIZE)
-			.bias(_params.get<bool>("bias", false))
-			.output_size(USE_SINGLE_OUTPUT ? 2 : numInputsNet);
-		using NetType = nn::MultiLayerPerceptron;*/
-
-		auto options = nn::AntiSymmetricOptions(numInputsNet)
-			.num_layers(_params.get<int>("depth", 32))
-			.diffusion(_params.get<double>("diffusion", 0.001))
-			.total_time(_params.get<double>("time", 10.0))
-			.bias(_params.get<bool>("bias", false))
-			.activation(_params.get<nn::ActivationFn>("activation", torch::tanh));
-		using NetType = nn::AntiSymmetric;
-
-	/*	auto options = nn::HamiltonianOptions(numInputsNet)
-			.num_layers(_params.get<int>("depth", 32))
-			.total_time(_params.get<double>("time", 4.0))
-			.bias(_params.get<bool>("bias", false))
-			.activation(torch::tanh)
-			.augment_size(_params.get<int>("augment", 2));*/
-	//	using NetType = nn::Hamiltonian;
-	//	using NetType = nn::HamiltonianAugmented;
-	//	using NetType = nn::HamiltonianInterleafed;
-
-		if constexpr (USE_WRAPPER)
-		{
-			options.input_size() = HIDDEN_SIZE;
-			nn::InOutWrapper<NetType> net(
-				nn::InOutWrapperOptions(numInputsNet, HIDDEN_SIZE, USE_SINGLE_OUTPUT ? 2 : numInputsNet), options);
-			net->to(torch::kDouble);
-			return net;
-		}
-		else
-		{
-			NetType net(options);
-			net->to(torch::kDouble);
-			return net;
-		}
-	};
-
-	using NetworkType = decltype(makeNetwork(nn::HyperParams()));
-	using NetworkTypeImpl = typename NetworkType::Impl;
-	auto bestNet = makeNetwork(nn::HyperParams());
+	DataGenerator generator(system, integrator);
+	using NetType = nn::AntiSymmetric;
+	auto bestNet = makeNetwork<NetType>(nn::HyperParams());
 
 	auto trainNetwork = [=, &bestNet](const nn::HyperParams& _params)
 	{
@@ -197,7 +222,7 @@ int main()
 			torch::data::DataLoaderOptions().batch_size(64));
 
 		
-		auto net = makeNetwork(_params);
+		auto net = makeNetwork<NetType>(_params);
 	//	auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return torch::mse_loss(self, target); };
 		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 3); };
 
@@ -215,7 +240,7 @@ int main()
 
 		//std::ofstream lossFile("loss.txt");
 
-		for (int64_t epoch = 1; epoch <= 512; ++epoch)
+		for (int64_t epoch = 1; epoch <= 1024; ++epoch)
 		{
 			// train
 			net->train();
@@ -287,33 +312,36 @@ int main()
 	nn::HyperParams params;
 	params["lr"] = 1e-03;
 	params["weight_decay"] = 1e-6; //4
-	params["depth"] = 64;
-	params["diffusion"] = 0.0;
+	params["depth"] = 8;
+	params["diffusion"] = 0.1;
 	params["bias"] = false;
-	params["time"] = 8.0;
+	params["time"] = 1.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["augment"] = 2;
-	params["name"] = std::string("interleafed_")
+	params["name"] = std::string("linear2_")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(NUM_FORWARDS) + ".pt";
 
 
-	std::cout << trainNetwork(params) << "\n";
+//	std::cout << trainNetwork(params) << "\n";
 
 /*	eval::checkLayerStability(bestnet->inputLayer);
-	for(auto& layer : bestnet->hiddenLayers)
 		eval::checkLayerStability(layer);
 	eval::checkLayerStability(bestnet->outputLayer);*/
 	//eval::checkModuleStability(bestNet);
-	
 /*	torch::serialize::InputArchive archive;
 	archive.load_from(*params.get<std::string>("name"));
 	othNet = makeNetwork(params);
 	othNet->load(archive);
 	othNet->to(c10::kDouble);
 	evaluate<NUM_INPUTS>(othNet);*/
-	auto othNet = makeNetwork(params);
+	auto othNet = makeNetwork<NetType>(params);
 	torch::load(othNet, *params.get<std::string>("name"));
+/*	for (size_t i = 0; i < othNet->hiddenLayers.size(); ++i)
+	{
+		nn::exportTensor(othNet->hiddenLayers[i]->weight, "layer" + std::to_string(i) + ".txt");
+	}*/
+
 	evaluate<NUM_INPUTS>(othNet);
 }

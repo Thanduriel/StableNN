@@ -19,6 +19,7 @@ namespace nn {
 
 	struct MultiLayerPerceptronImpl : public torch::nn::Cloneable<MultiLayerPerceptronImpl>
 	{
+		using Options = MLPOptions;
 		explicit MultiLayerPerceptronImpl(const MLPOptions& _options);
 
 		void reset() override;
@@ -28,11 +29,9 @@ namespace nn {
 		MLPOptions options;
 
 		torch::nn::Linear inputLayer;
-		//torch::nn::ModuleList hiddenLayers;
 		std::vector<torch::nn::Linear> hiddenLayers;
 		torch::nn::Linear outputLayer;
 	};
 
-	//using MultiLayerPerceptron = MultiLayerPerceptronImpl;
 	TORCH_MODULE(MultiLayerPerceptron);
 }
