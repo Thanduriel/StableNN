@@ -18,7 +18,7 @@ namespace nn {
 		TORCH_ARG(int64_t, input_size);
 		TORCH_ARG(int64_t, output_size);
 		TORCH_ARG(int64_t, hidden_size);
-		TORCH_ARG(bool, train_out) = false;
+		TORCH_ARG(bool, train_out) = false; // use projection mask or a trained layer
 		TORCH_ARG(ProjectionMask, proj_mask) = ProjectionMask::IdInterleafed;
 	};
 
@@ -49,24 +49,23 @@ namespace nn {
 				this->register_module("out", outputLayer);
 			}
 
-			const int64_t ratio = options.hidden_size() / options.input_size();
+			const int64_t ratio = options.hidden_size() / options.output_size();
 			const double val = 1.0 / std::sqrt(ratio);
 			torch::Tensor p;
 			using ProjMask = InOutWrapperOptions::ProjectionMask;
 			switch(options.proj_mask())
 			{
 			case ProjMask::IdInterleafed:
-				p = torch::eye(options.input_size(), c10::TensorOptions(c10::kDouble));
+				p = torch::eye(options.output_size(), c10::TensorOptions(c10::kDouble));
 				p = (p * val).repeat({ 1, ratio });
 				break;
 			case ProjMask::Id:
 			{
-				const int64_t halfSizeX = options.input_size() / 2;
+				const int64_t halfSizeX = options.output_size() / 2;
 				const int64_t halfSizeY = options.hidden_size() / 2;
-				p = torch::zeros({ options.input_size(), options.hidden_size() }, c10::TensorOptions(c10::kDouble));
+				p = torch::zeros({ options.output_size(), options.hidden_size() }, c10::TensorOptions(c10::kDouble));
 				p.index_put_({ Slice(0,halfSizeX), Slice(0,halfSizeY) }, val);
 				p.index_put_({ Slice(halfSizeX), Slice(halfSizeY) }, val);
-				//	p.index_fill_(0, torch::tensor({ 1 }), val);
 				break;
 			}
 			case ProjMask::Zero:
@@ -85,12 +84,11 @@ namespace nn {
 		}
 
 		InOutWrapperOptions options;
-	private:
-
 		torch::Tensor projection;
 		torch::nn::Linear inputLayer;
 		HiddenNet hiddenNet;
 		torch::nn::Linear outputLayer;
+	private:
 	};
 
 	template<typename HiddenNet>

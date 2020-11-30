@@ -27,22 +27,25 @@ constexpr int64_t HYPER_SAMPLE_RATE = 100;
 // network parameters
 constexpr size_t NUM_INPUTS = 1;
 constexpr bool USE_SINGLE_OUTPUT = true;
-constexpr bool EXTEND_STATE = false;
 constexpr int HIDDEN_SIZE = 2 * 8;
-constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && NUM_INPUTS > 1 || HIDDEN_SIZE != NUM_INPUTS * 2;
+constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && (NUM_INPUTS > 1 || HIDDEN_SIZE > 2);
 
 // training
+constexpr bool TRAIN_NET = false;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
+
+// evaluation
+constexpr bool SHOW_VISUAL = false;
 
 using System = systems::Pendulum<double>;
 using State = System::State;
 
-template<size_t NumTimeSteps, typename Network>
-void evaluate(Network& _network)
+template<size_t NumTimeSteps, typename... Networks>
+void evaluate(const State& _initialState, Networks&... _networks)
 {
 	System system(0.1, 9.81, 0.5);
-	System::State initialState{ -0.5, -0.0 };
+	State initialState{ _initialState };
 
 	discretization::LeapFrog<System> leapFrog(system, TARGET_TIME_STEP);
 	discretization::ForwardEuler<System> forwardEuler(system, TARGET_TIME_STEP);
@@ -67,13 +70,14 @@ void evaluate(Network& _network)
 		}
 		initialState = referenceIntegrate(initialStates.back());
 	}
-	nn::Integrator<System, Network, NumTimeSteps> neuralNet(_network, initialStates);
 
-	for (int i = 0; i < 1; ++i)
+	if constexpr (SHOW_VISUAL)
 	{
-		nn::Integrator<System, Network, NumTimeSteps> drawIntegrator(_network, initialStates);
 		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
-		renderer.addIntegrator([&, state= initialState]() mutable
+
+		// use extra integrator because nn::Integrator may have an internal state
+		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
+		renderer.addIntegrator([drawIntegrator=std::get<0>(integrators), state=initialState]() mutable
 			{
 				state = drawIntegrator(state);
 				return state.position;
@@ -81,7 +85,15 @@ void evaluate(Network& _network)
 		renderer.run();
 	}
 
-	eval::evaluate(system, initialState, referenceIntegrate, leapFrog, neuralNet);
+	eval::evaluate(system, initialState, referenceIntegrate, leapFrog, 
+		nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
+}
+
+template<size_t NumTimeSteps, typename... Networks>
+void evaluate(const std::vector<State>& _initialStates, Networks&... _networks)
+{
+	for (const State& state : _initialStates)
+		evaluate<NumTimeSteps>(state, _networks...);
 }
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
@@ -120,7 +132,7 @@ struct MakeNetOptions<nn::MLPOptions>
 		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
 
 		return nn::MLPOptions(numInputsNet)
-			.hidden_layers(_params.get<int>("depth", 32) - 2)
+			.hidden_layers(_params.get<int>("depth", 32)) // -2 if input and output layers would be used
 			.hidden_size(HIDDEN_SIZE)
 			.bias(_params.get<bool>("bias", false))
 			.output_size(USE_SINGLE_OUTPUT ? 2 : numInputsNet);
@@ -168,7 +180,9 @@ auto makeNetwork(const nn::HyperParams& _params)
 		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
 		options.input_size() = HIDDEN_SIZE;
 		nn::InOutWrapper<Net> net(
-			nn::InOutWrapperOptions(numInputsNet, HIDDEN_SIZE, USE_SINGLE_OUTPUT ? 2 : numInputsNet), options);
+			nn::InOutWrapperOptions(numInputsNet, HIDDEN_SIZE, USE_SINGLE_OUTPUT ? 2 : numInputsNet)
+			.proj_mask(nn::InOutWrapperOptions::ProjectionMask::Id)
+			.train_out(false), options);
 		net->to(torch::kDouble);
 		return net;
 	}
@@ -186,11 +200,8 @@ int main()
 	using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
 	Integrator integrator(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 
-	State validState1{ 1.3, 2.01 };
-	State validState2{ -1.5, 0.0 };
-
-	auto trainingStates = generateStates(system, 128, 0x612FF6AEu);
-	auto validStates = generateStates(system, 16, 0x195A4C);
+	auto trainingStates = generateStates(system, 256, 0x612FF6AEu);
+	auto validStates = generateStates(system, 32, 0x195A4C);
 /*	for (auto& state : trainingStates)
 	{
 		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
@@ -203,7 +214,7 @@ int main()
 	}*/
 
 	DataGenerator generator(system, integrator);
-	using NetType = nn::AntiSymmetric;
+	using NetType = nn::MultiLayerPerceptron;
 	auto bestNet = makeNetwork<NetType>(nn::HyperParams());
 
 	auto trainNetwork = [=, &bestNet](const nn::HyperParams& _params)
@@ -224,7 +235,7 @@ int main()
 		
 		auto net = makeNetwork<NetType>(_params);
 	//	auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return torch::mse_loss(self, target); };
-		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 3); };
+		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 4); };
 
 		auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
 		{
@@ -240,7 +251,7 @@ int main()
 
 		//std::ofstream lossFile("loss.txt");
 
-		for (int64_t epoch = 1; epoch <= 1024; ++epoch)
+		for (int64_t epoch = 1; epoch <= 2048; ++epoch)
 		{
 			// train
 			net->train();
@@ -310,38 +321,50 @@ int main()
 //	hyperOptimizer.run(8);
 	
 	nn::HyperParams params;
-	params["lr"] = 1e-03;
-	params["weight_decay"] = 1e-6; //4
-	params["depth"] = 8;
-	params["diffusion"] = 0.1;
+	params["lr"] = 1e-04;
+	params["weight_decay"] = 1e-5; //4
+	params["depth"] = 4;
+	params["diffusion"] = 0.5;
 	params["bias"] = false;
-	params["time"] = 1.0;
+	params["time"] = 4.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["augment"] = 2;
-	params["name"] = std::string("linear2_")
+	params["name"] = std::string("linearSep2_")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(NUM_FORWARDS) + ".pt";
 
 
-//	std::cout << trainNetwork(params) << "\n";
-
-/*	eval::checkLayerStability(bestnet->inputLayer);
-		eval::checkLayerStability(layer);
-	eval::checkLayerStability(bestnet->outputLayer);*/
-	//eval::checkModuleStability(bestNet);
-/*	torch::serialize::InputArchive archive;
-	archive.load_from(*params.get<std::string>("name"));
-	othNet = makeNetwork(params);
-	othNet->load(archive);
-	othNet->to(c10::kDouble);
-	evaluate<NUM_INPUTS>(othNet);*/
-	auto othNet = makeNetwork<NetType>(params);
-	torch::load(othNet, *params.get<std::string>("name"));
-/*	for (size_t i = 0; i < othNet->hiddenLayers.size(); ++i)
+	if (TRAIN_NET)
+		std::cout << trainNetwork(params) << "\n";
 	{
-		nn::exportTensor(othNet->hiddenLayers[i]->weight, "layer" + std::to_string(i) + ".txt");
-	}*/
+		/*	eval::checkLayerStability(bestnet->inputLayer);
+				eval::checkLayerStability(layer);
+			eval::checkLayerStability(bestnet->outputLayer);*/
+			//eval::checkModuleStability(bestNet);
+		auto othNet = makeNetwork<NetType>(params);
+		torch::load(othNet, *params.get<std::string>("name"));
+		evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
 
-	evaluate<NUM_INPUTS>(othNet);
+	/*	for (size_t i = 0; i < othNet->hiddenNet->hiddenLayers.size(); ++i)
+		{
+			nn::exportTensor(othNet->hiddenNet->hiddenLayers[i]->weight, "extended" + std::to_string(i) + ".txt");
+		}*/
+		//nn::exportTensor(othNet->outputLayer->weight, "multiStep3.txt");
+
+	/*	auto netL2 = makeNetwork<NetType>(params);
+		torch::load(netL2, "linearL2_1_6_1.pt");
+		auto netL3 = makeNetwork<NetType>(params);
+		torch::load(netL3, "linearL3_1_6_1.pt");
+		auto netL4 = makeNetwork<NetType>(params);
+		torch::load(netL4, "linearL4_1_6_1.pt");
+
+		for (size_t i = 0; i < netL3->hiddenNet->hiddenLayers.size(); ++i)
+		{
+			nn::exportTensor(netL3->hiddenNet->hiddenLayers[i]->weight, "L3_layer" + std::to_string(i) + ".txt");
+			nn::exportTensor(netL4->hiddenNet->hiddenLayers[i]->weight, "L4_layer" + std::to_string(i) + ".txt");
+		}*/
+
+	//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, /*netL2,*/ netL3, netL4);
+	}
 }

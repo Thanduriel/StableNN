@@ -29,7 +29,7 @@ namespace eval {
 		constexpr size_t numIntegrators = sizeof...(_integrators);
 
 		std::array<State, numIntegrators> currentState;
-		std::array<double, numIntegrators> cumulativeError;
+		std::array<double, numIntegrators> cumulativeError{};
 		for (auto& state : currentState) state = _initialState;
 
 		std::ofstream spaceTimeFile("spacetime.txt");
@@ -51,10 +51,10 @@ namespace eval {
 				const double dv = state.velocity - currentState[0].velocity;
 				cumulativeError[j] += std::sqrt(dx * dx + dv * dv);
 			//	std::cout << std::sqrt(dx * dx + dv * dv) << " ";
-				std::cout << _system.energy(state) << " ";
+			//	std::cout << _system.energy(state) << " ";
 				spaceTimeFile << std::fmod(state.position, 2.0 * 3.14159) << ", ";
 			}
-			std::cout << "\n";
+			//std::cout << "\n";
 			spaceTimeFile << "\n";
 		}
 		spaceTimeFile.flush();
@@ -67,9 +67,9 @@ namespace eval {
 
 		// long term energy behavior
 		std::cout << "\nlongterm=======================================" << "\n";
-		for (int i = 0; i < 16; ++i)
+		for (int i = 0; i < 4; ++i)
 		{
-			for (int j = 0; j < 2048; ++j)
+			for (int j = 0; j < 4096; ++j)
 			{
 				details::evaluateStep<0>(currentState, _integrators...);
 			}
