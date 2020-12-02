@@ -1,4 +1,7 @@
 /buildgcc
 /build
-/evaluation
 /dependencies
+*.txt
+*.ods
+*.pt
+*.csv

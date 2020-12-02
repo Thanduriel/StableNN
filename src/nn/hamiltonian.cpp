@@ -27,17 +27,21 @@ namespace nn {
 	{
 		auto& activation = options.activation();
 
-		Tensor y0 = _input;
-		Tensor y1 = y0 + 0.5 * timeStep * timeStep * activation(layers[0](_input));
-		for (auto it = layers.begin()+1; it != layers.end(); ++it)
+		Tensor x0 = _input;
+		Tensor x1 = x0 + 0.5 * timeStep * timeStep * activation(layers[0](x0));
+		bool flipped = false;
+
+		for (auto it = layers.begin() + 1; it != layers.end(); ++it)
 		{
 			auto& layer = *it;
-			Tensor yTemp = y1.clone();
-			y1 = 2.0 * y1 - y0 + timeStep * timeStep * activation(layer(y1));
-			y0 = yTemp;
+			Tensor& y0 = flipped ? x1 : x0;
+			Tensor& y1 = flipped ? x0 : x1;
+			y0 = 2.0 * y1 - y0 + timeStep * timeStep * activation(layer(y1));
+			flipped = !flipped;
 		}
 
-		return y1;
+		return flipped ? x0 : x1;
+
 	}
 
 

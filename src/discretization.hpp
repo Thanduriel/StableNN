@@ -12,7 +12,6 @@ namespace discretization {
 		State operator()(const State& _state) const
 		{
 			State next{};
-
 			const auto a0 = m_system.rhs(_state);
 			next.position = _state.position + _state.velocity * m_dt + static_cast<T>(0.5) * a0 * m_dt * m_dt;
 

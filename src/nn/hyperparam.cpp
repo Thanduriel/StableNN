@@ -3,6 +3,7 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <algorithm>
 
 
 namespace nn {
@@ -109,6 +110,7 @@ namespace nn {
 		else
 		{
 			std::vector<std::thread> threads;
+			numThreads = std::min(static_cast<unsigned>(numOptions), numThreads);
 			const size_t numRuns = numOptions / numThreads;
 			for (unsigned i = 0; i < numThreads - 1; ++i)
 				threads.emplace_back(work, i * numRuns, (i + 1) * numRuns);

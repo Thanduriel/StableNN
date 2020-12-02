@@ -80,6 +80,21 @@ namespace nn {
 		for (auto& layer : layers)
 			x = x + timeStep * activation(layer(x));
 		return x;
+
+/*		Tensor x0 = x;
+		Tensor x1 = x0 + 0.5 * timeStep * activation(layers[0](x));
+		bool flipped = false;
+
+		for (auto it = layers.begin() + 1; it != layers.end(); ++it)
+		{
+			auto& layer = *it;
+			Tensor& y0 = flipped ? x1 : x0;
+			Tensor& y1 = flipped ? x0 : x1;
+			y0 = 2.0 * y1 - y0 + timeStep * activation(layer(y1));
+			flipped = !flipped;
+		}
+
+		return flipped ? x0 : x1;*/
 	}
 
 

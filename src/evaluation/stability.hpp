@@ -26,14 +26,4 @@ namespace eval {
 
 		return x.grad();
 	}
-	/*template<typename Network>
-	class StabilityAnaylzer
-	{
-	public:
-		StabilityAnaylzer(Network& _network) : m_network(_network) {}
-
-		void layers();
-	private:
-		Network& m_network;
-	};*/
 }

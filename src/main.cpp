@@ -27,13 +27,14 @@ constexpr int64_t HYPER_SAMPLE_RATE = 100;
 // network parameters
 constexpr size_t NUM_INPUTS = 1;
 constexpr bool USE_SINGLE_OUTPUT = true;
-constexpr int HIDDEN_SIZE = 2 * 8;
+constexpr int HIDDEN_SIZE = 2 * 2;
 constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && (NUM_INPUTS > 1 || HIDDEN_SIZE > 2);
 
 // training
-constexpr bool TRAIN_NET = false;
+constexpr bool TRAIN_NET = true;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
+constexpr bool USE_HYPER_OPTIMIZER = false;
 
 // evaluation
 constexpr bool SHOW_VISUAL = false;
@@ -77,6 +78,10 @@ void evaluate(const State& _initialState, Networks&... _networks)
 
 		// use extra integrator because nn::Integrator may have an internal state
 		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
+	/*	for (int i = 0; i < 10000; ++i)
+		{
+			initialState = std::get<0>(integrators)(initialState);
+		}*/
 		renderer.addIntegrator([drawIntegrator=std::get<0>(integrators), state=initialState]() mutable
 			{
 				state = drawIntegrator(state);
@@ -178,9 +183,10 @@ auto makeNetwork(const nn::HyperParams& _params)
 	if constexpr (USE_WRAPPER)
 	{
 		const size_t numInputsNet = _params.get<size_t>("num_inputs", NUM_INPUTS) * 2;
-		options.input_size() = HIDDEN_SIZE;
+		const size_t hiddenSize = _params.get<int>("hidden_size", HIDDEN_SIZE);
+		options.input_size() = hiddenSize;
 		nn::InOutWrapper<Net> net(
-			nn::InOutWrapperOptions(numInputsNet, HIDDEN_SIZE, USE_SINGLE_OUTPUT ? 2 : numInputsNet)
+			nn::InOutWrapperOptions(numInputsNet, hiddenSize, USE_SINGLE_OUTPUT ? 2 : numInputsNet)
 			.proj_mask(nn::InOutWrapperOptions::ProjectionMask::Id)
 			.train_out(false), options);
 		net->to(torch::kDouble);
@@ -214,10 +220,9 @@ int main()
 	}*/
 
 	DataGenerator generator(system, integrator);
-	using NetType = nn::MultiLayerPerceptron;
-	auto bestNet = makeNetwork<NetType>(nn::HyperParams());
+	using NetType = nn::AntiSymmetric;
 
-	auto trainNetwork = [=, &bestNet](const nn::HyperParams& _params)
+	auto trainNetwork = [=](const nn::HyperParams& _params)
 	{
 		const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
 		auto dataset = generator.generate(trainingStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
@@ -234,6 +239,7 @@ int main()
 
 		
 		auto net = makeNetwork<NetType>(_params);
+		auto bestNet = makeNetwork<NetType>(_params);
 	//	auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return torch::mse_loss(self, target); };
 		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 4); };
 
@@ -243,7 +249,7 @@ int main()
 		};
 
 		torch::optim::Adam optimizer(net->parameters(), 
-			torch::optim::AdamOptions(_params.get<double>("lr", 1.e-4))
+			torch::optim::AdamOptions(_params.get<double>("lr", 3.e-4))
 				.weight_decay(_params.get<double>("weight_decay", 1.e-6))
 				.amsgrad(_params.get<bool>("amsgrad", false)));
 
@@ -293,7 +299,8 @@ int main()
 			const double totalValidLossD = validLoss.item<double>();
 			if (totalValidLossD < bestValidLoss)
 			{
-				std::cout << validLoss.item<double>() << "\n";
+				if constexpr (!USE_HYPER_OPTIMIZER)
+					std::cout << validLoss.item<double>() << "\n";
 				bestNet = nn::clone(net);
 				bestValidLoss = totalValidLossD;
 			}
@@ -310,29 +317,35 @@ int main()
 	};
 
 	nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-		{ {"depth", {42, 64}},
-		  {"time", { 5.0, 7.0}},
+		{ {"depth", {4, 8}},
+		  {"lr", {2e-4, 4e-4}},
+	//	  {"time", { 1.0, 2.0}},
+	//	  {"hidden_size", {4, 8, 16}},
 	//	  {"bias", {false, true}},
-	//	  {"diffusion", {0.0, 1.0e-5, 1.0e-3, 0.1}},
-		  {"num_inputs", {4ull, 8ull, 16ull}}
+	//	  {"diffusion", {0.0, 1.0e-2, 0.1, 0.5}},
+	//	  {"num_inputs", {4ull, 8ull, 16ull}}
 		  //{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
 		});
 
-//	hyperOptimizer.run(8);
+	if constexpr (USE_HYPER_OPTIMIZER)
+	{
+		hyperOptimizer.run(4);
+		return 0;
+	}
 	
 	nn::HyperParams params;
-	params["lr"] = 1e-04;
-	params["weight_decay"] = 1e-5; //4
+	params["lr"] = 4e-4;
+	params["weight_decay"] = 1e-4; //4
 	params["depth"] = 4;
-	params["diffusion"] = 0.5;
+	params["diffusion"] = 0.3;
 	params["bias"] = false;
-	params["time"] = 4.0;
+	params["time"] = 1.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["augment"] = 2;
-	params["name"] = std::string("linearSep2_")
+	params["hidden_size"] = HIDDEN_SIZE;
+	params["name"] = std::string("lin_")
 		+ std::to_string(NUM_INPUTS) + "_"
-		+ std::to_string(*params.get<int>("depth")) + "_"
-		+ std::to_string(NUM_FORWARDS) + ".pt";
+		+ std::to_string(*params.get<int>("depth")) + ".pt";
 
 
 	if (TRAIN_NET)
@@ -352,19 +365,19 @@ int main()
 		}*/
 		//nn::exportTensor(othNet->outputLayer->weight, "multiStep3.txt");
 
-	/*	auto netL2 = makeNetwork<NetType>(params);
-		torch::load(netL2, "linearL2_1_6_1.pt");
-		auto netL3 = makeNetwork<NetType>(params);
-		torch::load(netL3, "linearL3_1_6_1.pt");
+	/*	auto netL2 = makeNetwork<nn::MultiLayerPerceptronExt>(params);
+		torch::load(netL2, "0_0_linext.pt");
 		auto netL4 = makeNetwork<NetType>(params);
-		torch::load(netL4, "linearL4_1_6_1.pt");
+		torch::load(netL4, "0_0_.pt");
+		params["depth"] = 16;
+		auto netL3 = makeNetwork<NetType>(params);
+		torch::load(netL3, "1_1_.pt");
 
-		for (size_t i = 0; i < netL3->hiddenNet->hiddenLayers.size(); ++i)
+		for (size_t i = 0; i < netL3->hiddenLayers.size(); ++i)
 		{
-			nn::exportTensor(netL3->hiddenNet->hiddenLayers[i]->weight, "L3_layer" + std::to_string(i) + ".txt");
-			nn::exportTensor(netL4->hiddenNet->hiddenLayers[i]->weight, "L4_layer" + std::to_string(i) + ".txt");
+			nn::exportTensor(netL3->hiddenLayers[i]->weight, "min" + std::to_string(i) + ".txt");
 		}*/
 
-	//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, /*netL2,*/ netL3, netL4);
+	//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, netL2, netL3, netL4);
 	}
 }

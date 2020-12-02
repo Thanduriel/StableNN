@@ -34,4 +34,22 @@ namespace nn {
 	};
 
 	TORCH_MODULE(MultiLayerPerceptron);
+
+	struct MultiLayerPerceptronExtImpl : public torch::nn::Cloneable<MultiLayerPerceptronExtImpl>
+	{
+		using Options = MLPOptions;
+		explicit MultiLayerPerceptronExtImpl(const MLPOptions& _options);
+
+		void reset() override;
+
+		torch::Tensor forward(torch::Tensor _input);
+
+		MLPOptions options;
+
+		std::vector<torch::nn::Linear> hiddenLayers;
+		std::vector<torch::Tensor> idScales;
+		std::vector<torch::Tensor> addScales;
+	};
+
+	TORCH_MODULE(MultiLayerPerceptronExt);
 }
