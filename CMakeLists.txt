@@ -32,7 +32,10 @@ set_target_properties(pendulum PROPERTIES
 )
 if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT pendulum)
+else()
+	target_compile_options(pendulum PRIVATE -Wall -Wextra -pedantic)
 endif (MSVC)
+
 #---------------------------------------------------------------------------------------
 # libraries
 #---------------------------------------------------------------------------------------

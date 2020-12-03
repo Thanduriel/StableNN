@@ -15,7 +15,7 @@ namespace nn {
 			_out << std::any_cast<T>(_val);
 		else
 		{
-			if constexpr (sizeof...(Types))
+			if constexpr (static_cast<bool>(sizeof...(Types)))
 				serialize<Dummy, Types...>(_out, _val);
 			else
 				_out << "Unknown type " << _val.type().name();
@@ -190,23 +190,6 @@ namespace nn {
 		std::cout << "\n============================\n best result:\n" << bestParams << "\n"
 			<< "loss: " << bestLoss << std::endl;
 	}
-
-/*
-void HyperParamOptimizer::run(TrainFn train_fn){
-  
-  std::default_random_engine rng(0xB123AF5E);
-
-  for(;;){
-	// sample params
-	HyperParams params;
-	for(const auto& [name, values] : m_hyperGrid){
-	  std::uniform_int_distribution<size_t> dist(0, values.size());
-	  params[name] = values[dist(rng)];
-	}
-
-	const double loss = train_fn(params);
-  }
-}*/
 
 
 

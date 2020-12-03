@@ -12,14 +12,10 @@ namespace eval {
 		{
 			_states[Ind] = _integrator(_states[Ind]);
 
-			if constexpr (sizeof...(Integrators))
+			if constexpr (static_cast<bool>(sizeof...(Integrators)))
 				evaluateStep<Ind + 1>(_states, _integrators...);
 		}
 
-	/*	template<size_t Ind, typename StateArray>
-		void evaluateStep(StateArray& _states)
-		{
-		}*/
 	}
 
 	// Simulates the given system with different integrators to observe energy over time.

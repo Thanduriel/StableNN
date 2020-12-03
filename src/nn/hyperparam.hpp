@@ -74,10 +74,10 @@ namespace nn {
 		template<typename Sampler>
 		void addParam(const std::string& _name, Sampler _sampler)
 		{
-			m_paramSamplers.emplace_back(_name,[=](RandomEngine& _rng)
+		/*	m_paramSamplers.emplace_back(_name,[=](RandomEngine& _rng)
 				{
 					return { _sampler(_rng)};
-				});
+				});*/
 		}
 
 		void run(int _tries);

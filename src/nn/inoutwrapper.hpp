@@ -29,8 +29,8 @@ namespace nn {
 		template<typename NetOptions>
 		InOutWrapperImpl(const InOutWrapperOptions& _options, const NetOptions& _netOptions)
 			: options(_options),
-			hiddenNet(HiddenNet(_netOptions)),
 			inputLayer(nullptr),
+			hiddenNet(HiddenNet(_netOptions)),
 			outputLayer(nullptr)
 		{
 			reset();
