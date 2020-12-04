@@ -28,7 +28,8 @@ namespace eval {
 		std::array<double, numIntegrators> cumulativeError{};
 		for (auto& state : currentState) state = _initialState;
 
-		std::ofstream spaceTimeFile("spacetime.txt");
+	//	std::ofstream spaceTimeFile("spacetime.txt");
+	//	std::ofstream energyFile("energy.txt");
 
 		std::cout << "initial energy: " << _system.energy(_initialState) << std::endl;
 		std::cout.precision(5);
@@ -40,20 +41,22 @@ namespace eval {
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
 
-			for (size_t j = 0; j < numIntegrators; ++j)
+			for (size_t j = 2; j < numIntegrators; ++j)
 			{
 				const auto& state = currentState[j];
-				const double dx = state.position - currentState[0].position;
+ 				const double dx = state.position - currentState[0].position;
 				const double dv = state.velocity - currentState[0].velocity;
 				cumulativeError[j] += std::sqrt(dx * dx + dv * dv);
 			//	std::cout << std::sqrt(dx * dx + dv * dv) << " ";
-			//	std::cout << _system.energy(state) << " ";
-				spaceTimeFile << std::fmod(state.position, 2.0 * 3.14159) << ", ";
+			//	energyFile << _system.energy(state) << " ";
+			//	spaceTimeFile << std::fmod(state.position, 2.0 * 3.14159) << ", ";
 			}
-			//std::cout << "\n";
-			spaceTimeFile << "\n";
+		//	std::cout << "\n";
+		//	energyFile << "\n";
+		//	spaceTimeFile << "\n";
 		}
-		spaceTimeFile.flush();
+	//	spaceTimeFile.flush();
+	//	energyFile.flush();
 
 		std::cout << "mse============================================" << "\n";
 		for (double err : cumulativeError)

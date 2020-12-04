@@ -28,7 +28,7 @@ namespace nn {
 		}
 
 		template<typename T>
-		std::optional<T> get(const std::string& _key)
+		std::optional<T> get(const std::string& _key) const
 		{
 			const auto it = data.find(_key);
 			if (it != data.end() && it->second.type() == typeid(T))
@@ -51,8 +51,9 @@ namespace nn {
 	class GridSearchOptimizer
 	{
 	public:
-		GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid)
-			: m_hyperGrid(_paramGrid), m_trainFunc(_trainFn)
+		GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid,
+			const HyperParams& _defaults = {})
+			: m_hyperGrid(_paramGrid), m_trainFunc(_trainFn), m_defaultParams(_defaults)
 		{}
 
 		void run(unsigned _numThreads = 1);
@@ -61,6 +62,7 @@ namespace nn {
 
 		HyperParamGrid m_hyperGrid;
 		TrainFn m_trainFunc;
+		HyperParams m_defaultParams;
 	};
 
 

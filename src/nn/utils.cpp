@@ -22,14 +22,23 @@ namespace nn {
 
 	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName)
 	{
-		std::stringstream ss;
+	/*	std::stringstream ss;
 		at::print(ss, _tensor, 0xffffff);
 
 		std::string content = ss.str();
 		const size_t end = content.find_first_of('[');
-		content = content.substr(0, end);
+		content = content.substr(0, end);*/
 
 		std::ofstream file(_fileName);
-		file << content;
+		file.precision(24);
+		file << std::fixed;
+		auto size = _tensor.sizes();
+		for (int64_t i = 0; i < size[0]; ++i)
+		{
+			for (int64_t j = 0; j < size[1]; ++j)
+				file << _tensor.index({ i,j }).item<double>() << " ";
+			file << "\n";
+		}
+	//	file << content;
 	}
 }

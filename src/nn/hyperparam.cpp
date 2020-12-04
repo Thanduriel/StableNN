@@ -78,6 +78,7 @@ namespace nn {
 			for (size_t i = begin; i < end; ++i)
 			{
 				HyperParams params;
+				params = m_defaultParams;
 				std::string fileName = "";
 
 				// setup param file
