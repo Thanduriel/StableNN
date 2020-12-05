@@ -13,6 +13,7 @@
 #include "nn/utils.hpp"
 #include "nn/nnmaker.hpp"
 #include "evaluation/stability.hpp"
+#include "evaluation/lipschitz.hpp"
 
 #include <type_traits>
 #include <torch/torch.h>
@@ -32,7 +33,7 @@ constexpr int HIDDEN_SIZE = 2 * 2;
 constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && (NUM_INPUTS > 1 || HIDDEN_SIZE > 2);
 
 // training
-constexpr bool TRAIN_NET = true;
+constexpr bool TRAIN_NET = false;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
 constexpr bool USE_HYPER_OPTIMIZER = false;
@@ -346,7 +347,7 @@ int main()
 
 	if constexpr (USE_HYPER_OPTIMIZER)
 	{
-		hyperOptimizer.run(4);
+		hyperOptimizer.run(8);
 		return 0;
 	}
 
@@ -359,11 +360,13 @@ int main()
 		eval::checkLayerStability(bestnet->outputLayer);*/
 		//eval::checkModuleStability(bestNet);
 	auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-	torch::load(othNet, *params.get<std::string>("name"));
+	torch::load(othNet, "lin_1_4.pt");
+	//torch::load(othNet, *params.get<std::string>("name"));
 
-
-	//	findAttractors(othNet);
-	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
+	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
+	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
+//	findAttractors(othNet);
+//	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
 
 	/*	for (size_t i = 0; i < othNet->hiddenNet->hiddenLayers.size(); ++i)
 		{

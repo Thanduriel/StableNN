@@ -27,10 +27,7 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor _input);
 
 		MLPOptions options;
-
-		torch::nn::Linear inputLayer;
 		std::vector<torch::nn::Linear> hiddenLayers;
-		torch::nn::Linear outputLayer;
 	};
 
 	TORCH_MODULE(MultiLayerPerceptron);
