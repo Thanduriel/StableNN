@@ -27,7 +27,8 @@ namespace eval {
 		double p = 1.0;
 		for (const Layer& layer : _layers)
 		{
-			p = p + p * torch::linalg_norm(details::getSystemMatrix(layer), 2).item<double>();
+			torch::Tensor n = torch::linalg_norm(details::getSystemMatrix(layer), 2);
+			p = p + p * n.item<double>();
 		}
 
 		return p;
@@ -40,7 +41,10 @@ namespace eval {
 		// spectral norms can be reused
 		std::vector<double> spectralNorms;
 		for (const Layer& layer : _layers)
-			spectralNorms.push_back(torch::linalg_norm(details::getSystemMatrix(layer), 2).item<double>());
+		{
+			torch::Tensor n = torch::linalg_norm(details::getSystemMatrix(layer), 2);
+			spectralNorms.push_back(n.item<double>());
+		}
 
 		double p1 = 1.0;
 		for (double s : spectralNorms) p1 *= s;
@@ -51,7 +55,8 @@ namespace eval {
 			const auto A = details::getSystemMatrix(_layers[i]);
 			const auto I = torch::eye(A.size(0), A.size(1));
 			// todo use ||...||_2,1 norm instead
-			p2 += std::pow(torch::linalg_norm(A - I, 1).item<double>() / spectralNorms[i], 2.0 / 3.0);
+			const torch::Tensor n = torch::linalg_norm(A - I, 1);
+			p2 += std::pow(n.item<double>() / spectralNorms[i], 2.0 / 3.0);
 		}
 
 		return p1 * std::pow(p2, 3.0 / 2.0);
