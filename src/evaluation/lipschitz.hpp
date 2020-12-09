@@ -1,7 +1,14 @@
 #pragma once
 
+#include "../nn/inoutwrapper.hpp"
 #include <vector>
 #include <torch/torch.h>
+
+namespace nn {
+	class MultiLayerPerceptron;
+	class HamiltonianInterleafed;
+	class AntiSymmetric;
+}
 
 namespace eval {
 
@@ -13,10 +20,30 @@ namespace eval {
 		}
 
 		template<>
-		torch::Tensor getSystemMatrix<torch::nn::Linear>(const torch::nn::Linear& _layer)
+		inline torch::Tensor getSystemMatrix<torch::nn::Linear>(const torch::nn::Linear& _layer)
 		{
 			return _layer->weight;
 		}
+
+		inline double norm(const torch::Tensor& _tensor, torch::Scalar _ord)
+		{
+			const torch::Tensor n = torch::linalg_norm(_tensor, _ord);
+			return n.item<double>();
+		}
+	}
+
+	double lipschitz(const nn::MultiLayerPerceptron& _net);
+	double lipschitz(const nn::HamiltonianInterleafed& _net);
+	double lipschitz(const nn::AntiSymmetric& _net);
+
+	template<typename HiddenNet>
+	double lipschitz(const nn::InOutWrapper<HiddenNet>& _net)
+	{
+		double p = _net->options.train_in() ? details::norm(_net->inputLayer->weight, 2) : 1.0;
+		
+		p *= lipschitz(_net->hiddenNet);
+
+		return p * (_net->options.train_out() ? details::norm(_net->outputLayer->weight, 2) : 1.0);
 	}
 
 	// from "Parseval Networks: Improving Robustness to Adversarial Examples"

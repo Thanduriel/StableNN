@@ -19,9 +19,9 @@ namespace eval {
 	torch::Tensor computeJacobian(Module& _module, const torch::Tensor& _inputs)
 	{
 		const int64_t n = _inputs.size(0);
-		torch::Tensor x = _inputs.repeat({ n,1 });
+		torch::Tensor x = _inputs.squeeze().repeat({ n,1 });
 		x.requires_grad_(true);
-		torch::Tensor y = _module.forward(x);
+		torch::Tensor y = _module->forward(x);
 		y.backward(torch::eye(n));
 
 		return x.grad();

@@ -18,6 +18,7 @@ namespace nn {
 		TORCH_ARG(int64_t, input_size);
 		TORCH_ARG(int64_t, output_size);
 		TORCH_ARG(int64_t, hidden_size);
+		TORCH_ARG(bool, train_in) = false;
 		TORCH_ARG(bool, train_out) = false; // use projection mask or a trained layer
 		TORCH_ARG(ProjectionMask, proj_mask) = ProjectionMask::IdInterleafed;
 	};
@@ -41,6 +42,13 @@ namespace nn {
 			using namespace torch::indexing;
 
 			hiddenNet = this->register_module("hidden", HiddenNet(hiddenNet->options));
+			if (options.train_in())
+			{
+				inputLayer = torch::nn::Linear(torch::nn::LinearOptions(
+					options.input_size(),
+					options.hidden_size()).bias(false));
+				this->register_module("in", inputLayer);
+			}
 			if (options.train_out())
 			{
 				outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
@@ -78,7 +86,7 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor x)
 		{
 			if(options.input_size() != options.hidden_size())
-				x = x.matmul(projection);
+				x = options.train_in() ? inputLayer(x) : x.matmul(projection);
 			x = hiddenNet->forward(x);
 			return options.train_out() ? outputLayer(x) : x.matmul(projection.t());
 		}

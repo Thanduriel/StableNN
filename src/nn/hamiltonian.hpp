@@ -47,6 +47,7 @@ namespace nn {
 
 		torch::Tensor forwardY(const torch::Tensor& input);
 		torch::Tensor forwardZ(const torch::Tensor& input);
+		torch::Tensor system_matrix() const;
 
 		torch::Tensor weight;
 		torch::Tensor biasY;
@@ -70,7 +71,6 @@ namespace nn {
 		torch::Tensor forward(const torch::Tensor& _input);
 
 		HamiltonianOptions options;
-	private:
 		double timeStep;
 		std::vector<HamiltonianCell> layers;
 	};
@@ -89,7 +89,6 @@ namespace nn {
 		torch::Tensor forward(const torch::Tensor& _input);
 
 		HamiltonianOptions options;
-	private:
 		double timeStep;
 		std::vector<HamiltonianCell> layers;
 	};

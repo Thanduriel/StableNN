@@ -325,7 +325,7 @@ int main()
 	params["time"] = 1.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
-	params["augment"] = 4;
+	params["augment"] = 2;
 	params["hidden_size"] = HIDDEN_SIZE;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 	params["name"] = std::string("lin_")
@@ -355,16 +355,14 @@ int main()
 	if (TRAIN_NET)
 		std::cout << trainNetwork(params) << "\n";
 
-	/*	eval::checkLayerStability(bestnet->inputLayer);
-			eval::checkLayerStability(layer);
-		eval::checkLayerStability(bestnet->outputLayer);*/
-		//eval::checkModuleStability(bestNet);
 	auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 	torch::load(othNet, "lin_1_4.pt");
-	//torch::load(othNet, *params.get<std::string>("name"));
+//	torch::load(othNet, *params.get<std::string>("name"));
 
+	//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
+	std::cout << eval::lipschitz(othNet) << "\n";
 	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
-	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
+//	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
 //	findAttractors(othNet);
 //	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
 

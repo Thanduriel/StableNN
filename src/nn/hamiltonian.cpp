@@ -98,6 +98,18 @@ namespace nn {
 		return torch::nn::functional::linear(input, weight, biasY);
 	}
 
+	Tensor HamiltonianCellImpl::system_matrix() const
+	{
+		using namespace torch::indexing;
+		std::cout << weight;
+		const int64_t n = size + augmentSize;
+		Tensor mat = torch::zeros({ n, n }, weight.options());
+		mat.index_put_({ Slice(size), Slice(0, size) }, -weight.t());
+		mat.index_put_({ Slice(0, size), Slice(size) }, weight);
+
+		return mat;
+	}
+
 	HamiltonianAugmentedImpl::HamiltonianAugmentedImpl(const HamiltonianOptions& _options)
 		: options(_options)
 	{

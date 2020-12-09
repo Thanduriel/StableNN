@@ -51,8 +51,6 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor x);
 
 		AntiSymmetricOptions options;
-
-	private:
 		double timeStep;
 		std::vector<AntiSymmetricCell> layers;
 	};
