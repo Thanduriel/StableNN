@@ -61,7 +61,7 @@ namespace nn {
 		return { indK, flatInd };
 	}
 
-	void GridSearchOptimizer::run(unsigned numThreads)
+	void GridSearchOptimizer::run(unsigned numThreads) const
 	{
 		size_t numOptions = 1;
 		for (const auto& [name, values] : m_hyperGrid) 
@@ -69,16 +69,15 @@ namespace nn {
 			numOptions *= values.size();
 		}
 		std::vector<double> results(numOptions);
-		size_t bestResult = 0;
+		double bestResult = std::numeric_limits<double>::max();
 		HyperParams bestParams;
 		std::mutex mutex;
 
-		auto work = [&](size_t begin, size_t end) 
+		auto work = [&mutex, &bestResult, &bestParams, &results, this](size_t begin, size_t end) 
 		{
 			for (size_t i = begin; i < end; ++i)
 			{
-				HyperParams params;
-				params = m_defaultParams;
+				HyperParams params(m_defaultParams);
 				std::string fileName = "";
 
 				// setup param file
@@ -95,13 +94,13 @@ namespace nn {
 				const double loss = m_trainFunc(params);
 				results[i] = loss;
 
-				std::lock_guard<std::mutex> guard(mutex);
-				std::cout << "training with " << params << std::endl;
+				const std::lock_guard<std::mutex> guard(mutex);
+				std::cout << "training with " << params << "\n";
 				std::cout << "loss: " << loss << std::endl;
 
-				if (loss < results[bestResult])
+				if (loss < bestResult)
 				{
-					bestResult = i;
+					bestResult = loss;
 					bestParams = params;
 				}
 			}
@@ -142,7 +141,7 @@ namespace nn {
 		}
 
 		std::cout << "\n============================\n best result:\n" << bestParams << "\n"
-			<< "loss: " << results[bestResult] << std::endl;
+			<< "loss: " << bestResult << std::endl;
 	/*	size_t remainder = bestResult;
 		for (const auto& [name, values] : m_hyperGrid) 
 		{

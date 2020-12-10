@@ -41,7 +41,7 @@ namespace eval {
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
 
-			for (size_t j = 2; j < numIntegrators; ++j)
+			for (size_t j = 0; j < numIntegrators; ++j)
 			{
 				const auto& state = currentState[j];
  				const double dx = state.position - currentState[0].position;

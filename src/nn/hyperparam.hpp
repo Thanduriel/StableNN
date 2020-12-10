@@ -13,10 +13,10 @@ namespace nn {
 	class HyperParams
 	{
 	public:
-		template<typename... Args>
+	/*	template<typename... Args>
 		HyperParams(Args&&... _args)
 			: data(std::forward<Args>(_args)...)
-		{}
+		{}*/
 
 		std::any& operator[](const std::string& key) { return data[key]; }
 
@@ -56,7 +56,7 @@ namespace nn {
 			: m_hyperGrid(_paramGrid), m_trainFunc(_trainFn), m_defaultParams(_defaults)
 		{}
 
-		void run(unsigned _numThreads = 1);
+		void run(unsigned _numThreads = 1) const;
 	private:
 		std::pair<size_t, size_t> decomposeFlatIndex(size_t _flatIndex, int _k) const;
 

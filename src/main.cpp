@@ -206,8 +206,8 @@ int main()
 	using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
 	Integrator integrator(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 
-	auto trainingStates = generateStates(system, 256, 0x612FF6AEu);
-	auto validStates = generateStates(system, 32, 0x195A4C);
+	const auto trainingStates = generateStates(system, 256, 0x612FF6AEu);
+	const auto validStates = generateStates(system, 32, 0x195A4C);
 	/*	for (auto& state : trainingStates)
 		{
 			eval::PendulumRenderer renderer(TARGET_TIME_STEP);
@@ -220,9 +220,9 @@ int main()
 		}*/
 
 	DataGenerator generator(system, integrator);
-	using NetType = nn::MultiLayerPerceptron;
+	using NetType = nn::HamiltonianInterleafed;
 
-	auto trainNetwork = [=](const nn::HyperParams& _params)
+	auto trainNetwork = [generator, &trainingStates, &validStates](const nn::HyperParams& _params)
 	{
 		const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
 		auto dataset = generator.generate(trainingStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
@@ -317,36 +317,38 @@ int main()
 	};
 
 	nn::HyperParams params;
-	params["lr"] = 2e-4;
+	params["lr"] = 6e-4;
 	params["weight_decay"] = 1e-6; //4
 	params["depth"] = 4;
 	params["diffusion"] = 0.1;
 	params["bias"] = false;
-	params["time"] = 1.0;
+	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["augment"] = 2;
 	params["hidden_size"] = HIDDEN_SIZE;
+	params["train_in"] = true;
+	params["train_out"] = true;
 	params["activation"] = nn::ActivationFn(torch::tanh);
-	params["name"] = std::string("lin_")
+	params["name"] = std::string("hamiltonian_")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(*params.get<int>("hidden_size"))
 		+ ".pt";
 
-	nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-		{ {"depth", {4, 8}},
-		  {"lr", {2e-4, 4e-4}},
-		//	  {"time", { 1.0, 2.0}},
-		//	  {"hidden_size", {4, 8, 16}},
-		//	  {"bias", {false, true}},
-		//	  {"diffusion", {0.0, 1.0e-2, 0.1, 0.5}},
-		//	  {"num_inputs", {4ull, 8ull, 16ull}}
-			  //{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
-		}, params);
-
 	if constexpr (USE_HYPER_OPTIMIZER)
 	{
+		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
+			{ //{"depth", {4, 8}},
+			  {"lr", {1e-4, 2e-4, 4e-4}},
+			  {"time", { 2.0, 4.0}},
+			  //	  {"hidden_size", {4, 8, 16}},
+			  //	  {"bias", {false, true}},
+			  //	  {"diffusion", {0.0, 1.0e-2, 0.1, 0.5}},
+			  //	  {"num_inputs", {4ull, 8ull, 16ull}}
+			  //	  {"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
+			}, params);
+
 		hyperOptimizer.run(8);
 		return 0;
 	}
@@ -355,13 +357,31 @@ int main()
 	if (TRAIN_NET)
 		std::cout << trainNetwork(params) << "\n";
 
-	auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-	torch::load(othNet, "lin_1_4.pt");
+	nn::HyperParams hamiltonianParams(params);
+	hamiltonianParams["train_in"] = true;
+	hamiltonianParams["train_out"] = true;
+	hamiltonianParams["time"] = 4.0;
+	hamiltonianParams["name"] = std::string("hamiltonianIO.pt");
+	auto hamiltonian0 = nn::makeNetwork<nn::HamiltonianInterleafed, USE_WRAPPER, 2>(hamiltonianParams);
+	torch::load(hamiltonian0, *hamiltonianParams.get<std::string>("name"));
+
+	hamiltonianParams["train_in"] = false;
+//	hamiltonianParams["time"] = 2.0;
+	hamiltonianParams["name"] = std::string("hamiltonianO.pt");
+	auto hamiltonian1 = nn::makeNetwork<nn::HamiltonianInterleafed, USE_WRAPPER, 2>(hamiltonianParams);
+	torch::load(hamiltonian1, *hamiltonianParams.get<std::string>("name"));
+
+	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, hamiltonian0, hamiltonian1);
+
+//	auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
+//	torch::load(othNet, "lin_1_4.pt");
 //	torch::load(othNet, *params.get<std::string>("name"));
+//	torch::load(othNet, "1_0_.pt");
+//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
 
 	//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
-	std::cout << eval::lipschitz(othNet) << "\n";
-	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
+//	std::cout << eval::lipschitz(othNet) << "\n";
+//	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
 //	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
 //	findAttractors(othNet);
 //	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);

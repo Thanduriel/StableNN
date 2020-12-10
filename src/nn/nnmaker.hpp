@@ -29,7 +29,8 @@ namespace nn {
 			nn::InOutWrapper<Net> net(
 				nn::InOutWrapperOptions(numInputsNet, hiddenSize, numOutputsNet)
 				.proj_mask(nn::InOutWrapperOptions::ProjectionMask::Id)
-				.train_out(false), options);
+				.train_out(*_params.get<bool>("train_out"))
+				.train_in(*_params.get<bool>("train_in")), options);
 			net->to(torch::kDouble);
 			return net;
 		}

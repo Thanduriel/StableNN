@@ -47,14 +47,14 @@ namespace nn {
 				inputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 					options.input_size(),
 					options.hidden_size()).bias(false));
-				this->register_module("in", inputLayer);
+				this->register_module("inputLayer", inputLayer);
 			}
 			if (options.train_out())
 			{
 				outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 					options.hidden_size(),
 					options.output_size()).bias(false));
-				this->register_module("out", outputLayer);
+				this->register_module("outputLayer", outputLayer);
 			}
 
 			const int64_t ratio = options.hidden_size() / options.output_size();
