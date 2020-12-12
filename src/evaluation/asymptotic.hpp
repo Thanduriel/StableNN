@@ -12,36 +12,41 @@ namespace eval {
 		std::vector<double> attractors; // energy
 		std::vector<std::pair<double, double>> repellers; // position [lower, upper]
 
+		const double stepSize = 3.14159 / 16.0;
+		constexpr double THRESHOLD = 0.02;
+		constexpr double INF_ENERGY = 4.0;
+
 		auto integrate = [&](double x)
 		{
 			State state{ x, 0.0 };
-			for (int i = 0; i < 20000; ++i)
-				state = integrator(state);
+			double e0 = std::min(INF_ENERGY, system.energy(state));
+			double d0 = 0.0;
+			double d1 = 0.0;
+			do {
+				d0 = d1;
+				for (int i = 0; i < 5000; ++i)
+					state = integrator(state);
+				const double e1 = std::min(INF_ENERGY, system.energy(state));
+				d1 = e1 - e0;
+				e0 = e1;
+				// switch of sign indicates oscillation around attractor
+				// second rule is for infinity and 0
+			} while (d0 * d1 >= 0.0 && d1 != 0.0);
 
-			return state;
+			return e0;
 		};
 
-		const double stepSize = 3.14159 / 16.0;
-		constexpr double THRESHOLD = 0.05;
+		std::cout << "attractors: energy, position\n";
 		for (double x = 0.0; x < 3.14159; x += stepSize)
 		{
-			State state = integrate(x);
-			const double e = std::min(2.0, system.energy(state));
+			const double e = integrate(x);
 
-			std::cout << "attractors: energy, position\n";
 			if (attractors.empty() || std::abs(attractors.back() - e) > THRESHOLD)
 			{
 				std::cout << e << ", " << x << std::endl;
 				attractors.push_back(e);
 				repellers.push_back({ 0.0, x });
 			}
-			/*	double e0 = 0.0;
-				double e1 = system.energy(state);
-				do {
-					e1 = e0;
-					state = integrator(state);
-					double e0 = system.energy(state);
-				} while (e0 - e1 > 0.1);*/
 		}
 
 		// refine repellers / bifurcations
@@ -53,9 +58,8 @@ namespace eval {
 			for (int i = 0; i < 8; ++i)
 			{
 				x += step * sign;
-				State state = integrate(x);
 				step *= 0.5;
-				const double e = std::min(2.0, system.energy(state));
+				const double e = integrate(x);
 				if (std::abs(e - attractors[j]) > THRESHOLD)
 				{
 					sign = 1.0;

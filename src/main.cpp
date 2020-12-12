@@ -43,6 +43,7 @@ enum struct Mode {
 constexpr Mode MODE = Mode::EVALUATE;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
+using NetType = nn::MultiLayerPerceptron;
 
 // evaluation
 constexpr bool SHOW_VISUAL = false;
@@ -138,7 +139,7 @@ int main()
 {
 	System system(0.1, 9.81, 0.5);
 	using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
-	Integrator integrator(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
+	Integrator referenceIntegrator(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 
 	const auto trainingStates = generateStates(system, 256, 0x612FF6AEu);
 	const auto validStates = generateStates(system, 32, 0x195A4C);
@@ -153,8 +154,7 @@ int main()
 			renderer.run();
 		}*/
 
-	DataGenerator generator(system, integrator);
-	using NetType = nn::AntiSymmetric;
+	DataGenerator generator(system, referenceIntegrator);
 
 	auto trainNetwork = [generator, &trainingStates, &validStates](const nn::HyperParams& _params)
 	{
@@ -327,20 +327,19 @@ int main()
 		//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
 
-		auto othNet = nn::makeNetwork<nn::MultiLayerPerceptron, USE_WRAPPER, 2>(params);
-		torch::load(othNet, "lin_1_4.pt");
-		//torch::load(othNet, *params.get<std::string>("name"));
-		//	torch::load(othNet, "1_0_.pt");
-		//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
+		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
+	//	torch::load(othNet, "lin_1_4.pt");
+		torch::load(othNet, *params.get<std::string>("name"));
 
 			//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
 		//	std::cout << eval::lipschitz(othNet) << "\n";
 		//	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
 		//	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
-		std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 32) * TARGET_TIME_STEP << "\n";
-		std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 1) * TARGET_TIME_STEP << "\n";
-	//	eval::findAttractors(system, integrator);
+	/*	std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 32) * TARGET_TIME_STEP << "\n";
+		std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 1) * TARGET_TIME_STEP << "\n";*/
+		eval::findAttractors(system, integrator);
+		evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
 		//	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
 
 			/*	for (size_t i = 0; i < othNet->hiddenNet->hiddenLayers.size(); ++i)
