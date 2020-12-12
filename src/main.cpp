@@ -14,6 +14,7 @@
 #include "nn/nnmaker.hpp"
 #include "evaluation/stability.hpp"
 #include "evaluation/lipschitz.hpp"
+#include "evaluation/asymptotic.hpp"
 
 #include <type_traits>
 #include <torch/torch.h>
@@ -33,10 +34,15 @@ constexpr int HIDDEN_SIZE = 2 * 2;
 constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && (NUM_INPUTS > 1 || HIDDEN_SIZE > 2);
 
 // training
-constexpr bool TRAIN_NET = false;
+enum struct Mode {
+	TRAIN,
+	EVALUATE,
+	TRAIN_MULTI,
+	TRAIN_EVALUATE
+};
+constexpr Mode MODE = Mode::EVALUATE;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
-constexpr bool USE_HYPER_OPTIMIZER = false;
 
 // evaluation
 constexpr bool SHOW_VISUAL = false;
@@ -128,78 +134,6 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	return states;
 }
 
-template<typename Net>
-void findAttractors(Net& _net)
-{
-	System system(0.1, 9.81, 0.5);
-	nn::Integrator<System, Net, NUM_INPUTS> integrator(_net);
-
-	std::vector<double> attractors; // energy
-	std::vector<std::pair<double,double>> repellers; // position [lower, upper]
-
-	auto integrate = [&](double x)
-	{
-		State state{ x, 0.0 };
-		for (int i = 0; i < 20000; ++i)
-			state = integrator(state);
-
-		return state;
-	};
-
-	const double stepSize = 3.14159 / 16.0;
-	constexpr double THRESHOLD = 0.05;
-	for (double x = 0.0; x < 3.14159; x += stepSize)
-	{
-		State state = integrate(x);
-		const double e = std::min(2.0, system.energy(state));
-
-		if (attractors.empty() || std::abs(attractors.back() - e) > THRESHOLD)
-		{
-			std::cout << "new attractor " << e << ", " << x << std::endl;
-			attractors.push_back(e);
-			repellers.push_back({ 0.0, x });
-		}
-	/*	double e0 = 0.0;
-		double e1 = system.energy(state);
-		do {
-			e1 = e0;
-			state = integrator(state);
-			double e0 = system.energy(state);
-		} while (e0 - e1 > 0.1);*/
-	}
-	
-	// refine repellers
-	for (size_t j = 1; j < repellers.size(); ++j)
-	{
-		double x = repellers[j].second;
-		double step = stepSize * 0.5;
-		double sign = -1.0;
-		for (int i = 0; i < 8; ++i)
-		{
-			x += step * sign;
-			State state = integrate(x);
-			step *= 0.5;
-			const double e = std::min(2.0, system.energy(state));
-			if (std::abs(e - attractors[j]) > THRESHOLD)
-			{
-				sign = 1.0;
-				repellers[j].first = x;
-			}
-			else
-			{
-				sign = -1.0;
-				repellers[j].second = x;
-			}
-		}
-		std::cout << "\n====\n";
-	}
-	std::cout << "repellers: \n";
-	for (auto& [min,max] : repellers)
-	{
-		std::cout << "[" << min << ", " << max << "]" << "\n";
-	}
-}
-
 int main()
 {
 	System system(0.1, 9.81, 0.5);
@@ -220,7 +154,7 @@ int main()
 		}*/
 
 	DataGenerator generator(system, integrator);
-	using NetType = nn::HamiltonianInterleafed;
+	using NetType = nn::AntiSymmetric;
 
 	auto trainNetwork = [generator, &trainingStates, &validStates](const nn::HyperParams& _params)
 	{
@@ -299,7 +233,7 @@ int main()
 			const double totalValidLossD = validLoss.item<double>();
 			if (totalValidLossD < bestValidLoss)
 			{
-				if constexpr (!USE_HYPER_OPTIMIZER)
+				if constexpr (MODE != Mode::TRAIN_MULTI)
 					std::cout << validLoss.item<double>() << "\n";
 				bestNet = nn::clone(net);
 				bestValidLoss = totalValidLossD;
@@ -327,8 +261,8 @@ int main()
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["augment"] = 2;
 	params["hidden_size"] = HIDDEN_SIZE;
-	params["train_in"] = true;
-	params["train_out"] = true;
+	params["train_in"] = false;
+	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 	params["name"] = std::string("hamiltonian_")
 		+ std::to_string(NUM_INPUTS) + "_"
@@ -336,74 +270,98 @@ int main()
 		+ std::to_string(*params.get<int>("hidden_size"))
 		+ ".pt";
 
-	if constexpr (USE_HYPER_OPTIMIZER)
+	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{ //{"depth", {4, 8}},
-			  {"lr", {1e-4, 2e-4, 4e-4}},
+			  {"lr", {1e-4, 5e-4, 1e-3}},
 			  {"time", { 2.0, 4.0}},
 			  //	  {"hidden_size", {4, 8, 16}},
 			  //	  {"bias", {false, true}},
-			  //	  {"diffusion", {0.0, 1.0e-2, 0.1, 0.5}},
+			  	  {"diffusion", {0.0, 0.1, 0.5}},
 			  //	  {"num_inputs", {4ull, 8ull, 16ull}}
 			  //	  {"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
 			}, params);
 
 		hyperOptimizer.run(8);
-		return 0;
 	}
 
 
-	if (TRAIN_NET)
+	if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 		std::cout << trainNetwork(params) << "\n";
 
-	nn::HyperParams hamiltonianParams(params);
-	hamiltonianParams["train_in"] = true;
-	hamiltonianParams["train_out"] = true;
-	hamiltonianParams["time"] = 4.0;
-	hamiltonianParams["name"] = std::string("hamiltonianIO.pt");
-	auto hamiltonian0 = nn::makeNetwork<nn::HamiltonianInterleafed, USE_WRAPPER, 2>(hamiltonianParams);
-	torch::load(hamiltonian0, *hamiltonianParams.get<std::string>("name"));
+	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
+	{
+	/*	nn::HyperParams hamiltonianParams(params);
+		hamiltonianParams["train_in"] = true;
+		hamiltonianParams["train_out"] = true;
+		hamiltonianParams["time"] = 4.0;
+		hamiltonianParams["name"] = std::string("hamiltonianIO.pt");
+		auto hamiltonianIO = nn::makeNetwork<nn::HamiltonianInterleafed, true, 2>(hamiltonianParams);
+		torch::load(hamiltonianIO, *hamiltonianParams.get<std::string>("name"));
 
-	hamiltonianParams["train_in"] = false;
-//	hamiltonianParams["time"] = 2.0;
-	hamiltonianParams["name"] = std::string("hamiltonianO.pt");
-	auto hamiltonian1 = nn::makeNetwork<nn::HamiltonianInterleafed, USE_WRAPPER, 2>(hamiltonianParams);
-	torch::load(hamiltonian1, *hamiltonianParams.get<std::string>("name"));
+		hamiltonianParams["train_in"] = false;
+		//	hamiltonianParams["time"] = 2.0;
+		hamiltonianParams["name"] = std::string("hamiltonianO.pt");
+		auto hamiltonianO = nn::makeNetwork<nn::HamiltonianInterleafed, true, 2>(hamiltonianParams);
+		torch::load(hamiltonianO, *hamiltonianParams.get<std::string>("name"));
 
-	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, hamiltonian0, hamiltonian1);
+		nn::HyperParams linearParams = params;
+		linearParams["train_in"] = false;
+		linearParams["train_out"] = false;
+		linearParams["name"] = std::string("lin_1_4.pt");
+		auto mlp = nn::makeNetwork<nn::MultiLayerPerceptron, true, 2>(linearParams);
+		torch::load(mlp, *linearParams.get<std::string>("name"));
 
-//	auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-//	torch::load(othNet, "lin_1_4.pt");
-//	torch::load(othNet, *params.get<std::string>("name"));
-//	torch::load(othNet, "1_0_.pt");
-//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
+		nn::HyperParams antisymParams = params;
+		antisymParams["train_in"] = false;
+		antisymParams["train_out"] = true;
+		antisymParams["name"] = std::string("antiSymO.pt");
+		auto antiSym = nn::makeNetwork<nn::AntiSymmetric, true, 2>(antisymParams);
+		torch::load(antiSym, *antisymParams.get<std::string>("name"));
 
-	//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
-//	std::cout << eval::lipschitz(othNet) << "\n";
-//	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
-//	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
-//	findAttractors(othNet);
-//	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
+		std::cout << eval::lipschitz(hamiltonianIO) << "\n";
+		std::cout << eval::lipschitz(hamiltonianO) << "\n";
+		std::cout << eval::lipschitz(mlp) << "\n";
+		std::cout << eval::lipschitz(antiSym) << "\n";*/
+		//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
+		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
 
-	/*	for (size_t i = 0; i < othNet->hiddenNet->hiddenLayers.size(); ++i)
-		{
-			nn::exportTensor(othNet->hiddenNet->hiddenLayers[i]->weight, "layer" + std::to_string(i) + ".txt");
-		}*/
-		//nn::exportTensor(othNet->outputLayer->weight, "multiStep3.txt");
+		auto othNet = nn::makeNetwork<nn::MultiLayerPerceptron, USE_WRAPPER, 2>(params);
+		torch::load(othNet, "lin_1_4.pt");
+		//torch::load(othNet, *params.get<std::string>("name"));
+		//	torch::load(othNet, "1_0_.pt");
+		//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
 
-	/*	auto netL2 = makeNetwork<nn::MultiLayerPerceptronExt>(params);
-		torch::load(netL2, "0_0_linext.pt");
-		auto netL4 = makeNetwork<NetType>(params);
-		torch::load(netL4, "0_0_.pt");
-		params["depth"] = 16;
-		auto netL3 = makeNetwork<NetType>(params);
-		torch::load(netL3, "1_1_.pt");
+			//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
+		//	std::cout << eval::lipschitz(othNet) << "\n";
+		//	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
+		//	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
+		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
+		std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 32) * TARGET_TIME_STEP << "\n";
+		std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 1) * TARGET_TIME_STEP << "\n";
+	//	eval::findAttractors(system, integrator);
+		//	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
 
-		for (size_t i = 0; i < netL3->hiddenLayers.size(); ++i)
-		{
-			nn::exportTensor(netL3->hiddenLayers[i]->weight, "min" + std::to_string(i) + ".txt");
-		}*/
+			/*	for (size_t i = 0; i < othNet->hiddenNet->hiddenLayers.size(); ++i)
+				{
+					nn::exportTensor(othNet->hiddenNet->hiddenLayers[i]->weight, "layer" + std::to_string(i) + ".txt");
+				}*/
+				//nn::exportTensor(othNet->outputLayer->weight, "multiStep3.txt");
 
-		//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, netL2, netL3, netL4);
+			/*	auto netL2 = makeNetwork<nn::MultiLayerPerceptronExt>(params);
+				torch::load(netL2, "0_0_linext.pt");
+				auto netL4 = makeNetwork<NetType>(params);
+				torch::load(netL4, "0_0_.pt");
+				params["depth"] = 16;
+				auto netL3 = makeNetwork<NetType>(params);
+				torch::load(netL3, "1_1_.pt");
+
+				for (size_t i = 0; i < netL3->hiddenLayers.size(); ++i)
+				{
+					nn::exportTensor(netL3->hiddenLayers[i]->weight, "min" + std::to_string(i) + ".txt");
+				}*/
+
+				//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, netL2, netL3, netL4);
+	}
 }

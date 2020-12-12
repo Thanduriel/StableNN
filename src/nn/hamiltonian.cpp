@@ -101,7 +101,6 @@ namespace nn {
 	Tensor HamiltonianCellImpl::system_matrix() const
 	{
 		using namespace torch::indexing;
-		std::cout << weight;
 		const int64_t n = size + augmentSize;
 		Tensor mat = torch::zeros({ n, n }, weight.options());
 		mat.index_put_({ Slice(size), Slice(0, size) }, -weight.t());
