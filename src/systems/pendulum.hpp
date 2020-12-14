@@ -33,6 +33,14 @@ namespace systems {
 				+ m_mass * m_gravity * m_length * (1.0 - std::cos(_state.position));
 		}
 
+		State energyToState(T _potentialEnergy, T _kineticEnergy) const
+		{
+			const T p = std::acos(1.0 - _potentialEnergy / (m_mass * m_gravity * m_length));
+			const T v = std::sqrt(2.0 * _kineticEnergy / (m_mass * m_length * m_length));
+
+			return { p,v };
+		}
+
 		T mass() const { return m_mass; }
 		T gravity() const { return m_gravity; }
 		T length() const { return m_length; }

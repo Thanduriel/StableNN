@@ -2,8 +2,10 @@
 
 namespace eval {
 
+	// @return energy of attractors and intervals bounding the position of possible initial states for bifurcation points
 	template<typename System, typename Integrator>
-	void findAttractors(const System& _system, const Integrator& _integrator)
+	auto findAttractors(const System& _system, const Integrator& _integrator)
+		-> std::pair<std::vector<double>, std::vector<std::pair<double,double>>>
 	{
 		using State = typename System::State;
 		System system(_system);
@@ -16,7 +18,7 @@ namespace eval {
 		constexpr double THRESHOLD = 0.02;
 		constexpr double INF_ENERGY = 4.0;
 
-		auto integrate = [&](double x)
+		auto integrate = [&system, &integrator, INF_ENERGY](double x)
 		{
 			State state{ x, 0.0 };
 			double e0 = std::min(INF_ENERGY, system.energy(state));
@@ -77,10 +79,11 @@ namespace eval {
 		{
 			std::cout << "[" << min << ", " << max << "]" << "\n";
 		}
+
+		return { attractors, repellers };
 	}
 
 	// determine frequency of a periodic motion
-	// @param _initialState should be the start of a period
 	// @param _periods Number of periods to average over
 	// @return frequency in periods / steps
 	template<typename State, typename Integrator>
@@ -88,20 +91,28 @@ namespace eval {
 	{
 		Integrator integrator(_integrator);
 		State state(_initialState);
+		State prev = state;
+		state = integrator(state);
+		for(int i = 0; i < 55; ++i)
+			state = integrator(state);
 
 		size_t steps = 0;
-		for (int period = 0; period < _periods; ++period)
+		// one extra period because the first one may not be complete
+		for (int period = 0; period <= _periods; ++period)
 		{
-			State prev = state;
 			while(true)
 			{
 				State next = integrator(state);
+				// local maximum
 				if (state.position > next.position && state.position > prev.position)
 					break;
 				prev = state;
 				state = next;
 				++steps;
 			}
+			prev = state;
+			// reset steps at first peak
+			if (!period) steps = 0;
 		}
 
 		return static_cast<double>(steps) / static_cast<double>(_periods);

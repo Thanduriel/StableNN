@@ -24,7 +24,7 @@
 #include <random>
 
 // simulation related
-constexpr double TARGET_TIME_STEP = 0.05;
+constexpr double TARGET_TIME_STEP = 0.025;
 constexpr int64_t HYPER_SAMPLE_RATE = 100;
 
 // network parameters
@@ -52,15 +52,14 @@ using System = systems::Pendulum<double>;
 using State = System::State;
 
 template<size_t NumTimeSteps, typename... Networks>
-void evaluate(const State& _initialState, Networks&... _networks)
+void evaluate(const System& system, const State& _initialState, Networks&... _networks)
 {
-	System system(0.1, 9.81, 0.5);
 	State initialState{ _initialState };
 
 	discretization::LeapFrog<System> leapFrog(system, TARGET_TIME_STEP);
 	discretization::ForwardEuler<System> forwardEuler(system, TARGET_TIME_STEP);
 
-	auto referenceIntegrate = [&](const System::State _state)
+	auto referenceIntegrate = [&](const State& _state)
 	{
 		discretization::LeapFrog<System> forward(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 		auto state = _state;
@@ -99,15 +98,21 @@ void evaluate(const State& _initialState, Networks&... _networks)
 		renderer.run();
 	}
 
+/*	auto cosRef = [&, t=0.0](const State& _state) mutable
+	{
+		t += TARGET_TIME_STEP;
+		return State{ std::cos(t / 2.30625 * 2.0 * 3.14159) * _initialState.position, 0.0 };
+	};*/
+
 	eval::evaluate(system, initialState, referenceIntegrate, leapFrog, 
 		nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
 }
 
 template<size_t NumTimeSteps, typename... Networks>
-void evaluate(const std::vector<State>& _initialStates, Networks&... _networks)
+void evaluate(const System& _system, const std::vector<State>& _initialStates, Networks&... _networks)
 {
 	for (const State& state : _initialStates)
-		evaluate<NumTimeSteps>(state, _networks...);
+		evaluate<NumTimeSteps>(_system, state, _networks...);
 }
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
@@ -116,7 +121,7 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	states.reserve(_numStates);
 
 	std::default_random_engine rng(_seed);
-	constexpr double MAX_POS = 3.14159 - 0.14;
+	constexpr double MAX_POS = 3.14159 - 0.05;
 	State maxState{ MAX_POS, 0.0 };
 	const double maxEnergy = _system.energy(maxState);
 	std::uniform_real_distribution<double> energy(0, maxEnergy);
@@ -127,9 +132,8 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	{
 		const double e = energy(rng);
 		const double potE = potEnergy(rng);
-		const double v = std::sqrt(2.0 * (1.0 - potE) * e / (_system.mass() * _system.length() * _system.length()));
-		const double p = std::acos(1.0 - potE * e / (_system.mass() * _system.gravity() * _system.length()));
-		states.push_back({ sign(rng) ? p : -p, sign(rng) ? v : -v });
+		State s = _system.energyToState((1.0 - potE) * e, potE * e);
+		states.push_back({ sign(rng) ? s.position : -s.position, sign(rng) ? s.velocity : -s.velocity });
 	}
 
 	return states;
@@ -138,21 +142,27 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 int main()
 {
 	System system(0.1, 9.81, 0.5);
+	//System system(1.0, 1.0, 1.0);
+
 	using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
 	Integrator referenceIntegrator(system, TARGET_TIME_STEP / HYPER_SAMPLE_RATE);
 
-	const auto trainingStates = generateStates(system, 256, 0x612FF6AEu);
-	const auto validStates = generateStates(system, 32, 0x195A4C);
-	/*	for (auto& state : trainingStates)
-		{
-			eval::PendulumRenderer renderer(TARGET_TIME_STEP);
-			renderer.addIntegrator([&, state] () mutable
-				{
-					state = integrator(state);
-					return state.position;
-				});
-			renderer.run();
-		}*/
+	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
+	trainingStates.push_back({ 3.0,0 });
+	trainingStates.push_back({ -2.9,0 });
+	auto validStates = generateStates(system, 31, 0x195A4C);
+	validStates.push_back({ 2.95,0 });
+/*	for (auto& state : trainingStates)
+	{
+		Integrator integrator(system, TARGET_TIME_STEP);
+		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
+		renderer.addIntegrator([&integrator, s=state] () mutable
+			{
+				s = integrator(s);
+				return s.position;
+			});
+		renderer.run();
+	}*/
 
 	DataGenerator generator(system, referenceIntegrator);
 
@@ -251,7 +261,7 @@ int main()
 	};
 
 	nn::HyperParams params;
-	params["lr"] = 6e-4;
+	params["lr"] = 4e-4;
 	params["weight_decay"] = 1e-6; //4
 	params["depth"] = 4;
 	params["diffusion"] = 0.1;
@@ -262,9 +272,9 @@ int main()
 	params["augment"] = 2;
 	params["hidden_size"] = HIDDEN_SIZE;
 	params["train_in"] = false;
-	params["train_out"] = false;
+	params["train_out"] = true;
 	params["activation"] = nn::ActivationFn(torch::tanh);
-	params["name"] = std::string("hamiltonian_")
+	params["name"] = std::string("mlp_t0025_")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(*params.get<int>("hidden_size"))
@@ -274,11 +284,12 @@ int main()
 	{
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{ //{"depth", {4, 8}},
-			  {"lr", {1e-4, 5e-4, 1e-3}},
-			  {"time", { 2.0, 4.0}},
+			  {"lr", {1e-4, 2e-4, 4e-4, 8e-4}},
+			  {"weight_decay", {1e-6}},
+			  //	  {"time", { 2.0, 4.0}},
 			  //	  {"hidden_size", {4, 8, 16}},
 			  //	  {"bias", {false, true}},
-			  	  {"diffusion", {0.0, 0.1, 0.5}},
+			  //	  {"diffusion", {0.0, 0.1, 0.5}},
 			  //	  {"num_inputs", {4ull, 8ull, 16ull}}
 			  //	  {"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
 			}, params);
@@ -324,23 +335,29 @@ int main()
 		std::cout << eval::lipschitz(hamiltonianO) << "\n";
 		std::cout << eval::lipschitz(mlp) << "\n";
 		std::cout << eval::lipschitz(antiSym) << "\n";*/
-		//	evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
+		//	evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
 
 		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-	//	torch::load(othNet, "lin_1_4.pt");
-		torch::load(othNet, *params.get<std::string>("name"));
+		torch::load(othNet, "3_0_.pt");
+	//	evaluate<NUM_INPUTS>(system, { system.energyToState(0.87829, 0.0) }, othNet);
+	//	torch::load(othNet,*params.get<std::string>("name"));
 
-			//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
+		//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
 		//	std::cout << eval::lipschitz(othNet) << "\n";
 		//	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
 		//	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
-	/*	std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 32) * TARGET_TIME_STEP << "\n";
-		std::cout << eval::computePeriodLength(State{ 1.5, 0.0 }, integrator, 1) * TARGET_TIME_STEP << "\n";*/
-		eval::findAttractors(system, integrator);
-		evaluate<NUM_INPUTS>({ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
-		//	evaluate<NUM_INPUTS>({ {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
+	//	std::cout << eval::computePeriodLength(system.energyToState(0.87829, 0.0), integrator, 128) * TARGET_TIME_STEP << "\n";
+		evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, othNet);
+		auto [attractors, repellers] = eval::findAttractors(system, integrator);
+		for (double attractor : attractors)
+		{
+			if (attractor == 0.0 || attractor == 4.0)
+				continue;
+			std::cout << eval::computePeriodLength(system.energyToState(attractor, 0.0), integrator, 64) * TARGET_TIME_STEP << "\n";
+		}
+		//	evaluate<NUM_INPUTS>(system, { {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
 
 			/*	for (size_t i = 0; i < othNet->hiddenNet->hiddenLayers.size(); ++i)
 				{
