@@ -2,6 +2,8 @@
 
 namespace eval {
 
+	constexpr double INF_ENERGY = 4.0;
+
 	// @return energy of attractors and intervals bounding the position of possible initial states for bifurcation points
 	template<typename System, typename Integrator>
 	auto findAttractors(const System& _system, const Integrator& _integrator)
@@ -16,9 +18,8 @@ namespace eval {
 
 		const double stepSize = 3.14159 / 16.0;
 		constexpr double THRESHOLD = 0.02;
-		constexpr double INF_ENERGY = 4.0;
 
-		auto integrate = [&system, &integrator, INF_ENERGY](double x)
+		auto integrate = [&system, &integrator](double x)
 		{
 			State state{ x, 0.0 };
 			double e0 = std::min(INF_ENERGY, system.energy(state));
