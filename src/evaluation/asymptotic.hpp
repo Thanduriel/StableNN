@@ -35,7 +35,6 @@ namespace eval {
 				// switch of sign indicates oscillation around attractor
 				// second rule is for infinity and 0
 			} while (d0 * d1 >= 0.0 && d1 != 0.0);
-
 			return e0;
 		};
 
@@ -53,6 +52,7 @@ namespace eval {
 		}
 
 		// refine repellers / bifurcations
+		std::cout << "repellers: \n";
 		for (size_t j = 1; j < repellers.size(); ++j)
 		{
 			double x = repellers[j].second;
@@ -75,7 +75,6 @@ namespace eval {
 				}
 			}
 		}
-		std::cout << "repellers: \n";
 		for (auto& [min, max] : repellers)
 		{
 			std::cout << "[" << min << ", " << max << "]" << "\n";

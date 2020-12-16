@@ -42,6 +42,7 @@ enum struct Mode {
 constexpr Mode MODE = Mode::EVALUATE;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
+constexpr bool USE_LBFGS = true;
 using NetType = nn::MultiLayerPerceptron;
 
 // evaluation
@@ -172,9 +173,10 @@ int main()
 		auto validationSet = generator.generate(validStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
 			.map(torch::data::transforms::Stack<>());
 
+		// LBFGS does not work with mini batches
 		auto data_loader = torch::data::make_data_loader(
 			dataset,
-			torch::data::DataLoaderOptions().batch_size(64));
+			torch::data::DataLoaderOptions().batch_size(USE_LBFGS ? std::numeric_limits< size_t>::max() : 64));
 		auto validationLoader = torch::data::make_data_loader(
 			validationSet,
 			torch::data::DataLoaderOptions().batch_size(64));
@@ -190,10 +192,19 @@ int main()
 			return (USE_SINGLE_OUTPUT && NUM_FORWARDS > 1) ? nn::shiftTimeSeries(input, output, 2) : output;
 		};
 
-		torch::optim::Adam optimizer(net->parameters(),
-			torch::optim::AdamOptions(_params.get<double>("lr", 3.e-4))
-			.weight_decay(_params.get<double>("weight_decay", 1.e-6))
-			.amsgrad(_params.get<bool>("amsgrad", false)));
+		
+		auto makeOptimizer = [&_params, &net]()
+		{
+			if constexpr (USE_LBFGS)
+				return torch::optim::LBFGS(net->parameters(),
+					torch::optim::LBFGSOptions(*_params.get<double>("lr")));
+			else
+				return torch::optim::Adam(net->parameters(),
+					torch::optim::AdamOptions(_params.get<double>("lr", 3.e-4))
+					.weight_decay(_params.get<double>("weight_decay", 1.e-6))
+					.amsgrad(_params.get<bool>("amsgrad", false)));
+		};
+		auto optimizer = makeOptimizer();
 
 		double bestValidLoss = std::numeric_limits<double>::max();
 
@@ -203,22 +214,29 @@ int main()
 		{
 			// train
 			net->train();
+			
 			torch::Tensor totalLoss = torch::zeros({ 1 });
+
 			for (torch::data::Example<>& batch : *data_loader)
 			{
-				net->zero_grad();
-				torch::Tensor output;
-				torch::Tensor input = batch.data;
-				for (int64_t i = 0; i < NUM_FORWARDS; ++i)
+				auto closure = [&]()
 				{
-					output = net->forward(input);
-					input = nextInput(input, output);
-				}
-				torch::Tensor loss = lossFn(output, batch.target);
-				totalLoss += loss;
+					net->zero_grad();
+					torch::Tensor output;
+					torch::Tensor input = batch.data;
+					for (int64_t i = 0; i < NUM_FORWARDS; ++i)
+					{
+						output = net->forward(input);
+						input = nextInput(input, output);
+					}
+					torch::Tensor loss = lossFn(output, batch.target);
+					totalLoss += loss;
 
-				loss.backward();
-				optimizer.step();
+					loss.backward();
+					return loss;
+				};
+
+				optimizer.step(closure);
 			}
 
 			// validation
@@ -248,7 +266,7 @@ int main()
 			}
 
 			//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
-			//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
+		//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 		}
 		if (SAVE_NET)
 		{
@@ -283,9 +301,9 @@ int main()
 	{
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{ //{"depth", {4, 8}},
-			  {"lr", {1e-4, 2e-4, 4e-4, 8e-4}},
-			  {"weight_decay", {1e-6}},
-			  //	  {"time", { 2.0, 4.0}},
+			  {"lr", {5e-2, 1e-1, 1.0, 1e-2}},
+			//  {"weight_decay", {1e-6}},
+			  {"time", { 2.0, 4.0}},
 			  //	  {"hidden_size", {4, 8, 16}},
 			  //	  {"bias", {false, true}},
 			  //	  {"diffusion", {0.0, 0.1, 0.5}},
@@ -338,7 +356,7 @@ int main()
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
 
 		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-		torch::load(othNet, "3_0_.pt");
+		torch::load(othNet, "0_0_.pt");
 	//	evaluate<NUM_INPUTS>(system, { system.energyToState(0.87829, 0.0) }, othNet);
 	//	torch::load(othNet,*params.get<std::string>("name"));
 
@@ -348,10 +366,10 @@ int main()
 		//	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
 	//	std::cout << eval::computePeriodLength(system.energyToState(0.87829, 0.0), integrator, 64) * *params.get<double>("time_step") << "\n";
-		evaluate<NUM_INPUTS>(system, 
+	/*	evaluate<NUM_INPUTS>(system, 
 			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 			*params.get<double>("time_step"),
-			othNet);
+			othNet);*/
 
 		auto [attractors, repellers] = eval::findAttractors(system, integrator);
 		for (double attractor : attractors)
