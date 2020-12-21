@@ -89,7 +89,7 @@ namespace nn {
 					params[name] = values[ind];
 					fileName += std::to_string(ind) + "_";
 				}
-				params["name"] = fileName + ".pt";
+				params["name"] = fileName + m_defaultParams.get<std::string>("name", "") +".pt";
 
 				const double loss = m_trainFunc(params);
 				results[i] = loss;
@@ -127,16 +127,18 @@ namespace nn {
 		{
 			const auto& [name, values] = m_hyperGrid[k];
 			std::vector<double> losses(values.size(), 0.0);
+			std::vector<int> sizes(values.size(), 0);
 
 			for (size_t i = 0; i < numOptions; ++i)
 			{
 				const auto& [indK, indOth] = decomposeFlatIndex(i, k);
 				losses[indK] += results[i];
+				sizes[indK]++;
 			}
 			
 			std::cout << name << ": ";
-			for (double loss : losses)
-				std::cout << loss << ", ";
+			for (size_t i = 0; i < losses.size(); ++i)
+				std::cout << losses[i] / sizes[i] << ", ";
 			std::cout << "\n";
 		}
 

@@ -18,7 +18,7 @@ namespace systems {
 			T velocity;
 		};
 
-		Pendulum(T _mass, T _gravity, T _len)
+		Pendulum(T _mass = 1.0, T _gravity = 1.0, T _len = 1.0)
 			: m_mass(_mass), m_gravity(_gravity), m_length(_len)
 		{}
 

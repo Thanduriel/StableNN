@@ -28,9 +28,6 @@ namespace eval {
 		line.setOrigin({ 1.f, 0.f });
 		line.setPosition(origin);
 
-	//	for(int i = 0; i < 16 * 2048; ++i)
-	//		m_integrator();
-
 		while (m_window.isOpen())
 		{
 			sf::Event event;
@@ -51,6 +48,50 @@ namespace eval {
 			m_window.draw(line);
 
 			m_window.display();
+			sf::sleep(sf::seconds(m_deltaTime));
+		}
+	}
+
+	HeatRenderer::HeatRenderer(double _deltaTime, Integrator _integrator)
+		: m_window(sf::VideoMode(512, 512), "heateq"),
+		m_deltaTime(_deltaTime),
+		m_integrator(_integrator)
+	{
+
+	}
+
+	void HeatRenderer::run()
+	{
+		const sf::Vector2f origin(256.f, 256.f);
+		std::vector<double> state = m_integrator();
+
+		// + 1 for origin, + 1 to close the loop
+		sf::VertexArray triangles(sf::TriangleFan, state.size() + 2);
+		triangles[0].position = origin;
+
+		while (m_window.isOpen())
+		{
+			sf::Event event;
+			while (m_window.pollEvent(event))
+			{
+				if (event.type == sf::Event::Closed)
+					m_window.close();
+			}
+
+			for (size_t i = 0; i < state.size(); ++i)
+			{
+				const float angle = static_cast<float>(i) / state.size() * 2.f * 3.14159f;
+				triangles[i + 1].position = origin 
+					+ 10.f * static_cast<float>(state[i]) * sf::Vector2f(std::sin(angle), std::cos(angle));
+			}
+			triangles[state.size() + 1].position = triangles[1].position;
+
+			m_window.clear(sf::Color::Black);
+			m_window.draw(triangles);
+			m_window.display();
+
+			state = m_integrator();
+			sf::sleep(sf::seconds(m_deltaTime));
 		}
 	}
 }

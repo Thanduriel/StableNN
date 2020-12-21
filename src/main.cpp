@@ -22,6 +22,7 @@
 #include <iostream>
 #include <cmath>
 #include <random>
+#include <filesystem>
 
 // simulation related
 constexpr int64_t HYPER_SAMPLE_RATE = 100;
@@ -42,7 +43,11 @@ enum struct Mode {
 constexpr Mode MODE = Mode::EVALUATE;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
+constexpr bool LOG_LOSS = true;
 constexpr bool USE_LBFGS = true;
+// only relevant in TRAIN_MULTI to enforce same initial rng state for all networks
+constexpr bool THREAD_FIXED_SEED = true;
+constexpr bool USE_SEQ_SAMPLER = true;
 using NetType = nn::MultiLayerPerceptron;
 
 // evaluation
@@ -86,6 +91,7 @@ void evaluate(const System& system, const State& _initialState, double _timeStep
 
 		// use extra integrator because nn::Integrator may have an internal state
 		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
+		// warmup to see long term behavior
 		for (int i = 0; i < 10000; ++i)
 		{
 			initialState = std::get<0>(integrators)(initialState);
@@ -144,6 +150,17 @@ int main()
 	System system(0.1, 9.81, 0.5);
 	//System system(1.0, 1.0, 1.0);
 
+	eval::HeatRenderer renderer(0.05, []()
+		{
+			static auto state = std::vector<double>{ 16.0, 15.0, 14.0, 13.0, 10.0, 5.0, 7.0, 12.0 };
+			for (auto& s : state) s *= 0.99;
+			return state;
+		});
+	renderer.run();
+
+	constexpr uint64_t torchSeed = 9378341130ul;//9378341134ul;
+	torch::manual_seed(torchSeed);
+
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
 	trainingStates.push_back({ 3.0,0 });
 	trainingStates.push_back({ -2.9,0 });
@@ -161,35 +178,62 @@ int main()
 		renderer.run();
 	}*/
 
-	auto trainNetwork = [&system, &trainingStates, &validStates](const nn::HyperParams& _params)
+	std::mutex initMutex;
+	std::mutex loggingMutex;
+	auto trainNetwork = [&, torchSeed](const nn::HyperParams& _params)
 	{
 		using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
 		Integrator referenceIntegrator(system, *_params.get<double>("time_step") / HYPER_SAMPLE_RATE);
 		DataGenerator generator(system, referenceIntegrator);
 
+		namespace dat = torch::data;
 		const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
 		auto dataset = generator.generate(trainingStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
-			.map(torch::data::transforms::Stack<>());
+			.map(dat::transforms::Stack<>());
 		auto validationSet = generator.generate(validStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
-			.map(torch::data::transforms::Stack<>());
+			.map(dat::transforms::Stack<>());
 
 		// LBFGS does not work with mini batches
-		auto data_loader = torch::data::make_data_loader(
+		using Sampler = std::conditional_t<USE_SEQ_SAMPLER, 
+			dat::samplers::SequentialSampler, 
+			dat::samplers::RandomSampler>;
+		auto data_loader = dat::make_data_loader<Sampler>(
 			dataset,
-			torch::data::DataLoaderOptions().batch_size(USE_LBFGS ? std::numeric_limits< size_t>::max() : 64));
-		auto validationLoader = torch::data::make_data_loader(
+			dat::DataLoaderOptions().batch_size(USE_LBFGS ? std::numeric_limits< size_t>::max() : 64));
+		auto validationLoader = dat::make_data_loader(
 			validationSet,
-			torch::data::DataLoaderOptions().batch_size(64));
+			dat::DataLoaderOptions().batch_size(64));
 
-
+		if constexpr (THREAD_FIXED_SEED)
+		{
+			initMutex.lock();
+			torch::manual_seed(torchSeed);
+		}
 		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(_params);
 		auto bestNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(_params);
+		if constexpr (THREAD_FIXED_SEED)
+		{
+			initMutex.unlock();
+		}
+
+	/*	if constexpr (USE_LBFGS)
+		{
+			for (auto& layer : net->hiddenNet->hiddenLayers)
+			{
+				torch::NoGradGuard guard;
+			//	layer->weight.fill_(1.0);
+			}
+		}*/
+
 		//	auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return torch::mse_loss(self, target); };
 		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 3); };
 
 		auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
 		{
-			return (USE_SINGLE_OUTPUT && NUM_FORWARDS > 1) ? nn::shiftTimeSeries(input, output, 2) : output;
+			if constexpr (USE_SINGLE_OUTPUT && NUM_FORWARDS > 1)
+				return nn::shiftTimeSeries(input, output, 2);
+			else
+				return output;
 		};
 
 		
@@ -268,6 +312,12 @@ int main()
 			//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
 		//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 		}
+		if(LOG_LOSS)
+		{
+			std::unique_lock<std::mutex> lock(loggingMutex);
+			std::ofstream lossLog("losses.txt", std::ios::app);
+			lossLog << bestValidLoss << std::endl;
+		}
 		if (SAVE_NET)
 		{
 			torch::save(bestNet, _params.get<std::string>("name", "net.pt"));
@@ -278,7 +328,7 @@ int main()
 
 	nn::HyperParams params;
 	params["time_step"] = 0.05;
-	params["lr"] = 4e-4;
+	params["lr"] = 0.085;//4e-4;
 	params["weight_decay"] = 1e-6; //4
 	params["depth"] = 4;
 	params["diffusion"] = 0.1;
@@ -289,7 +339,7 @@ int main()
 	params["augment"] = 2;
 	params["hidden_size"] = HIDDEN_SIZE;
 	params["train_in"] = false;
-	params["train_out"] = true;
+	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 	params["name"] = std::string("mlp_t0025_")
 		+ std::to_string(NUM_INPUTS) + "_"
@@ -299,11 +349,15 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
+		params["name"] = std::string("freqSmall");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{ //{"depth", {4, 8}},
-			  {"lr", {5e-2, 1e-1, 1.0, 1e-2}},
+			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
+				{"lr", {0.08, 0.085, 0.09, 0.095}},
 			//  {"weight_decay", {1e-6}},
-			  {"time", { 2.0, 4.0}},
+			//  {"time", { 2.0, 4.0, 3.0}},
+			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
+				{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
 			  //	  {"hidden_size", {4, 8, 16}},
 			  //	  {"bias", {false, true}},
 			  //	  {"diffusion", {0.0, 0.1, 0.5}},
@@ -354,39 +408,73 @@ int main()
 		std::cout << eval::lipschitz(antiSym) << "\n";*/
 		//	evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
+		//{ 0.1, 0.05, 0.025, 0.01, 0.005 };
+		std::vector<double> timeSteps = { 0.1, 0.05, 0.025, 0.01, 0.005 };//{ 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 };
+		std::vector<std::pair<std::string, double>> names;
+		for (int j = 0; j < 5; ++j)
+			for(int i = 0; i < 16; ++i)
+			{
+				const std::string name = std::to_string(i) + "_" + std::to_string(j) + "_freq.pt";
+				if (std::filesystem::exists(name))
+					names.emplace_back(name, timeSteps[j]);
+			}
+	//	names.erase(names.begin(), names.begin() + 35);
+	//	names.erase(names.begin(), names.begin() + 6);
+	//	names.erase(names.begin() + 36, names.end());
+		// = { "0_.pt", "1_.pt", "2_.pt", "3_.pt", "4_.pt" };
+		//{ 0.1, 0.05, 0.01, 0.005 };
+		std::mutex outputMutex;
+		auto computeFrequencies = [&](size_t begin, size_t end)
+		{
+			for (size_t i = begin; i < end; ++i)
+			{
+				const auto& [name, timeStep] = names[i];
+				auto param = params;
+				param["time_step"] = timeStep;
+				auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(param);
+				torch::load(othNet, name);
+				//	evaluate<NUM_INPUTS>(system, { system.energyToState(0.0, 0.981318) }, timeStep, othNet);
 
-		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-		torch::load(othNet, "0_0_.pt");
-	//	evaluate<NUM_INPUTS>(system, { system.energyToState(0.87829, 0.0) }, othNet);
-	//	torch::load(othNet,*params.get<std::string>("name"));
-
-		//std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
+				nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
+				/*	evaluate<NUM_INPUTS>(system,
+							{{ 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
+							*params.get<double>("time_step"),
+							othNet);*/
+				auto [attractors, repellers] = eval::findAttractors(system, integrator, false);
+				std::vector<double> stablePeriods;
+				for (double attractor : attractors)
+				{
+					if (attractor == 0.0 || attractor == eval::INF_ENERGY)
+						continue;
+					stablePeriods.push_back(
+						eval::computePeriodLength(system.energyToState(0.0, attractor), integrator, 64, 6.0 / timeStep)
+						* timeStep);
+				}
+				std::unique_lock lock(outputMutex);
+				std::cout << name << "," << timeStep << ", ";
+				for (double p : stablePeriods)
+					std::cout << p << ",";
+				std::cout << "\n";
+			}
+		};
+		std::vector<std::thread> threads;
+		const size_t numThreads = std::min(static_cast<size_t>(8), names.size());
+		const size_t numTasks = names.size() / numThreads;
+		for (int i = 0; i < numThreads; ++i)
+		{
+			threads.emplace_back(computeFrequencies, i* numTasks, (i+1) * numTasks);
+		}
+		for (auto& t : threads) t.join();
+		//	std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
 		//	std::cout << eval::lipschitz(othNet) << "\n";
 		//	std::cout << eval::lipschitzParseval(othNet->hiddenNet->hiddenLayers) << "\n";
 		//	std::cout << eval::spectralComplexity(othNet->hiddenNet->hiddenLayers) << "\n";
-		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
-	//	std::cout << eval::computePeriodLength(system.energyToState(0.87829, 0.0), integrator, 64) * *params.get<double>("time_step") << "\n";
-	/*	evaluate<NUM_INPUTS>(system, 
-			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
-			*params.get<double>("time_step"),
-			othNet);*/
 
-		auto [attractors, repellers] = eval::findAttractors(system, integrator);
-		for (double attractor : attractors)
-		{
-			if (attractor == 0.0 || attractor == eval::INF_ENERGY)
-				continue;
-			std::cout << eval::computePeriodLength(system.energyToState(attractor, 0.0), integrator, 64) 
-				* *params.get<double>("time_step") << "\n";
-		}
 	//	evaluate<NUM_INPUTS>(system, { {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
 
 	/*	for (size_t i = 0; i < othNet->hiddenNet->hiddenLayers.size(); ++i)
 		{
 			nn::exportTensor(othNet->hiddenNet->hiddenLayers[i]->weight, "layer" + std::to_string(i) + ".txt");
 		}*/
-	//nn::exportTensor(othNet->outputLayer->weight, "multiStep3.txt");
-
-
 	}
 }
