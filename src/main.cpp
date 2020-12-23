@@ -1,4 +1,5 @@
 #include "systems/pendulum.hpp"
+#include "systems/heateq.hpp"
 #include "discretization.hpp"
 #include "nn/mlp.hpp"
 #include "nn/dataset.hpp"
@@ -147,16 +148,28 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
+/*	systems::HeatEquation<double, 64> heatEq;
+	systems::FiniteDifferences<systems::HeatEquation<double, 64>> integ(0.01);
+	systems::HeatEquation<double, 64>::State testState{};
+	testState.fill(50.f);
+	testState[32] = 272.0;
+	testState[4] = 0.0;
+	testState[5] = 0.0;
+	testState[6] = 0.0;
+	testState[42] = 78.0;
+
+	eval::HeatRenderer renderer(0.01, [&, state=testState]() mutable
+		{
+			state = integ(state);
+			std::vector<double> exState;
+			for (double d : state)
+				exState.push_back(d);
+			return exState;
+		});
+	renderer.run();*/
+
 	System system(0.1, 9.81, 0.5);
 	//System system(1.0, 1.0, 1.0);
-
-	eval::HeatRenderer renderer(0.05, []()
-		{
-			static auto state = std::vector<double>{ 16.0, 15.0, 14.0, 13.0, 10.0, 5.0, 7.0, 12.0 };
-			for (auto& s : state) s *= 0.99;
-			return state;
-		});
-	renderer.run();
 
 	constexpr uint64_t torchSeed = 9378341130ul;//9378341134ul;
 	torch::manual_seed(torchSeed);
@@ -349,11 +362,11 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("freqSmall");
+		params["name"] = std::string("closeFreq");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{ //{"depth", {4, 8}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
-				{"lr", {0.08, 0.085, 0.09, 0.095}},
+				{"lr", {0.08, 0.081, 0.082, 0.083}},
 			//  {"weight_decay", {1e-6}},
 			//  {"time", { 2.0, 4.0, 3.0}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
@@ -408,13 +421,22 @@ int main()
 		std::cout << eval::lipschitz(antiSym) << "\n";*/
 		//	evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
+
+	/*	auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
+		torch::load(othNet, *params.get<std::string>("name"));
+		evaluate<NUM_INPUTS>(system,
+			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
+			* params.get<double>("time_step"),
+			othNet);
+		return 0;*/
+
 		//{ 0.1, 0.05, 0.025, 0.01, 0.005 };
-		std::vector<double> timeSteps = { 0.1, 0.05, 0.025, 0.01, 0.005 };//{ 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 };
+		std::vector<double> timeSteps = /*{ 0.1, 0.05, 0.025, 0.01, 0.005 };*/{ 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 };
 		std::vector<std::pair<std::string, double>> names;
-		for (int j = 0; j < 5; ++j)
-			for(int i = 0; i < 16; ++i)
+		for (int j = 4; j < 6; ++j)
+			for(int i = 0; i < 4; ++i)
 			{
-				const std::string name = std::to_string(i) + "_" + std::to_string(j) + "_freq.pt";
+				const std::string name = std::to_string(i) + "_" + std::to_string(j) + "_closeFreq.pt";
 				if (std::filesystem::exists(name))
 					names.emplace_back(name, timeSteps[j]);
 			}
@@ -423,6 +445,9 @@ int main()
 	//	names.erase(names.begin() + 36, names.end());
 		// = { "0_.pt", "1_.pt", "2_.pt", "3_.pt", "4_.pt" };
 		//{ 0.1, 0.05, 0.01, 0.005 };
+
+	//	names.clear();
+	//	names.emplace_back(*params.get<std::string>("name"), 0.05);
 		std::mutex outputMutex;
 		auto computeFrequencies = [&](size_t begin, size_t end)
 		{
@@ -435,11 +460,11 @@ int main()
 				torch::load(othNet, name);
 				//	evaluate<NUM_INPUTS>(system, { system.energyToState(0.0, 0.981318) }, timeStep, othNet);
 
-				nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
 				/*	evaluate<NUM_INPUTS>(system,
 							{{ 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
 							*params.get<double>("time_step"),
 							othNet);*/
+				nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
 				auto [attractors, repellers] = eval::findAttractors(system, integrator, false);
 				std::vector<double> stablePeriods;
 				for (double attractor : attractors)
@@ -460,10 +485,11 @@ int main()
 		std::vector<std::thread> threads;
 		const size_t numThreads = std::min(static_cast<size_t>(8), names.size());
 		const size_t numTasks = names.size() / numThreads;
-		for (int i = 0; i < numThreads; ++i)
+		for (int i = 0; i < numThreads-1; ++i)
 		{
 			threads.emplace_back(computeFrequencies, i* numTasks, (i+1) * numTasks);
 		}
+		computeFrequencies((numThreads - 1) * numTasks, names.size());
 		for (auto& t : threads) t.join();
 		//	std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
 		//	std::cout << eval::lipschitz(othNet) << "\n";

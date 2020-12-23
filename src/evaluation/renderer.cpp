@@ -60,6 +60,8 @@ namespace eval {
 
 	}
 
+	constexpr float BASE_RADIUS = 64.f;
+
 	void HeatRenderer::run()
 	{
 		const sf::Vector2f origin(256.f, 256.f);
@@ -81,8 +83,10 @@ namespace eval {
 			for (size_t i = 0; i < state.size(); ++i)
 			{
 				const float angle = static_cast<float>(i) / state.size() * 2.f * 3.14159f;
-				triangles[i + 1].position = origin 
-					+ 10.f * static_cast<float>(state[i]) * sf::Vector2f(std::sin(angle), std::cos(angle));
+				const sf::Vector2f dir = sf::Vector2f(std::sin(angle), std::cos(angle));
+				triangles[i + 1].position = origin
+					+ BASE_RADIUS * dir
+					+ static_cast<float>(state[i]) * dir;
 			}
 			triangles[state.size() + 1].position = triangles[1].position;
 

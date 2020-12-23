@@ -4,10 +4,9 @@ namespace discretization {
 	struct LeapFrog
 	{
 		using T = typename System::ValueT;
+		using State = typename System::State;
 
 		LeapFrog(const System& _system, T _dt) : m_system(_system), m_dt(_dt) {}
-
-		using State = typename System::State;
 
 		State operator()(const State& _state) const
 		{
@@ -30,10 +29,9 @@ namespace discretization {
 	struct ForwardEuler
 	{
 		using T = typename System::ValueT;
+		using State = typename System::State;
 
 		ForwardEuler(const System& _system, T _dt) : m_system(_system), m_dt(_dt) {}
-
-		using State = typename System::State;
 
 		State operator()(const State& _state)
 		{
