@@ -1,4 +1,5 @@
 #include "renderer.hpp"
+#include "../constants.hpp"
 #include <SFML/Graphics.hpp>
 #include <cmath>
 
@@ -40,7 +41,7 @@ namespace eval {
 			// update positions
 			const float angle = m_integrator();
 			mass.setPosition(origin + length * sf::Vector2f(std::sin(angle), std::cos(angle)));
-			line.setRotation(-angle / 3.1415f * 180.f);
+			line.setRotation(-angle / PI_F * 180.f);
 
 			m_window.clear(sf::Color::Black);
 
@@ -82,7 +83,7 @@ namespace eval {
 
 			for (size_t i = 0; i < state.size(); ++i)
 			{
-				const float angle = static_cast<float>(i) / state.size() * 2.f * 3.14159f;
+				const float angle = static_cast<float>(i) / state.size() * 2.f * PI_F;
 				const sf::Vector2f dir = sf::Vector2f(std::sin(angle), std::cos(angle));
 				triangles[i + 1].position = origin
 					+ BASE_RADIUS * dir

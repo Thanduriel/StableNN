@@ -1,6 +1,8 @@
 #include "systems/pendulum.hpp"
 #include "systems/heateq.hpp"
-#include "discretization.hpp"
+#include "systems/odesolver.hpp"
+#include "systems/heateqsolver.hpp"
+#include "constants.hpp"
 #include "nn/mlp.hpp"
 #include "nn/dataset.hpp"
 #include "nn/nnintegrator.hpp"
@@ -108,7 +110,7 @@ void evaluate(const System& system, const State& _initialState, double _timeStep
 /*	auto cosRef = [&, t=0.0](const State& _state) mutable
 	{
 		t += _timeStep;
-		return State{ std::cos(t / 2.30625 * 2.0 * 3.14159) * _initialState.position, 0.0 };
+		return State{ std::cos(t / 2.30625 * 2.0 * PI) * _initialState.position, 0.0 };
 	};*/
 
 	eval::evaluate(system, initialState, referenceIntegrate, leapFrog, 
@@ -128,7 +130,7 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	states.reserve(_numStates);
 
 	std::default_random_engine rng(_seed);
-	constexpr double MAX_POS = 3.14159 - 0.05;
+	constexpr double MAX_POS = PI - 0.05;
 	State maxState{ MAX_POS, 0.0 };
 	const double maxEnergy = _system.energy(maxState);
 	std::uniform_real_distribution<double> energy(0, maxEnergy);
@@ -148,8 +150,9 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-/*	systems::HeatEquation<double, 64> heatEq;
-	systems::FiniteDifferences<systems::HeatEquation<double, 64>> integ(0.01);
+	systems::HeatEquation<double, 64> heatEq;
+//	systems::discretization::FiniteDifferencesHeatEq integ(heatEq, 0.0001);
+	systems::discretization::AnalyticHeatEq integ(heatEq, 0.0001);
 	systems::HeatEquation<double, 64>::State testState{};
 	testState.fill(50.f);
 	testState[32] = 272.0;
@@ -158,6 +161,7 @@ int main()
 	testState[6] = 0.0;
 	testState[42] = 78.0;
 
+	int counter = 0;
 	eval::HeatRenderer renderer(0.01, [&, state=testState]() mutable
 		{
 			state = integ(state);
@@ -166,7 +170,8 @@ int main()
 				exState.push_back(d);
 			return exState;
 		});
-	renderer.run();*/
+	renderer.run();
+	return 0;
 
 	System system(0.1, 9.81, 0.5);
 	//System system(1.0, 1.0, 1.0);
@@ -195,7 +200,7 @@ int main()
 	std::mutex loggingMutex;
 	auto trainNetwork = [&, torchSeed](const nn::HyperParams& _params)
 	{
-		using Integrator = discretization::LeapFrog<systems::Pendulum<double>>;
+		using Integrator = systems::discretization::LeapFrog<System>;
 		Integrator referenceIntegrator(system, *_params.get<double>("time_step") / HYPER_SAMPLE_RATE);
 		DataGenerator generator(system, referenceIntegrator);
 

@@ -49,7 +49,7 @@ namespace eval {
 				cumulativeError[j] += std::sqrt(dx * dx + dv * dv);
 			//	std::cout << std::sqrt(dx * dx + dv * dv) << " ";
 			//	energyFile << _system.energy(state) << " ";
-				spaceTimeFile << std::fmod(state.position, 3.14159) << ", ";
+				spaceTimeFile << std::fmod(state.position, PI) << ", ";
 				spaceTimeFile << state.velocity << ", ";
 			}
 		//	std::cout << "\n";

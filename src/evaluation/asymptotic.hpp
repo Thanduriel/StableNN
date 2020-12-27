@@ -17,7 +17,7 @@ namespace eval {
 		std::vector<double> attractors; // energy
 		std::vector<std::pair<double, double>> repellers; // position [lower, upper]
 
-		const double stepSize = 3.14159 / 16.0;
+		const double stepSize = PI / 16.0;
 
 		auto integrate = [&system, &integrator](double x)
 		{
@@ -42,7 +42,7 @@ namespace eval {
 		};
 
 	//	std::cout << "attractors: energy, position\n";
-		for (double x = 0.0; x < 3.14159; x += stepSize)
+		for (double x = 0.0; x < PI; x += stepSize)
 		{
 			const double e = integrate(x);
 			if (attractors.empty() || std::abs(attractors.back() - e) > THRESHOLD)

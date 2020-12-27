@@ -27,7 +27,6 @@ namespace nn{
 			for (size_t i = 0; i < NumStates-1; ++i)
 				m_states[i] = m_states[i + 1];
 			m_states[NumStates - 1] = _state;
-		//	m_states[NumStates - 1].velocity *= 0.1 * 0.5 * 0.5;
 
 			constexpr size_t stateSize = sizeof(State) / sizeof(T);
 
@@ -37,7 +36,6 @@ namespace nn{
 
 			const int64_t resultOffset = next.numel() / stateSize - 1;
 			State state = *reinterpret_cast<State*>(next.data_ptr<T>() + resultOffset * stateSize);
-		//	state.velocity /= 0.1 * 0.5 * 0.5;
 			return state;
 		}
 	private:

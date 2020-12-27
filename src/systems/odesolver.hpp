@@ -1,3 +1,4 @@
+namespace systems{
 namespace discretization {
 
 	template<typename System>
@@ -48,4 +49,4 @@ namespace discretization {
 		const System& m_system;
 		T m_dt;
 	};
-}
+}}
