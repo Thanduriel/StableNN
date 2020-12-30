@@ -90,9 +90,6 @@ private:
 				results.push_back(state);
 		}
 
-	//	for (auto& s : results)
-	//		s.velocity *= 0.1 * 0.5 * 0.5;
-
 		return results;
 	}
 

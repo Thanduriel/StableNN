@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <array>
+#include <vector>
 
 namespace eval {
 
@@ -18,56 +19,109 @@ namespace eval {
 
 	}
 
+	struct EvalOptions
+	{
+		bool writeEnergy = false;
+		bool writeState = false;
+		bool writeMSE = true;
+		int numShortTermSteps = 256;
+		int numLongTermSteps = 4;
+	};
+
 	// Simulates the given system with different integrators to observe energy over time.
+	// For error computations the first integrator is used as reference.
 	template<typename System, typename State, typename... Integrators>
-	void evaluate(const System& _system, const State& _initialState, Integrators&&... _integrators)
+	void evaluate(
+		const System& _system,
+		const State& _initialState,
+		const EvalOptions& _options,
+		Integrators&&... _integrators)
 	{
 		constexpr size_t numIntegrators = sizeof...(_integrators);
 
-		std::array<State, numIntegrators> currentState;
+		using StateArray = std::array<State, numIntegrators>;
+		StateArray currentState;
+		std::vector<StateArray> stateLog;
 		std::array<double, numIntegrators> cumulativeError{};
 		for (auto& state : currentState) state = _initialState;
 
-		std::ofstream spaceTimeFile("spacetime.txt");
-	//	std::ofstream energyFile("energy.txt");
+		stateLog.push_back(currentState);
 
-		std::cout << "initial energy: " << _system.energy(_initialState) << std::endl;
+		const auto initialEnergy = _system.energy(_initialState);
+		std::cout << "initial state:  " << _initialState << "\n";
+		std::cout << "initial energy: " << initialEnergy << std::endl;
 		std::cout.precision(5);
 		std::cout << std::fixed;
 
 		// short term
-		constexpr int numSteps = 256;
-		for (int i = 0; i < numSteps; ++i)
+		stateLog.reserve(_options.numShortTermSteps + 1);
+		for (int i = 0; i < _options.numShortTermSteps; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
+			stateLog.push_back(currentState);
 
 			for (size_t j = 0; j < numIntegrators; ++j)
 			{
 				const auto& state = currentState[j];
- 				const double dx = state.position - currentState[0].position;
+				const double dx = state.position - currentState[0].position;
 				const double dv = state.velocity - currentState[0].velocity;
 				cumulativeError[j] += std::sqrt(dx * dx + dv * dv);
-			//	std::cout << std::sqrt(dx * dx + dv * dv) << " ";
-			//	energyFile << _system.energy(state) << " ";
-				spaceTimeFile << std::fmod(state.position, PI) << ", ";
-				spaceTimeFile << state.velocity << ", ";
 			}
-		//	std::cout << "\n";
-		//	energyFile << "\n";
-			spaceTimeFile << "\n";
 		}
-		spaceTimeFile.flush();
-	//	energyFile.flush();
+
+		auto evalSteps = [&](std::ostream& out, auto printFn)
+		{
+			for (int i = 0; i < _options.numShortTermSteps; ++i)
+			{
+				for (size_t j = 0; j < numIntegrators; ++j)
+				{
+					const auto& state = stateLog[i][j];
+					printFn(out, state);
+				}
+				out << "\n";
+			}
+			out.flush();
+		};
+
+		if (_options.writeEnergy)
+		{
+			std::ofstream energyFile("energy.txt");
+
+			evalSteps(energyFile, [&](std::ostream& out, const State& state)
+				{
+					energyFile << _system.energy(state) << " ";
+				});
+		}
+
+		if (_options.writeState)
+		{
+			std::ofstream spaceTimeFile("spacetime.txt");
+
+			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state)
+				{
+					out << state << ", ";
+				});
+		}
+
+		if (_options.writeMSE)
+		{
+			std::ofstream mseFile("mse.txt", std::ios::app);
+			mseFile << initialEnergy << ", ";
+			for (double err : cumulativeError)
+			{
+				mseFile << err / _options.numShortTermSteps << ", ";
+			}
+		}
 
 		std::cout << "mse============================================" << "\n";
 		for (double err : cumulativeError)
 		{
-			std::cout << err / numSteps << " ";
+			std::cout << err / _options.numShortTermSteps << ", ";
 		}
 
 		// long term energy behavior
 		std::cout << "\nlongterm=======================================" << "\n";
-		for (int i = 0; i < 4; ++i)
+		for (int i = 0; i < _options.numLongTermSteps; ++i)
 		{
 			for (int j = 0; j < 4096; ++j)
 			{
@@ -79,5 +133,4 @@ namespace eval {
 			std::cout << "\n";
 		}
 	}
-
 }

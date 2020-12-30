@@ -3,6 +3,7 @@
 namespace systems {
 
 	// 1D heat equation with equidistant spatial discretization on a circle
+	// with radius = 2 pi
 	template<typename T, int N>
 	class HeatEquation
 	{
@@ -15,7 +16,7 @@ namespace systems {
 		T energy(const State& _state) const
 		{
 			T e = 0.0;
-			for (double d : _state)
+			for (T d : _state)
 				e += d * d;
 
 			return e;

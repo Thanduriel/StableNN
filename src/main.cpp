@@ -2,12 +2,11 @@
 #include "systems/heateq.hpp"
 #include "systems/odesolver.hpp"
 #include "systems/heateqsolver.hpp"
+#include "systems/serialization.hpp"
 #include "constants.hpp"
 #include "nn/mlp.hpp"
 #include "nn/dataset.hpp"
 #include "nn/nnintegrator.hpp"
-#include "evaluation/renderer.hpp"
-#include "evaluation/evaluation.hpp"
 #include "nn/hyperparam.hpp"
 #include "generator.hpp"
 #include "nn/antisymmetric.hpp"
@@ -15,6 +14,8 @@
 #include "nn/inoutwrapper.hpp"
 #include "nn/utils.hpp"
 #include "nn/nnmaker.hpp"
+#include "evaluation/evaluation.hpp"
+#include "evaluation/renderer.hpp"
 #include "evaluation/stability.hpp"
 #include "evaluation/lipschitz.hpp"
 #include "evaluation/asymptotic.hpp"
@@ -43,7 +44,7 @@ enum struct Mode {
 	TRAIN_MULTI,
 	TRAIN_EVALUATE
 };
-constexpr Mode MODE = Mode::EVALUATE;
+constexpr Mode MODE = Mode::TRAIN_EVALUATE;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
 constexpr bool LOG_LOSS = true;
@@ -57,19 +58,20 @@ using NetType = nn::MultiLayerPerceptron;
 constexpr bool SHOW_VISUAL = false;
 
 using System = systems::Pendulum<double>;
-using State = System::State;
+using State = typename System::State;
 
 template<size_t NumTimeSteps, typename... Networks>
 void evaluate(const System& system, const State& _initialState, double _timeStep, Networks&... _networks)
 {
 	State initialState{ _initialState };
 
-	discretization::LeapFrog<System> leapFrog(system, _timeStep);
-	discretization::ForwardEuler<System> forwardEuler(system, _timeStep);
+	namespace discret = systems::discretization;
+	discret::LeapFrog<System> leapFrog(system, _timeStep);
+	discret::ForwardEuler<System> forwardEuler(system, _timeStep);
 
 	auto referenceIntegrate = [&](const State& _state)
 	{
-		discretization::LeapFrog<System> forward(system, _timeStep / HYPER_SAMPLE_RATE);
+		discret::LeapFrog<System> forward(system, _timeStep / HYPER_SAMPLE_RATE);
 		auto state = _state;
 		for (int64_t i = 0; i < HYPER_SAMPLE_RATE; ++i)
 			state = forward(state);
@@ -112,8 +114,13 @@ void evaluate(const System& system, const State& _initialState, double _timeStep
 		t += _timeStep;
 		return State{ std::cos(t / 2.30625 * 2.0 * PI) * _initialState.position, 0.0 };
 	};*/
-
-	eval::evaluate(system, initialState, referenceIntegrate, leapFrog, 
+	
+	eval::EvalOptions options;
+	eval::evaluate(system, 
+		initialState, 
+		options,
+		referenceIntegrate, 
+		leapFrog, 
 		nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
 }
 
@@ -150,7 +157,7 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-	systems::HeatEquation<double, 64> heatEq;
+/*	systems::HeatEquation<double, 64> heatEq;
 //	systems::discretization::FiniteDifferencesHeatEq integ(heatEq, 0.0001);
 	systems::discretization::AnalyticHeatEq integ(heatEq, 0.0001);
 	systems::HeatEquation<double, 64>::State testState{};
@@ -171,7 +178,7 @@ int main()
 			return exState;
 		});
 	renderer.run();
-	return 0;
+	return 0;*/
 
 	System system(0.1, 9.81, 0.5);
 	//System system(1.0, 1.0, 1.0);
@@ -427,13 +434,13 @@ int main()
 		//	evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
 
-	/*	auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
+		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 		torch::load(othNet, *params.get<std::string>("name"));
 		evaluate<NUM_INPUTS>(system,
 			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
 			* params.get<double>("time_step"),
 			othNet);
-		return 0;*/
+		return 0;
 
 		//{ 0.1, 0.05, 0.025, 0.01, 0.005 };
 		std::vector<double> timeSteps = /*{ 0.1, 0.05, 0.025, 0.01, 0.005 };*/{ 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 };

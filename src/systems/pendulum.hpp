@@ -1,8 +1,10 @@
 #pragma once
 
 #include "state.hpp"
+#include "../constants.hpp"
 #include <cmath>
 #include <vector>
+#include <iostream>
 
 namespace systems {
 
@@ -16,6 +18,12 @@ namespace systems {
 		{
 			T position;
 			T velocity;
+
+			friend std::ostream& operator << (std::ostream& out, const State& s)
+			{
+				out << std::fmod(s.position, PI) << ", " << s.velocity;
+				return out;
+			}
 		};
 
 		Pendulum(T _mass = 1.0, T _gravity = 1.0, T _len = 1.0)
