@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../systems/state.hpp"
+#include "../systems/state.hpp"
 #include <torch/torch.h>
 #include <c10/core/ScalarType.h>
 #include <array>
@@ -38,7 +39,7 @@ namespace nn{
 				m_states[i] = m_states[i + 1];
 			m_states[NumStates - 1] = _state;
 
-			constexpr size_t stateSize = sizeof(State) / sizeof(T);
+			constexpr size_t stateSize = systems::sizeOfState<System>();
 
 			torch::Tensor next = m_network->forward(torch::from_blob(m_states.data(),
 				{ static_cast<int64_t>(stateSize * NumStates) },

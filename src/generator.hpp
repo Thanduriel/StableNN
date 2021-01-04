@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nn/dataset.hpp"
+#include "systems/state.hpp"
 
 template<typename System, typename Integrator>
 class DataGenerator
@@ -27,7 +28,7 @@ public:
 		assert(_initialStates.size() >= 1);
 		if (_numInputSteps == 1) _useSingleOutput = true;
 
-		const int64_t stateSize = sizeof(SysState) / sizeof(typename System::ValueT);
+		const int64_t stateSize = systems::sizeOfState<System>();
 		const int64_t inputSize = _numInputSteps * stateSize;
 		const int64_t outputSize = _useSingleOutput ? stateSize : inputSize;
 

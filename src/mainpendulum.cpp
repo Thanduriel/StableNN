@@ -1,9 +1,9 @@
 #include "systems/pendulum.hpp"
-#include "systems/heateq.hpp"
 #include "systems/odesolver.hpp"
-#include "systems/heateqsolver.hpp"
 #include "systems/serialization.hpp"
 #include "constants.hpp"
+#include "defs.hpp"
+#include "nn/train.hpp"
 #include "nn/mlp.hpp"
 #include "nn/dataset.hpp"
 #include "nn/nnintegrator.hpp"
@@ -28,37 +28,10 @@
 #include <random>
 #include <filesystem>
 
-// simulation related
-constexpr int64_t HYPER_SAMPLE_RATE = 100;
-
-// network parameters
-constexpr size_t NUM_INPUTS = 1;
-constexpr bool USE_SINGLE_OUTPUT = true;
-constexpr int HIDDEN_SIZE = 2 * 2;
-constexpr bool USE_WRAPPER = USE_SINGLE_OUTPUT && (NUM_INPUTS > 1 || HIDDEN_SIZE > 2);
-
-// training
-enum struct Mode {
-	TRAIN,
-	EVALUATE,
-	TRAIN_MULTI,
-	TRAIN_EVALUATE
-};
-constexpr Mode MODE = Mode::TRAIN_EVALUATE;
-constexpr int64_t NUM_FORWARDS = 1;
-constexpr bool SAVE_NET = true;
-constexpr bool LOG_LOSS = true;
-constexpr bool USE_LBFGS = true;
-// only relevant in TRAIN_MULTI to enforce same initial rng state for all networks
-constexpr bool THREAD_FIXED_SEED = true;
-constexpr bool USE_SEQ_SAMPLER = true;
-using NetType = nn::MultiLayerPerceptron;
-
-// evaluation
-constexpr bool SHOW_VISUAL = false;
-
 using System = systems::Pendulum<double>;
 using State = typename System::State;
+
+using NetType = nn::MultiLayerPerceptron;
 
 template<size_t NumTimeSteps, typename... Networks>
 void evaluate(const System& system, const State& _initialState, double _timeStep, Networks&... _networks)
@@ -92,16 +65,17 @@ void evaluate(const System& system, const State& _initialState, double _timeStep
 
 	if constexpr (SHOW_VISUAL)
 	{
-		eval::PendulumRenderer renderer(_timeStep);
-
-		// use extra integrator because nn::Integrator may have an internal state
+		// copy integrator because nn::Integrator may have an internal state
 		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
+		auto visState = initialState;
 		// warmup to see long term behavior
 		for (int i = 0; i < 10000; ++i)
 		{
-			initialState = std::get<0>(integrators)(initialState);
+			visState = std::get<0>(integrators)(visState);
 		}
-		renderer.addIntegrator([drawIntegrator=std::get<0>(integrators), state=initialState]() mutable
+
+		eval::PendulumRenderer renderer(_timeStep);
+		renderer.addIntegrator([drawIntegrator=std::get<0>(integrators), state=visState]() mutable
 			{
 				state = drawIntegrator(state);
 				return state.position;
@@ -116,7 +90,7 @@ void evaluate(const System& system, const State& _initialState, double _timeStep
 	};*/
 	
 	eval::EvalOptions options;
-	eval::evaluate(system, 
+	eval::evaluate(system,
 		initialState, 
 		options,
 		referenceIntegrate, 
@@ -158,10 +132,6 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 int main()
 {
 	System system(0.1, 9.81, 0.5);
-	//System system(1.0, 1.0, 1.0);
-
-	constexpr uint64_t torchSeed = 9378341130ul;
-	torch::manual_seed(torchSeed);
 
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
 	trainingStates.push_back({ 3.0,0 });
@@ -179,145 +149,8 @@ int main()
 			});
 		renderer.run();
 	}*/
-
-	std::mutex initMutex;
-	std::mutex loggingMutex;
-	auto trainNetwork = [&, torchSeed](const nn::HyperParams& _params)
-	{
-		using Integrator = systems::discretization::LeapFrog<System>;
-		Integrator referenceIntegrator(system, *_params.get<double>("time_step") / HYPER_SAMPLE_RATE);
-		DataGenerator generator(system, referenceIntegrator);
-
-		namespace dat = torch::data;
-		const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
-		auto dataset = generator.generate(trainingStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
-			.map(dat::transforms::Stack<>());
-		auto validationSet = generator.generate(validStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
-			.map(dat::transforms::Stack<>());
-
-		// LBFGS does not work with mini batches
-		using Sampler = std::conditional_t<USE_SEQ_SAMPLER, 
-			dat::samplers::SequentialSampler, 
-			dat::samplers::RandomSampler>;
-		auto data_loader = dat::make_data_loader<Sampler>(
-			dataset,
-			dat::DataLoaderOptions().batch_size(USE_LBFGS ? std::numeric_limits< size_t>::max() : 64));
-		auto validationLoader = dat::make_data_loader(
-			validationSet,
-			dat::DataLoaderOptions().batch_size(64));
-
-		if constexpr (THREAD_FIXED_SEED)
-		{
-			initMutex.lock();
-			torch::manual_seed(torchSeed);
-		}
-		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(_params);
-		auto bestNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(_params);
-		if constexpr (THREAD_FIXED_SEED)
-		{
-			initMutex.unlock();
-		}
-
-		//	auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return torch::mse_loss(self, target); };
-		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 3); };
-
-		auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
-		{
-			if constexpr (USE_SINGLE_OUTPUT && NUM_FORWARDS > 1)
-				return nn::shiftTimeSeries(input, output, 2);
-			else
-				return output;
-		};
-
-		
-		auto makeOptimizer = [&_params, &net]()
-		{
-			if constexpr (USE_LBFGS)
-				return torch::optim::LBFGS(net->parameters(),
-					torch::optim::LBFGSOptions(*_params.get<double>("lr")));
-			else
-				return torch::optim::Adam(net->parameters(),
-					torch::optim::AdamOptions(_params.get<double>("lr", 3.e-4))
-					.weight_decay(_params.get<double>("weight_decay", 1.e-6))
-					.amsgrad(_params.get<bool>("amsgrad", false)));
-		};
-		auto optimizer = makeOptimizer();
-
-		double bestValidLoss = std::numeric_limits<double>::max();
-
-		//std::ofstream lossFile("loss.txt");
-
-		for (int64_t epoch = 1; epoch <= 2048; ++epoch)
-		{
-			// train
-			net->train();
-			
-			torch::Tensor totalLoss = torch::zeros({ 1 });
-
-			for (torch::data::Example<>& batch : *data_loader)
-			{
-				auto closure = [&]()
-				{
-					net->zero_grad();
-					torch::Tensor output;
-					torch::Tensor input = batch.data;
-					for (int64_t i = 0; i < NUM_FORWARDS; ++i)
-					{
-						output = net->forward(input);
-						input = nextInput(input, output);
-					}
-					torch::Tensor loss = lossFn(output, batch.target);
-					totalLoss += loss;
-
-					loss.backward();
-					return loss;
-				};
-
-				optimizer.step(closure);
-			}
-
-			// validation
-			net->eval();
-			torch::Tensor validLoss = torch::zeros({ 1 });
-			for (torch::data::Example<>& batch : *validationLoader)
-			{
-				torch::Tensor output;
-				torch::Tensor input = batch.data;
-				for (int64_t i = 0; i < NUM_FORWARDS; ++i)
-				{
-					output = net->forward(input);
-					input = nextInput(input, output);
-				}
-				torch::Tensor loss = lossFn(output, batch.target);
-				validLoss += loss;
-			}
-
-
-			const double totalValidLossD = validLoss.item<double>();
-			if (totalValidLossD < bestValidLoss)
-			{
-				if constexpr (MODE != Mode::TRAIN_MULTI)
-					std::cout << validLoss.item<double>() << "\n";
-				bestNet = nn::clone(net);
-				bestValidLoss = totalValidLossD;
-			}
-
-			//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
-		//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
-		}
-		if(LOG_LOSS)
-		{
-			std::unique_lock<std::mutex> lock(loggingMutex);
-			std::ofstream lossLog("losses.txt", std::ios::app);
-			lossLog << bestValidLoss << std::endl;
-		}
-		if (SAVE_NET)
-		{
-			torch::save(bestNet, _params.get<std::string>("name", "net.pt"));
-		}
-
-		return bestValidLoss;
-	};
+	using Integrator = systems::discretization::LeapFrog<System>;
+	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
 	params["time_step"] = 0.05;

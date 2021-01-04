@@ -2,12 +2,15 @@
 #include "systems/heateqsolver.hpp"
 #include "evaluation/renderer.hpp"
 
+using System = systems::HeatEquation<double, 64>;
+using State = typename System::State;
+
 int main()
 {
-	systems::HeatEquation<double, 64> heatEq;
+	System heatEq;
 //	systems::discretization::FiniteDifferencesHeatEq integ(heatEq, 0.0001);
 	systems::discretization::AnalyticHeatEq integ(heatEq, 0.0001);
-	systems::HeatEquation<double, 64>::State testState{};
+	System::State testState{};
 	testState.fill(50.f);
 	testState[32] = 272.0;
 	testState[4] = 0.0;
