@@ -7,6 +7,8 @@ project (StableNN)
 
 # find all source and header files
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp" "src/*.hpp" "src/*.inl")
+list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainpendulum.cpp")
+list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainheateq.cpp")
 
 # organize the files according to the organisation in the file system
 # from: http:#cmake.3232098.n2.nabble.com/Keep-folder-structure-in-Visual-Studio-Project-generated-with-CMake-td7586044.html
@@ -25,15 +27,30 @@ endmacro()
 # execute tha macro
 GroupSources(src)
 
-add_executable(pendulum ${SOURCE_FILES})
+add_library(stableNN STATIC ${SOURCE_FILES})
+set_target_properties(stableNN PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+)
+
+add_executable(pendulum "src/mainpendulum.cpp")
 set_target_properties(pendulum PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES
 )
+target_link_libraries(pendulum stableNN)
+
+add_executable(heateq "src/mainheateq.cpp")
+set_target_properties(heateq PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+)
+target_link_libraries(heateq stableNN)
+
 if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT pendulum)
 else()
-	target_compile_options(pendulum PRIVATE -Wall -Wextra -pedantic)
+	target_compile_options(pendulum PUBLIC -Wall -Wextra -pedantic)
 endif (MSVC)
 
 #---------------------------------------------------------------------------------------
@@ -41,7 +58,7 @@ endif (MSVC)
 #---------------------------------------------------------------------------------------
 
 find_package(Torch REQUIRED)
-target_link_libraries(pendulum "${TORCH_LIBRARIES}")
+target_link_libraries(stableNN PUBLIC "${TORCH_LIBRARIES}")
 
 find_package(SFML COMPONENTS system graphics window QUIET)
 if (NOT SFML_FOUND)
@@ -53,7 +70,7 @@ if (NOT SFML_FOUND)
 	set(SFML_BUILD_EXAMPLES FALSE)
 	set(SFML_BUILD_DOC FALSE)
 	set(SFML_BUILD_NETWORK FALSE)
-	target_include_directories(pendulum PRIVATE "dependencies/SFML/include")
+	target_include_directories(stableNN PRIVATE "dependencies/SFML/include")
 	add_subdirectory("dependencies/SFML")
 endif()
-target_link_libraries(pendulum sfml-system sfml-graphics sfml-window)
+target_link_libraries(stableNN PRIVATE sfml-system sfml-graphics sfml-window)

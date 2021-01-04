@@ -1,6 +1,7 @@
 #pragma once
 
 #include "heateq.hpp"
+#include "../constants.hpp"
 #include <torch/torch.h>
 #include <c10/core/ScalarType.h>
 

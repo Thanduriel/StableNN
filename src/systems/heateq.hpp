@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 namespace systems {
 
 	// 1D heat equation with equidistant spatial discretization on a circle

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <SFML/Graphics.hpp>
 #include <functional>
 
 namespace eval {
@@ -13,9 +12,7 @@ namespace eval {
 		void addIntegrator(std::function<double()> _integrator);
 		void run();
 	private:
-		sf::RenderWindow m_window;
 		double m_deltaTime;
-
 		std::function < double() > m_integrator;
 	};
 
@@ -27,7 +24,6 @@ namespace eval {
 
 		void run();
 	private:
-		sf::RenderWindow m_window;
 		double m_deltaTime;
 		Integrator m_integrator;
 	};

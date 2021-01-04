@@ -157,33 +157,10 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-/*	systems::HeatEquation<double, 64> heatEq;
-//	systems::discretization::FiniteDifferencesHeatEq integ(heatEq, 0.0001);
-	systems::discretization::AnalyticHeatEq integ(heatEq, 0.0001);
-	systems::HeatEquation<double, 64>::State testState{};
-	testState.fill(50.f);
-	testState[32] = 272.0;
-	testState[4] = 0.0;
-	testState[5] = 0.0;
-	testState[6] = 0.0;
-	testState[42] = 78.0;
-
-	int counter = 0;
-	eval::HeatRenderer renderer(0.01, [&, state=testState]() mutable
-		{
-			state = integ(state);
-			std::vector<double> exState;
-			for (double d : state)
-				exState.push_back(d);
-			return exState;
-		});
-	renderer.run();
-	return 0;*/
-
 	System system(0.1, 9.81, 0.5);
 	//System system(1.0, 1.0, 1.0);
 
-	constexpr uint64_t torchSeed = 9378341130ul;//9378341134ul;
+	constexpr uint64_t torchSeed = 9378341130ul;
 	torch::manual_seed(torchSeed);
 
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
@@ -240,15 +217,6 @@ int main()
 		{
 			initMutex.unlock();
 		}
-
-	/*	if constexpr (USE_LBFGS)
-		{
-			for (auto& layer : net->hiddenNet->hiddenLayers)
-			{
-				torch::NoGradGuard guard;
-			//	layer->weight.fill_(1.0);
-			}
-		}*/
 
 		//	auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return torch::mse_loss(self, target); };
 		auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target) { return nn::lp_loss(self, target, 3); };
@@ -497,7 +465,7 @@ int main()
 		std::vector<std::thread> threads;
 		const size_t numThreads = std::min(static_cast<size_t>(8), names.size());
 		const size_t numTasks = names.size() / numThreads;
-		for (int i = 0; i < numThreads-1; ++i)
+		for (size_t i = 0; i < numThreads-1; ++i)
 		{
 			threads.emplace_back(computeFrequencies, i* numTasks, (i+1) * numTasks);
 		}

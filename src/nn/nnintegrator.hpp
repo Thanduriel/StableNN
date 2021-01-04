@@ -13,6 +13,16 @@ namespace nn{
 		using State = typename System::State;
 		using T = typename System::ValueT;
 	public:
+		// Computes the initial time-series with the given integrator.
+		template<typename RefIntegrator>
+		Integrator(Network& _network, const State& _initialState, RefIntegrator& _integrator)
+			: m_network(_network)
+		{
+			_network->to(c10::CppTypeToScalarType<T>());
+			for (size_t i = 1; i < NumStates; ++i)
+				m_states[i] = _initialState[i - 1];
+		}
+
 		Integrator(Network& _network, const std::array<State, NumStates-1>& _initialState = {})
 			: m_network(_network)
 		{

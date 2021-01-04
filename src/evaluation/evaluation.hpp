@@ -89,7 +89,7 @@ namespace eval {
 
 			evalSteps(energyFile, [&](std::ostream& out, const State& state)
 				{
-					energyFile << _system.energy(state) << " ";
+					out << _system.energy(state) << " ";
 				});
 		}
 
