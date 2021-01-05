@@ -18,7 +18,7 @@ enum struct Mode {
 	TRAIN_MULTI,
 	TRAIN_EVALUATE
 };
-constexpr Mode MODE = Mode::TRAIN_EVALUATE;
+constexpr Mode MODE = Mode::EVALUATE;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
 constexpr bool LOG_LOSS = true;

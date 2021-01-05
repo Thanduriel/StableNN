@@ -23,7 +23,7 @@ namespace eval {
 	{
 		bool writeEnergy = false;
 		bool writeState = false;
-		bool writeMSE = true;
+		bool writeMSE = false;
 		int numShortTermSteps = 256;
 		int numLongTermSteps = 4;
 	};
@@ -50,8 +50,6 @@ namespace eval {
 		const auto initialEnergy = _system.energy(_initialState);
 		std::cout << "initial state:  " << _initialState << "\n";
 		std::cout << "initial energy: " << initialEnergy << std::endl;
-		std::cout.precision(5);
-		std::cout << std::fixed;
 
 		// short term
 		stateLog.reserve(_options.numShortTermSteps + 1);
@@ -111,7 +109,11 @@ namespace eval {
 			{
 				mseFile << err / _options.numShortTermSteps << ", ";
 			}
+			mseFile << "\n";
 		}
+
+		std::cout.precision(5);
+		std::cout << std::fixed;
 
 		std::cout << "mse============================================" << "\n";
 		for (double err : cumulativeError)
@@ -119,18 +121,21 @@ namespace eval {
 			std::cout << err / _options.numShortTermSteps << ", ";
 		}
 
-		// long term energy behavior
-		std::cout << "\nlongterm=======================================" << "\n";
-		for (int i = 0; i < _options.numLongTermSteps; ++i)
+		if (!_options.numLongTermSteps)
 		{
-			for (int j = 0; j < 4096; ++j)
+			// long term energy behavior
+			std::cout << "\nlongterm=======================================" << "\n";
+			for (int i = 0; i < _options.numLongTermSteps; ++i)
 			{
-				details::evaluateStep<0>(currentState, _integrators...);
-			}
+				for (int j = 0; j < 4096; ++j)
+				{
+					details::evaluateStep<0>(currentState, _integrators...);
+				}
 
-			for (auto& state : currentState)
-				std::cout << _system.energy(state) << ", ";
-			std::cout << "\n";
+				for (auto& state : currentState)
+					std::cout << _system.energy(state) << ", ";
+				std::cout << "\n";
+			}
 		}
 	}
 }

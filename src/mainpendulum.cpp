@@ -34,10 +34,13 @@ using State = typename System::State;
 using NetType = nn::MultiLayerPerceptron;
 
 template<size_t NumTimeSteps, typename... Networks>
-void evaluate(const System& system, const State& _initialState, double _timeStep, Networks&... _networks)
+void evaluate(
+	const System& system,
+	const State& _initialState, 
+	double _timeStep, 
+	eval::EvalOptions _options, 
+	Networks&... _networks)
 {
-	State initialState{ _initialState };
-
 	namespace discret = systems::discretization;
 	discret::LeapFrog<System> leapFrog(system, _timeStep);
 	discret::ForwardEuler<System> forwardEuler(system, _timeStep);
@@ -52,16 +55,7 @@ void evaluate(const System& system, const State& _initialState, double _timeStep
 	};
 
 	// prepare initial time series
-	std::array<System::State, NumTimeSteps-1> initialStates;
-	if (NumTimeSteps > 1)
-	{
-		initialStates[0] = initialState;
-		for (size_t i = 1; i < initialStates.size(); ++i)
-		{
-			initialStates[i] = referenceIntegrate(initialStates[i - 1]);
-		}
-		initialState = referenceIntegrate(initialStates.back());
-	}
+	const auto& [initialStates, initialState] = nn::computeTimeSeries<NumTimeSteps>(referenceIntegrate, _initialState);
 
 	if constexpr (SHOW_VISUAL)
 	{
@@ -89,20 +83,40 @@ void evaluate(const System& system, const State& _initialState, double _timeStep
 		return State{ std::cos(t / 2.30625 * 2.0 * PI) * _initialState.position, 0.0 };
 	};*/
 	
-	eval::EvalOptions options;
 	eval::evaluate(system,
 		initialState, 
-		options,
+		_options,
 		referenceIntegrate, 
 		leapFrog, 
 		nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
 }
 
 template<size_t NumTimeSteps, typename... Networks>
-void evaluate(const System& _system, const std::vector<State>& _initialStates, double _timeStep, Networks&... _networks)
+void evaluate(const System& _system, 
+	const std::vector<State>& _initialStates, 
+	double _timeStep,
+	const eval::EvalOptions& _options,
+	Networks&... _networks)
 {
 	for (const State& state : _initialStates)
-		evaluate<NumTimeSteps>(_system, state, _timeStep, _networks...);
+		evaluate<NumTimeSteps>(_system, state, _timeStep, _options, _networks...);
+}
+
+template<size_t NumTimeSteps, typename... Networks>
+void makeEnergyErrorData(const System& _system, double _timeStep, Networks&... _networks)
+{
+	eval::EvalOptions options;
+	options.writeMSE = true;
+	options.numLongTermSteps = 0;
+	options.numShortTermSteps = 128;
+
+	constexpr int numStates = 128;
+	std::vector<State> states;
+	states.reserve(numStates);
+	for (int i = 0; i < numStates; ++i)
+		states.push_back({ static_cast<double>(i) / numStates * PI, 0.0 });
+
+	evaluate<NumTimeSteps>(_system, states, _timeStep, options, _networks...);
 }
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
@@ -157,7 +171,7 @@ int main()
 	params["valid_samples"] = 16;
 
 	params["time_step"] = 0.05;
-	params["lr"] = 0.085;//4e-4;
+	params["lr"] = 0.083;//4e-4;
 	params["weight_decay"] = 1e-6; //4
 	params["depth"] = 4;
 	params["diffusion"] = 0.1;
@@ -203,6 +217,7 @@ int main()
 
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
+		eval::EvalOptions options;
 	/*	nn::HyperParams hamiltonianParams(params);
 		hamiltonianParams["train_in"] = true;
 		hamiltonianParams["train_out"] = true;
@@ -240,10 +255,12 @@ int main()
 
 		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 		torch::load(othNet, *params.get<std::string>("name"));
-		evaluate<NUM_INPUTS>(system,
+		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet);
+	/*	evaluate<NUM_INPUTS>(system,
 			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
 			* params.get<double>("time_step"),
-			othNet);
+			options,
+			othNet);*/
 		return 0;
 
 		//{ 0.1, 0.05, 0.025, 0.01, 0.005 };
