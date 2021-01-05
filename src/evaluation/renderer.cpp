@@ -60,7 +60,7 @@ namespace eval {
 
 	}
 
-	constexpr float BASE_RADIUS = 64.f;
+	constexpr float BASE_RADIUS = 8.f;
 
 	void HeatRenderer::run()
 	{
@@ -74,6 +74,7 @@ namespace eval {
 		sf::VertexArray triangles(sf::TriangleFan, state.size() + 2);
 		triangles[0].position = origin;
 
+		int steps = 0;
 		while (window.isOpen())
 		{
 			sf::Event event;
@@ -95,9 +96,11 @@ namespace eval {
 
 			window.clear(sf::Color::Black);
 			window.draw(triangles);
+			window.setTitle("heateq - " + std::to_string(steps) + " / " + std::to_string(steps * m_deltaTime) + "s");
 			window.display();
 
 			state = m_integrator();
+			++steps;
 		}
 	}
 }

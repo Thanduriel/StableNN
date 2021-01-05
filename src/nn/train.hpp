@@ -24,14 +24,15 @@ namespace nn {
 
 		double operator()(const nn::HyperParams& _params) const
 		{
-			Integrator referenceIntegrator(m_system, *_params.get<double>("time_step") / HYPER_SAMPLE_RATE);
+			const int64_t hyperSampleRate = _params.get<int>("hyper_sample_rate", HYPER_SAMPLE_RATE);
+			Integrator referenceIntegrator(m_system, *_params.get<double>("time_step") / hyperSampleRate);
 			DataGenerator<System, Integrator> generator(m_system, referenceIntegrator);
 
 			namespace dat = torch::data;
 			const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
-			auto dataset = generator.generate(m_trainStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
+			auto dataset = generator.generate(m_trainStates, *_params.get<int>("train_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
 				.map(dat::transforms::Stack<>());
-			auto validationSet = generator.generate(m_validStates, 16, HYPER_SAMPLE_RATE, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
+			auto validationSet = generator.generate(m_validStates, *_params.get<int>("valid_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
 				.map(dat::transforms::Stack<>());
 
 			// LBFGS does not work with mini batches
@@ -47,14 +48,15 @@ namespace nn {
 
 			if constexpr (THREAD_FIXED_SEED)
 			{
-				m_initMutex.lock();
+				s_initMutex.lock();
 				torch::manual_seed(TORCH_SEED);
 			}
-			auto net = nn::makeNetwork<Network, USE_WRAPPER, 2>(_params);
-			auto bestNet = nn::makeNetwork<Network, USE_WRAPPER, 2>(_params);
+			constexpr int stateSize = systems::sizeOfState<System>();
+			auto net = nn::makeNetwork<Network, USE_WRAPPER, stateSize>(_params);
+			auto bestNet = nn::makeNetwork<Network, USE_WRAPPER, stateSize>(_params);
 			if constexpr (THREAD_FIXED_SEED)
 			{
-				m_initMutex.unlock();
+				s_initMutex.unlock();
 			}
 
 			auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target)
@@ -143,12 +145,12 @@ namespace nn {
 					bestValidLoss = totalValidLossD;
 				}
 
-				//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
+			//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
 			//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
 			}
 			if (LOG_LOSS)
 			{
-				std::unique_lock<std::mutex> lock(m_loggingMutex);
+				std::unique_lock<std::mutex> lock(s_loggingMutex);
 				std::ofstream lossLog("losses.txt", std::ios::app);
 				lossLog << bestValidLoss << std::endl;
 			}
@@ -164,13 +166,13 @@ namespace nn {
 		System m_system;
 		std::vector<State> m_trainStates;
 		std::vector<State> m_validStates;
-		static std::mutex m_initMutex;
-		static std::mutex m_loggingMutex;
+		static std::mutex s_initMutex;
+		static std::mutex s_loggingMutex;
 	};
 
 	template<typename Network, typename System, typename Integrator>
-	std::mutex TrainNetwork<Network, System, Integrator>::m_initMutex;
+	std::mutex TrainNetwork<Network, System, Integrator>::s_initMutex;
 
 	template<typename Network, typename System, typename Integrator>
-	std::mutex TrainNetwork<Network, System, Integrator>::m_loggingMutex;
+	std::mutex TrainNetwork<Network, System, Integrator>::s_loggingMutex;
 }

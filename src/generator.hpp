@@ -1,5 +1,6 @@
 #pragma once
 
+#include "helpers.hpp"
 #include "nn/dataset.hpp"
 #include "systems/state.hpp"
 
@@ -28,7 +29,7 @@ public:
 		assert(_initialStates.size() >= 1);
 		if (_numInputSteps == 1) _useSingleOutput = true;
 
-		const int64_t stateSize = systems::sizeOfState<System>();
+		constexpr int64_t stateSize = systems::sizeOfState<System>();
 		const int64_t inputSize = _numInputSteps * stateSize;
 		const int64_t outputSize = _useSingleOutput ? stateSize : inputSize;
 
@@ -78,15 +79,20 @@ private:
 		size_t _subSteps) const
 	{
 		SysState state{ _initialState };
-		std::vector<typename System::State> results;
+		std::vector<SysState> results;
 		results.reserve(_steps);
 		results.push_back(state);
+
+		// a statefull integrator with non const operator() needs to be recreated
+		Integrator integrator = m_integrator;
+		if constexpr (!is_callable<const Integrator, SysState>::value)
+			integrator = Integrator(m_system, m_integrator.getDeltaTime(), _initialState);
 
 		const size_t computeSteps = _steps * _subSteps;
 		// start at 1 because we already have the initial state
 		for (size_t i = 1; i < computeSteps; ++i)
 		{
-			state = m_integrator(state);
+			state = integrator(state);
 			if (i % _subSteps == 0)
 				results.push_back(state);
 		}

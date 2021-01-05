@@ -153,6 +153,9 @@ int main()
 	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
+	params["train_samples"] = 16;
+	params["valid_samples"] = 16;
+
 	params["time_step"] = 0.05;
 	params["lr"] = 0.085;//4e-4;
 	params["weight_decay"] = 1e-6; //4

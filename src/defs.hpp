@@ -25,7 +25,7 @@ constexpr bool LOG_LOSS = true;
 constexpr bool USE_LBFGS = true;
 // only relevant in TRAIN_MULTI to enforce same initial rng state for all networks
 constexpr bool THREAD_FIXED_SEED = true;
-constexpr bool USE_SEQ_SAMPLER = true;
+constexpr bool USE_SEQ_SAMPLER = USE_LBFGS;
 constexpr uint64_t TORCH_SEED = 9378341130ul;
 
 // evaluation

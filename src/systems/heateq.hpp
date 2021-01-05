@@ -12,6 +12,7 @@ namespace systems {
 	public:
 		using ValueT = T;
 		using State = std::array<T, N>;
+		constexpr static int NumPoints = N;
 
 		HeatEquation() = default;
 

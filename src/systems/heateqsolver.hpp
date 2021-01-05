@@ -13,19 +13,18 @@ namespace discretization {
 	{
 		using State = typename HeatEquation<T,N>::State;
 
-		AnalyticHeatEq(const HeatEquation<T,N>& _system, T _dt) : m_dt(_dt) {}
-
-		State operator()(const State& _state)
+		// The default _initialState should only be used if operator() is never called.
+		AnalyticHeatEq(const HeatEquation<T, N>& _system, T _dt, const State& _initialState = {})
+			: m_dt(_dt)
 		{
-			if (!m_initialized)
-			{
-				const torch::Tensor s = torch::from_blob(const_cast<T*>(_state.data()),
-					{ static_cast<int64_t>(_state.size()) },
-					c10::TensorOptions(c10::CppTypeToScalarType<T>()));
-				m_initialStateF = torch::fft_rfft(s, _state.size());
-				m_initialized = true;
-			}
+			const torch::Tensor s = torch::from_blob(const_cast<T*>(_initialState.data()),
+				{ static_cast<int64_t>(_initialState.size()) },
+				c10::TensorOptions(c10::CppTypeToScalarType<T>()));
+			m_initialStateF = torch::fft_rfft(s, _initialState.size());
+		}
 
+		State operator()(const State& _state) 
+		{
 			m_t += m_dt;
 			torch::Tensor scale = torch::zeros_like(m_initialStateF);
 			for (int64_t i = 0; i < scale.size(0); ++i)
@@ -39,9 +38,9 @@ namespace discretization {
 			return *reinterpret_cast<State*>(next.data_ptr<T>());
 		}
 
+		T getDeltaTime() const { return m_dt; }
 	private:
 		T m_dt;
-		bool m_initialized = false;
 		T m_t = 0.0;
 		torch::Tensor m_initialStateF;
 	};
@@ -53,7 +52,7 @@ namespace discretization {
 
 		FiniteDifferencesHeatEq(const HeatEquation<T, N>& _system, T _dt) : m_dt(_dt) {}
 
-		State operator()(const State& _state)
+		State operator()(const State& _state) const
 		{
 			State next{};
 
