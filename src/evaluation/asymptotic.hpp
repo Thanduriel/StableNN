@@ -41,13 +41,13 @@ namespace eval {
 			return e0;
 		};
 
-	//	std::cout << "attractors: energy, position\n";
+		std::cout << "attractors: energy, position\n";
 		for (double x = 0.0; x < PI; x += stepSize)
 		{
 			const double e = integrate(x);
 			if (attractors.empty() || std::abs(attractors.back() - e) > THRESHOLD)
 			{
-			//	std::cout << e << ", " << x << std::endl;
+				std::cout << e << ", " << x << std::endl;
 				attractors.push_back(e);
 				repellers.push_back({ 0.0, x });
 			}

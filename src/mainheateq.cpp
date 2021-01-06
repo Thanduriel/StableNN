@@ -2,13 +2,14 @@
 #include "systems/heateqsolver.hpp"
 #include "nn/train.hpp"
 #include "nn/mlp.hpp"
+#include "nn/nnintegrator.hpp"
 #include "evaluation/renderer.hpp"
+#include "evaluation/evaluation.hpp"
 #include <random>
 
 using System = systems::HeatEquation<double, 64>;
 using State = typename System::State;
 using T = System::ValueT;
-using NetType = nn::MultiLayerPerceptron;
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
 {
@@ -55,10 +56,11 @@ int main()
 		});
 	renderer.run();*/
 
-	auto trainingStates = generateStates(heatEq, 12, 0x612FF6AEu);
-	auto validStates = generateStates(heatEq, 2, 0x195A4C);
+	auto trainingStates = generateStates(heatEq, 24, 0x612FF6AEu);
+	auto validStates = generateStates(heatEq, 4, 0x195A4C);
 
 	using Integrator = systems::discretization::AnalyticHeatEq<T, System::NumPoints>;
+	using NetType = nn::MultiLayerPerceptron;
 	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(heatEq, trainingStates, validStates);
 
 	nn::HyperParams params;
@@ -67,9 +69,9 @@ int main()
 	params["valid_samples"] = 1024;
 
 	params["time_step"] = 0.0002;
-	params["lr"] = 0.00085;
-	params["weight_decay"] = 1e-6; //4
-	params["depth"] = 2;
+	params["lr"] = 0.085;
+	params["weight_decay"] = 1e-5; //4
+	params["depth"] = 1;
 	params["diffusion"] = 0.1;
 	params["bias"] = false;
 	params["time"] = 2.0;
@@ -77,8 +79,8 @@ int main()
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["augment"] = 2;
 	params["hidden_size"] = 64;
-	params["train_in"] = true;
-	params["train_out"] = true;
+	params["train_in"] = false;
+	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(nn::identity);
 	params["name"] = std::string("heateq")
 		+ std::to_string(NUM_INPUTS) + "_"
@@ -88,4 +90,27 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 		std::cout << trainNetwork(params) << "\n";
+	if constexpr (MODE == Mode::EVALUATE)
+	{
+		const double timeStep = *params.get<double>("time_step");
+		systems::discretization::AnalyticHeatEq analytic(heatEq, timeStep, validStates[0]);
+		systems::discretization::FiniteDifferencesHeatEq finiteDiffs(heatEq, timeStep);
+
+		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
+		torch::load(net, *params.get<std::string>("name"));
+		nn::Integrator<System, decltype(net), NUM_INPUTS> nn(net);
+
+		eval::HeatRenderer renderer(timeStep*100.f, [&, state = validStates[0]]() mutable
+			{
+				state = nn(state);
+				std::vector<double> exState;
+				for (double d : state)
+					exState.push_back(d);
+				return exState;
+			});
+		renderer.run();
+
+		eval::EvalOptions options;
+		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, nn);
+	}
 }

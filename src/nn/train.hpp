@@ -90,7 +90,8 @@ namespace nn {
 
 			//std::ofstream lossFile("loss.txt");
 
-			for (int64_t epoch = 1; epoch <= 2048; ++epoch)
+			const int64_t numEpochs = 2048;
+			for (int64_t epoch = 1; epoch <= numEpochs; ++epoch)
 			{
 				// train
 				net->train();
@@ -146,7 +147,20 @@ namespace nn {
 				}
 
 			//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
-			//	std::cout << "finished epoch with loss: " << totalLoss.item<double>() << "\n";
+				if constexpr (MODE != Mode::TRAIN_MULTI)
+				{
+					if (epoch % 16 == 0)
+					{
+						constexpr int intervals = 20;
+						const int progress = static_cast<int>(static_cast<float>(epoch * intervals) / numEpochs);
+						std::cout << "<";
+						for (int k = 0; k < progress; ++k)
+							std::cout << "#";
+						for (int k = progress; k < intervals; ++k)
+							std::cout << " ";
+						std::cout << "> train loss: " << totalLoss.item<double>() << "\n";
+					}
+				}
 			}
 			if (LOG_LOSS)
 			{

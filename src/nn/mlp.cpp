@@ -27,7 +27,7 @@ namespace nn {
 	torch::Tensor MultiLayerPerceptronImpl::forward(torch::Tensor x)
 	{
 		for (auto& layer : hiddenLayers)
-			x = x + torch::tanh(layer(x));
+			x = x + options.activation()(layer(x));
 
 		return x;
 	}

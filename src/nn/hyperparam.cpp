@@ -78,6 +78,7 @@ namespace nn {
 			for (size_t i = begin; i < end; ++i)
 			{
 				HyperParams params(m_defaultParams);
+				HyperParams changedParams;
 				std::string fileName = "";
 
 				// setup param file
@@ -87,6 +88,7 @@ namespace nn {
 					const size_t ind = remainder % values.size();
 					remainder /= values.size();
 					params[name] = values[ind];
+					changedParams[name] = values[ind];
 					fileName += std::to_string(ind) + "_";
 				}
 				params["name"] = fileName + m_defaultParams.get<std::string>("name", "") +".pt";
@@ -95,7 +97,7 @@ namespace nn {
 				results[i] = loss;
 
 				const std::lock_guard<std::mutex> guard(mutex);
-				std::cout << "training with " << params << "\n";
+				std::cout << "training with " << changedParams << "\n";
 				std::cout << "loss: " << loss << std::endl;
 
 				if (loss < bestResult)
@@ -123,6 +125,7 @@ namespace nn {
 		// print results
 
 		// combined results over each parameter
+		std::cout << "\nAverage loss over parameters:\n";
 		for (size_t k = 0; k < m_hyperGrid.size(); ++k)
 		{
 			const auto& [name, values] = m_hyperGrid[k];
@@ -142,24 +145,51 @@ namespace nn {
 			std::cout << "\n";
 		}
 
+		// results for parameter pairs
+		std::cout << "\nAverage loss over parameter pairs:\n";
+		for (size_t k1 = 0; k1 < m_hyperGrid.size(); ++k1)
+		{
+			for (size_t k2 = k1 + 1; k2 < m_hyperGrid.size(); ++k2)
+			{
+				const auto& [name1, values1] = m_hyperGrid[k1];
+				const auto& [name2, values2] = m_hyperGrid[k2];
+				const size_t size1 = values1.size();
+				const size_t size2 = values2.size();
+				const size_t size = size1 * size2;
+				std::vector<double> losses(size, 0.0);
+				std::vector<int> sizes(size, 0);
+
+				for (size_t i = 0; i < numOptions; ++i)
+				{
+					const auto& [indK1, _] = decomposeFlatIndex(i, k1);
+					const auto& [indK2, __] = decomposeFlatIndex(i, k2);
+					const size_t idx = indK1 * size2 + indK2;
+					losses[idx] += results[i];
+					sizes[idx]++;
+				}
+
+				std::cout << "\n" << name1 << " \\ " << name2 << "\n";
+				printf("%4.d", 0);
+				for (int j = 0; j < static_cast<int>(size2); ++j)
+					printf("%11d ", j);
+				printf("\n");
+				for (size_t i = 0; i < size1; ++i)
+				{
+					printf("%3d ", static_cast<int>(i));
+					const size_t indPart = i * size2;
+					for (size_t j = 0; j < size2; ++j)
+					{
+						const size_t idx = indPart + j;
+						printf("%.5e ", losses[idx] / sizes[idx]);
+					}
+					printf("\n");
+				}
+			}
+			std::cout << "\n";
+		}
+
 		std::cout << "\n============================\n best result:\n" << bestParams << "\n"
 			<< "loss: " << bestResult << std::endl;
-	/*	size_t remainder = bestResult;
-		for (const auto& [name, values] : m_hyperGrid) 
-		{
-			const size_t ind = remainder % values.size();
-			remainder /= values.size();
-			std::cout << name << ": " << ind;
-
-			// if possible also print the value itself
-			const std::any& val = values[ind];
-			if (val.type() == typeid(float))
-				std::cout << " (" << std::any_cast<float>(val) << ")";
-			else if (val.type() == typeid(double))
-				std::cout << " (" << std::any_cast<double>(val) << ")";
-
-			std::cout << "\n";
-		}*/
 	}
 
 	RandomSearchOptimizer::RandomSearchOptimizer(const TrainFn& _trainFn, uint32_t _seed)

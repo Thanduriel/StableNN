@@ -5,6 +5,7 @@
 #include <cmath>
 #include <vector>
 #include <iostream>
+#include <cassert>
 
 namespace systems {
 
@@ -18,6 +19,10 @@ namespace systems {
 		{
 			T position;
 			T velocity;
+
+			constexpr size_t size() const { return 2; }
+			constexpr T& operator[](size_t i) { assert(i < 2); return i == 0 ? position : velocity; }
+			constexpr T operator[](size_t i) const { assert(i < 2); return i == 0 ? position : velocity; }
 
 			friend std::ostream& operator << (std::ostream& out, const State& s)
 			{

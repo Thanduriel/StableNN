@@ -4,6 +4,7 @@
 #include <fstream>
 #include <array>
 #include <vector>
+#include "../systems/state.hpp"
 
 namespace eval {
 
@@ -61,9 +62,13 @@ namespace eval {
 			for (size_t j = 0; j < numIntegrators; ++j)
 			{
 				const auto& state = currentState[j];
-				const double dx = state.position - currentState[0].position;
-				const double dv = state.velocity - currentState[0].velocity;
-				cumulativeError[j] += std::sqrt(dx * dx + dv * dv);
+				double err = 0.0;
+				for (size_t k = 0; k < state.size(); ++k)
+				{
+					const double d = state[k] - currentState[0][k];
+					err += d * d;
+				}
+				cumulativeError[j] += std::sqrt(err);
 			}
 		}
 
@@ -115,16 +120,17 @@ namespace eval {
 		std::cout.precision(5);
 		std::cout << std::fixed;
 
-		std::cout << "mse============================================" << "\n";
+		std::cout << "mse============================================\n";
 		for (double err : cumulativeError)
 		{
 			std::cout << err / _options.numShortTermSteps << ", ";
 		}
+		std::cout << "\n";
 
 		if (!_options.numLongTermSteps)
 		{
 			// long term energy behavior
-			std::cout << "\nlongterm=======================================" << "\n";
+			std::cout << "longterm=======================================" << "\n";
 			for (int i = 0; i < _options.numLongTermSteps; ++i)
 			{
 				for (int j = 0; j < 4096; ++j)
