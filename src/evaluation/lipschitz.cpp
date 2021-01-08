@@ -9,7 +9,7 @@ namespace eval {
 	double lipschitz(const nn::MultiLayerPerceptron& _net)
 	{
 		double p = 1.0;
-		for (const auto& layer : _net->hiddenLayers)
+		for (const auto& layer : _net->layers)
 		{
 			p *= 1.0 + details::norm(layer->weight, 2);
 		}

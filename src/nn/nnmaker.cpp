@@ -3,6 +3,7 @@
 #include "mlp.hpp"
 #include "antisymmetric.hpp"
 #include "hamiltonian.hpp"
+#include "convolutional.hpp"
 
 namespace nn {
 
@@ -36,5 +37,14 @@ namespace nn {
 			.bias(*_params.get<bool>("bias"))
 			.activation(*_params.get<nn::ActivationFn>("activation"))
 			.augment_size(*_params.get<int>("augment"));
+	}
+
+	template<>
+	ConvolutionalOptions makeOptions<ConvolutionalOptions>(const HyperParams& _params)
+	{
+		return ConvolutionalOptions(*_params.get<size_t>("num_inputs"), *_params.get<int>("filter_size"))
+			.num_layers(*_params.get<int>("depth"))
+			.bias(*_params.get<bool>("bias"))
+			.activation(*_params.get<nn::ActivationFn>("activation"));
 	}
 }

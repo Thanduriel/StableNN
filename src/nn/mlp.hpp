@@ -27,7 +27,7 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor _input);
 
 		MLPOptions options;
-		std::vector<torch::nn::Linear> hiddenLayers;
+		std::vector<torch::nn::Linear> layers;
 	};
 
 	TORCH_MODULE(MultiLayerPerceptron);
@@ -43,7 +43,7 @@ namespace nn {
 
 		MLPOptions options;
 
-		std::vector<torch::nn::Linear> hiddenLayers;
+		std::vector<torch::nn::Linear> layers;
 		std::vector<torch::Tensor> idScales;
 		std::vector<torch::Tensor> addScales;
 	};

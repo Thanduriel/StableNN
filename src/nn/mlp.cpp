@@ -12,13 +12,13 @@ namespace nn {
 	{
 		torch::nn::LinearOptions hiddenOptions(options.hidden_size(), options.hidden_size());
 		hiddenOptions.bias(options.bias());
-		hiddenLayers.clear();
-		hiddenLayers.reserve(options.hidden_layers());
+		layers.clear();
+		layers.reserve(options.hidden_layers());
 
 		for (int64_t i = 0; i < options.hidden_layers(); ++i)
 		{
-			hiddenLayers.emplace_back(torch::nn::Linear(hiddenOptions));
-			register_module("hidden" + std::to_string(i), hiddenLayers.back());
+			layers.emplace_back(torch::nn::Linear(hiddenOptions));
+			register_module("hidden" + std::to_string(i), layers.back());
 		}
 	}
 
@@ -26,7 +26,7 @@ namespace nn {
 
 	torch::Tensor MultiLayerPerceptronImpl::forward(torch::Tensor x)
 	{
-		for (auto& layer : hiddenLayers)
+		for (auto& layer : layers)
 			x = x + options.activation()(layer(x));
 
 		return x;
@@ -42,14 +42,14 @@ namespace nn {
 	{
 		torch::nn::LinearOptions hiddenOptions(options.hidden_size(), options.hidden_size());
 		hiddenOptions.bias(options.bias());
-		hiddenLayers.clear();
-		hiddenLayers.reserve(options.hidden_layers());
+		layers.clear();
+		layers.reserve(options.hidden_layers());
 
 		for (int64_t i = 0; i < options.hidden_layers(); ++i)
 		{
 			const std::string suffix = std::to_string(i);
-			hiddenLayers.emplace_back(torch::nn::Linear(hiddenOptions));
-			register_module("hidden" + suffix, hiddenLayers.back());
+			layers.emplace_back(torch::nn::Linear(hiddenOptions));
+			register_module("hidden" + suffix, layers.back());
 
 			idScales.emplace_back(register_parameter("id" + suffix, torch::ones({ 1 })));
 			torch::nn::init::uniform_(idScales.back(), 0.1, 2.0);
@@ -62,9 +62,9 @@ namespace nn {
 
 	torch::Tensor MultiLayerPerceptronExtImpl::forward(torch::Tensor x)
 	{
-		for (size_t i = 0; i < hiddenLayers.size(); ++i)
+		for (size_t i = 0; i < layers.size(); ++i)
 		{
-			x = idScales[i] * x + addScales[i] * torch::tanh(hiddenLayers[i](x));
+			x = idScales[i] * x + addScales[i] * torch::tanh(layers[i](x));
 		}
 	
 		return x;

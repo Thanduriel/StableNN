@@ -29,7 +29,7 @@ namespace discretization {
 			torch::Tensor scale = torch::zeros_like(m_initialStateF);
 			for (int64_t i = 0; i < scale.size(0); ++i)
 			{
-				scale[i] = std::exp(-i * i * m_t);
+				scale[i] = std::exp(-i*i * m_t);
 			}
 
 			const torch::Tensor nextF = scale * m_initialStateF;

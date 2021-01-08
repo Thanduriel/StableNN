@@ -18,13 +18,13 @@ enum struct Mode {
 	TRAIN_MULTI,
 	TRAIN_EVALUATE
 };
-constexpr Mode MODE = Mode::EVALUATE;
+constexpr Mode MODE = Mode::TRAIN_MULTI;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
 constexpr bool LOG_LOSS = false;
 constexpr bool USE_LBFGS = true;
 // only relevant in TRAIN_MULTI to enforce same initial rng state for all networks
-constexpr bool THREAD_FIXED_SEED = true;
+constexpr bool THREAD_FIXED_SEED = false;
 constexpr bool USE_SEQ_SAMPLER = USE_LBFGS;
 constexpr uint64_t TORCH_SEED = 9378341130ul; // 9378341130ul
 

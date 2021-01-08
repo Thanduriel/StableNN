@@ -90,7 +90,7 @@ namespace nn {
 
 			//std::ofstream lossFile("loss.txt");
 
-			const int64_t numEpochs = 2048;
+			const int64_t numEpochs = _params.get<int>("num_epochs", 2048);
 			for (int64_t epoch = 1; epoch <= numEpochs; ++epoch)
 			{
 				// train

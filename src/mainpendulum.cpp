@@ -106,7 +106,7 @@ void makeEnergyErrorData(const System& _system, double _timeStep, Networks&... _
 	eval::EvalOptions options;
 	options.writeMSE = true;
 	options.numLongTermSteps = 0;
-	options.numShortTermSteps = 128;
+	options.numShortTermSteps = 256;
 
 	constexpr int numStates = 128;
 	std::vector<State> states;
@@ -264,11 +264,11 @@ int main()
 				{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
-			  //	  {"hidden_size", {4, 8, 16}},
-			  //	  {"bias", {false, true}},
+			//	{"hidden_size", {4, 8, 16}},
+			//	{"bias", {false, true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
-			  //	  {"num_inputs", {4ull, 8ull, 16ull}}
-			  //	  {"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
+			//	{"num_inputs", {4ull, 8ull, 16ull}}
+			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
 			}, params);
 
 		hyperOptimizer.run(8);
@@ -316,10 +316,6 @@ int main()
 		//	evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
 
-		std::cout << system.energy({ 0.799204 , 0.0 }) << std::endl;
-		std::cout << system.energy({ 1.82774 , 0.0 });
-		return 0;
-
 		nn::HyperParams antisymParams = params;
 		antisymParams["train_in"] = true;
 		antisymParams["train_out"] = true;
@@ -334,8 +330,8 @@ int main()
 		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 		torch::load(othNet, *params.get<std::string>("name"));
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
-		auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
-	//	makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);
+	//	auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
+		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);
 	/*	evaluate<NUM_INPUTS>(system,
 			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
 			* params.get<double>("time_step"),
