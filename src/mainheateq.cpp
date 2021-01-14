@@ -6,6 +6,7 @@
 #include "nn/nnintegrator.hpp"
 #include "evaluation/renderer.hpp"
 #include "evaluation/evaluation.hpp"
+#include "evaluation/stability.hpp"
 #include <random>
 
 constexpr size_t N = 64;
@@ -63,7 +64,7 @@ int main()
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["augment"] = 2;
 	params["hidden_size"] = static_cast<int>(N);
-	params["filter_size"] = 33;
+	params["filter_size"] = 3;
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(nn::identity);
@@ -94,12 +95,13 @@ int main()
 		systems::discretization::FiniteDifferencesHeatEq finiteDiffs(heatEq, timeStep);
 
 		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-		torch::load(net, *params.get<std::string>("name"));
+	//	torch::load(net, *params.get<std::string>("name"));
+		torch::load(net, "0_0_heateq64_conv.pt");
 		nn::Integrator<System, decltype(net), NUM_INPUTS> nn(net);
 
-		for (size_t i = 0; i < net->layers.size(); ++i)
-			nn::exportTensor(net->layers[0]->weight, "heateq" + std::to_string(i) + ".txt");
-
+		eval::checkEnergy(net->layers.front(), 64);
+	//	for (size_t i = 0; i < net->layers.size(); ++i)
+	//		nn::exportTensor(net->layers[i]->weight, "heateq" + std::to_string(i) + ".txt");
 		eval::HeatRenderer renderer(timeStep*100.f, [&, state = validStates[0]]() mutable
 			{
 				state = nn(state);

@@ -170,7 +170,7 @@ namespace nn {
 			}
 			if (SAVE_NET)
 			{
-				torch::save(bestNet, _params.get<std::string>("name", "net.pt"));
+				torch::save(bestNet, _params.get<std::string>("name", "net") + ".pt");
 			}
 
 			return bestValidLoss;

@@ -27,6 +27,8 @@ namespace nn {
 	torch::Tensor ConvolutionalImpl::forward(torch::Tensor x)
 	{
 		x = x.unsqueeze(x.dim()-1);
+		if (x.dim() < 3)
+			x = x.unsqueeze(0);
 		for (auto& layer : layers)
 			x = options.activation()(layer(x));
 

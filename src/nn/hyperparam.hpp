@@ -13,11 +13,6 @@ namespace nn {
 	class HyperParams
 	{
 	public:
-	/*	template<typename... Args>
-		HyperParams(Args&&... _args)
-			: data(std::forward<Args>(_args)...)
-		{}*/
-
 		std::any& operator[](const std::string& key) { return data[key]; }
 
 		template<typename T>
@@ -52,9 +47,7 @@ namespace nn {
 	{
 	public:
 		GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid,
-			const HyperParams& _defaults = {})
-			: m_hyperGrid(_paramGrid), m_trainFunc(_trainFn), m_defaultParams(_defaults)
-		{}
+			const HyperParams& _defaults = {});
 
 		void run(unsigned _numThreads = 1) const;
 	private:

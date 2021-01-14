@@ -25,11 +25,15 @@ namespace nn {
 		std::ofstream file(_fileName);
 		file.precision(24);
 		file << std::fixed;
-		auto size = _tensor.sizes();
+		
+		torch::Tensor tensor = _tensor.squeeze();
+		if (tensor.ndimension() == 1)
+			tensor.unsqueeze_(0);
+		const auto size = tensor.sizes();
 		for (int64_t i = 0; i < size[0]; ++i)
 		{
 			for (int64_t j = 0; j < size[1]; ++j)
-				file << _tensor.index({ i,j }).item<double>() << " ";
+				file << tensor.index({ i,j }).item<double>() << " ";
 			file << "\n";
 		}
 	//	file << content;

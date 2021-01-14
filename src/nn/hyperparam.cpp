@@ -4,6 +4,7 @@
 #include <thread>
 #include <mutex>
 #include <algorithm>
+#include <chrono>
 
 
 namespace nn {
@@ -36,38 +37,20 @@ namespace nn {
 		return _out;
 	}
 
-	std::pair<size_t, size_t> GridSearchOptimizer::decomposeFlatIndex(size_t flatIndex, int _k) const
-	{
-		size_t reminder = flatIndex;
-
-		size_t flatInd = 0;
-		size_t dimSize = 1;
-		for (int j = 0; j < _k; ++j)
-		{
-			const size_t sizeJ = m_hyperGrid[j].second.size();
-			size_t indJ = reminder % sizeJ;
-			reminder /= sizeJ;
-
-			flatInd += dimSize * indJ;
-			dimSize *= sizeJ;
-		}
-
-		const size_t sizeK = m_hyperGrid[_k].second.size();
-		const size_t indK = reminder % sizeK;
-		reminder /= sizeK;
-
-		flatInd += reminder * dimSize;
-
-		return { indK, flatInd };
-	}
+	GridSearchOptimizer::GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid,
+		const HyperParams& _defaults)
+		: m_hyperGrid(_paramGrid), m_trainFunc(_trainFn), m_defaultParams(_defaults)
+	{}
 
 	void GridSearchOptimizer::run(unsigned numThreads) const
 	{
+		// compute number of configurations
 		size_t numOptions = 1;
 		for (const auto& [name, values] : m_hyperGrid) 
 		{
 			numOptions *= values.size();
 		}
+
 		std::vector<double> results(numOptions);
 		double bestResult = std::numeric_limits<double>::max();
 		HyperParams bestParams;
@@ -91,14 +74,17 @@ namespace nn {
 					changedParams[name] = values[ind];
 					fileName += std::to_string(ind) + "_";
 				}
-				params["name"] = fileName + m_defaultParams.get<std::string>("name", "") +".pt";
+				params["name"] = fileName + m_defaultParams.get<std::string>("name", "");
 
+				auto start = std::chrono::high_resolution_clock::now();
 				const double loss = m_trainFunc(params);
+				auto end = std::chrono::high_resolution_clock::now();
+				const float time = std::chrono::duration<float>(end - start).count();
 				results[i] = loss;
 
 				const std::lock_guard<std::mutex> guard(mutex);
 				std::cout << "training with " << changedParams << "\n";
-				std::cout << "loss: " << loss << std::endl;
+				std::cout << "loss: " << loss << "     time: " << time << "s" << std::endl;
 
 				if (loss < bestResult)
 				{
@@ -107,6 +93,7 @@ namespace nn {
 				}
 			}
 		};
+
 		if (numThreads == 1)
 			work(0, numOptions);
 		else
@@ -123,7 +110,7 @@ namespace nn {
 		
 		
 		// print results
-
+		std::cout << "\n================== Evaluation ==================\n";
 		// combined results over each parameter
 		std::cout << "\nAverage loss over parameters:\n";
 		for (size_t k = 0; k < m_hyperGrid.size(); ++k)
@@ -145,8 +132,8 @@ namespace nn {
 			std::cout << "\n";
 		}
 
-		// results for parameter pairs
-		std::cout << "\nAverage loss over parameter pairs:\n";
+		// result matrices for parameter pairs
+		std::cout << "\nAverage loss over parameter pairs:";
 		for (size_t k1 = 0; k1 < m_hyperGrid.size(); ++k1)
 		{
 			for (size_t k2 = k1 + 1; k2 < m_hyperGrid.size(); ++k2)
@@ -185,11 +172,35 @@ namespace nn {
 					printf("\n");
 				}
 			}
-			std::cout << "\n";
 		}
 
-		std::cout << "\n============================\n best result:\n" << bestParams << "\n"
+		std::cout << "\nbest result:\n" << bestParams << "\n"
 			<< "loss: " << bestResult << std::endl;
+	}
+
+	std::pair<size_t, size_t> GridSearchOptimizer::decomposeFlatIndex(size_t flatIndex, int _k) const
+	{
+		size_t reminder = flatIndex;
+
+		size_t flatInd = 0;
+		size_t dimSize = 1;
+		for (int j = 0; j < _k; ++j)
+		{
+			const size_t sizeJ = m_hyperGrid[j].second.size();
+			size_t indJ = reminder % sizeJ;
+			reminder /= sizeJ;
+
+			flatInd += dimSize * indJ;
+			dimSize *= sizeJ;
+		}
+
+		const size_t sizeK = m_hyperGrid[_k].second.size();
+		const size_t indK = reminder % sizeK;
+		reminder /= sizeK;
+
+		flatInd += reminder * dimSize;
+
+		return { indK, flatInd };
 	}
 
 	RandomSearchOptimizer::RandomSearchOptimizer(const TrainFn& _trainFn, uint32_t _seed)

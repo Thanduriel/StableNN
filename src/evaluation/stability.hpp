@@ -15,6 +15,7 @@ namespace eval {
 		std::cout << eigenvalues << "\n";
 	}
 
+	// Gives the gradient of _module with respect to the inputs.
 	template<typename Module>
 	torch::Tensor computeJacobian(Module& _module, const torch::Tensor& _inputs)
 	{
@@ -26,4 +27,9 @@ namespace eval {
 
 		return x.grad();
 	}
+
+	// Returns a matrix A such that A*x is equivalent to the application of _conv.
+	torch::Tensor toMatrix(const torch::nn::Conv1d& _conv, int64_t _size);
+
+	void checkEnergy(const torch::nn::Conv1d& _conv, int64_t _size);
 }

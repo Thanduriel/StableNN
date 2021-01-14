@@ -20,6 +20,7 @@ namespace nn {
 		TORCH_ARG(int64_t, hidden_size);
 		TORCH_ARG(bool, train_in) = false;
 		TORCH_ARG(bool, train_out) = false; // use projection mask or a trained layer
+		TORCH_ARG(bool, in_out_bias) = false;
 		TORCH_ARG(ProjectionMask, proj_mask) = ProjectionMask::IdInterleafed;
 	};
 
@@ -46,14 +47,14 @@ namespace nn {
 			{
 				inputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 					options.input_size(),
-					options.hidden_size()).bias(false));
+					options.hidden_size()).bias(options.in_out_bias()));
 				this->register_module("inputLayer", inputLayer);
 			}
 			if (options.train_out())
 			{
 				outputLayer = torch::nn::Linear(torch::nn::LinearOptions(
 					options.hidden_size(),
-					options.output_size()).bias(false));
+					options.output_size()).bias(options.in_out_bias()));
 				this->register_module("outputLayer", outputLayer);
 			}
 

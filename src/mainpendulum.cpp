@@ -197,6 +197,14 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
+	auto nn_inp = torch::ones({3,2});
+	auto state = torch::zeros({ 3,2,4 });
+	state = torch::cat({ state.slice(2, 1), nn_inp.unsqueeze(2) }, 2);
+	nn_inp *= 2.0;
+	state = torch::cat({ state.slice(2, 1), nn_inp.unsqueeze(2) }, 2);
+	std::cout << state;
+	return 0;
+
 	System system(0.1, 9.81, 0.5);
 
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
@@ -216,7 +224,7 @@ int main()
 		renderer.run();
 	}*/
 	using Integrator = systems::discretization::LeapFrog<System>;
-	using NetType = nn::MultiLayerPerceptron;
+	using NetType = nn::Hamiltonian;
 	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
@@ -236,6 +244,7 @@ int main()
 	params["hidden_size"] = HIDDEN_SIZE;
 	params["train_in"] = false;
 	params["train_out"] = false;
+	params["in_out_bias"] = true;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 	params["name"] = std::string("mlp_t0025_")
 		+ std::to_string(NUM_INPUTS) + "_"
@@ -253,22 +262,23 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("resnet");
+		params["name"] = std::string("hamiltonian");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{ //{"depth", {4, 8}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
-				{"lr", {0.08, 0.081, 0.082, 0.083}},
+				{"lr", {0.08, 0.085}},
 				{"weight_decay", {1e-6, 1e-5}},
-			//	{"time", { 2.0, 3.0, 4.0}},
+				{"time", { 3.0, 4.0}},
 				{"train_in", {false, true}},
 				{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
 			//	{"hidden_size", {4, 8, 16}},
-			//	{"bias", {false, true}},
+				{"bias", {false, true}},
+				{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
 			//	{"num_inputs", {4ull, 8ull, 16ull}}
-			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
+				{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
 			}, params);
 
 		hyperOptimizer.run(8);

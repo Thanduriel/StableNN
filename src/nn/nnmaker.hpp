@@ -30,7 +30,9 @@ namespace nn {
 				nn::InOutWrapperOptions(numInputsNet, hiddenSize, numOutputsNet)
 				.proj_mask(nn::InOutWrapperOptions::ProjectionMask::Id)
 				.train_out(*_params.get<bool>("train_out"))
-				.train_in(*_params.get<bool>("train_in")), options);
+				.train_in(*_params.get<bool>("train_in"))
+				.in_out_bias(*_params.get<bool>("in_out_bias"))
+				, options);
 			net->to(torch::kDouble);
 			return net;
 		}
