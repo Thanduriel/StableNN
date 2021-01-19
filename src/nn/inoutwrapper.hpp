@@ -35,6 +35,7 @@ namespace nn {
 			hiddenNet(HiddenNet(_netOptions)),
 			outputLayer(nullptr)
 		{
+			options = options.train_out(options.train_in());
 			reset();
 		}
 

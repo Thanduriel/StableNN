@@ -102,7 +102,7 @@ int main()
 		eval::checkEnergy(net->layers.front(), 64);
 	//	for (size_t i = 0; i < net->layers.size(); ++i)
 	//		nn::exportTensor(net->layers[i]->weight, "heateq" + std::to_string(i) + ".txt");
-		eval::HeatRenderer renderer(timeStep*100.f, [&, state = validStates[0]]() mutable
+	/*	eval::HeatRenderer renderer(timeStep*100.f, [&, state = validStates[0]]() mutable
 			{
 				state = nn(state);
 				std::vector<double> exState;
@@ -110,7 +110,7 @@ int main()
 					exState.push_back(d);
 				return exState;
 			});
-		renderer.run();
+		renderer.run();*/
 
 		eval::EvalOptions options;
 		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, nn);

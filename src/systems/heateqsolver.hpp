@@ -45,31 +45,48 @@ namespace discretization {
 		torch::Tensor m_initialStateF;
 	};
 
-	template<typename T, int N>
+	template<typename T, int N, int Dif = 1>
 	struct FiniteDifferencesHeatEq
 	{
 		using State = typename HeatEquation<T, N>::State;
 
-		FiniteDifferencesHeatEq(const HeatEquation<T, N>& _system, T _dt) : m_dt(_dt) {}
+		FiniteDifferencesHeatEq(const HeatEquation<T, N>& _system, T _dt) 
+			: m_system(_system), 
+			m_dt(_dt), 
+			m_r(0.0)
+		{
+			// double sized intervals so that the first order central differences uses whole steps;
+			const T h = 2.0 * PI / N;
+			m_r = m_dt / (Dif * Dif * h * h);
+		}
 
 		State operator()(const State& _state) const
 		{
-			State next{};
-
-			const T h = 2.0 * PI / next.size();
-			const T r = m_dt / (h * h);
+			State next;
+			const auto& a = m_system.getHeatCoefficients();
 
 			for (size_t i = 0; i < _state.size(); ++i)
 			{
-				const size_t pre = i > 0 ? i - 1 : _state.size() - 1;
-				const size_t suc = i < _state.size() - 1 ? i + 1 : 0;
-				next[i] = _state[i] + r * (_state[pre] - 2.0 * _state[i] + _state[suc]);
+				const T dxx = a[i] * (_state[index(i - Dif)] - 2.0 * _state[i] + _state[index(i + Dif)]);
+
+				const size_t i_0 = index(i - 1);
+				const size_t i_2 = index(i + 1);
+				const T dx = (a[i_0] - a[i_2]) * (_state[i_0] - _state[i_2]);
+				next[i] = _state[i] + m_r * (dxx + dx);
 			}
 
 			return next;
 		}
 
 	private:
+		// return actual index with respect to circular domain
+		size_t index(size_t i) const
+		{
+			return (i+N) % N;
+		}
+
+		const HeatEquation<T, N>& m_system;
+		T m_r;
 		T m_dt;
 	};
 }}

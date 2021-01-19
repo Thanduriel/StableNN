@@ -14,8 +14,8 @@ namespace systems {
 		using State = std::array<T, N>;
 		constexpr static int NumPoints = N;
 
-		HeatEquation(const std::array<T, N>& _heatCoefficients = {}) 
-			: m_heatCoefficients(_heatCoefficients) {}
+		HeatEquation() { m_heatCoefficients.fill(1.0); }
+		HeatEquation(const std::array<T, N>& _heatCoefficients) : m_heatCoefficients(_heatCoefficients) {}
 
 		T energy(const State& _state) const
 		{
@@ -25,6 +25,8 @@ namespace systems {
 
 			return e;
 		}
+
+		const std::array<T, N>& getHeatCoefficients() const { return m_heatCoefficients; }
 	private:
 		std::array<T, N> m_heatCoefficients;
 	};

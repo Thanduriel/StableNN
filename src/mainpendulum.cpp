@@ -197,13 +197,13 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-	auto nn_inp = torch::ones({3,2});
+/*	auto nn_inp = torch::ones({3,2});
 	auto state = torch::zeros({ 3,2,4 });
 	state = torch::cat({ state.slice(2, 1), nn_inp.unsqueeze(2) }, 2);
 	nn_inp *= 2.0;
 	state = torch::cat({ state.slice(2, 1), nn_inp.unsqueeze(2) }, 2);
 	std::cout << state;
-	return 0;
+	return 0;*/
 
 	System system(0.1, 9.81, 0.5);
 
@@ -224,7 +224,7 @@ int main()
 		renderer.run();
 	}*/
 	using Integrator = systems::discretization::LeapFrog<System>;
-	using NetType = nn::Hamiltonian;
+	using NetType = nn::HamiltonianInterleafed;
 	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
@@ -234,7 +234,7 @@ int main()
 	params["time_step"] = 0.05;
 	params["lr"] = 0.085;//4e-4;
 	params["weight_decay"] = 1e-6; //4
-	params["depth"] = 4;
+	params["depth"] = 2;
 	params["diffusion"] = 0.1;
 	params["bias"] = false;
 	params["time"] = 2.0;
@@ -242,9 +242,9 @@ int main()
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["augment"] = 2;
 	params["hidden_size"] = HIDDEN_SIZE;
-	params["train_in"] = false;
+	params["train_in"] = true;
 	params["train_out"] = false;
-	params["in_out_bias"] = true;
+	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 	params["name"] = std::string("mlp_t0025_")
 		+ std::to_string(NUM_INPUTS) + "_"
@@ -262,23 +262,23 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("hamiltonian");
+		params["name"] = std::string("hamiltonianInterleafed");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-			{ //{"depth", {4, 8}},
+			{	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
 				{"lr", {0.08, 0.085}},
-				{"weight_decay", {1e-6, 1e-5}},
-				{"time", { 3.0, 4.0}},
-				{"train_in", {false, true}},
-				{"train_out", {false, true}},
+			//	{"weight_decay", {1e-6, 1e-5}},
+				{"time", { 1.0, 2.0}},
+			//	{"train_in", {false, true}},
+			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
 			//	{"hidden_size", {4, 8, 16}},
-				{"bias", {false, true}},
-				{"in_out_bias", {false,true}},
+			//	{"bias", {false, true}},
+			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
 			//	{"num_inputs", {4ull, 8ull, 16ull}}
-				{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
+				{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(torch::sin)}}
 			}, params);
 
 		hyperOptimizer.run(8);
@@ -335,8 +335,11 @@ int main()
 		auto antiSym = nn::makeNetwork<nn::AntiSymmetric, true, 2>(antisymParams);
 		torch::load(antiSym, *antisymParams.get<std::string>("name"));
 
-		params["train_in"] = true;
-		params["name"] = std::string("resnet.pt");
+		nn::HyperParams resnetParams = params;
+		resnetParams["train_in"] = true;
+		resnetParams["name"] = std::string("resnet.pt");
+		auto resNet = nn::makeNetwork<nn::MultiLayerPerceptron, USE_WRAPPER, 2>(params);
+
 		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 		torch::load(othNet, *params.get<std::string>("name"));
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
