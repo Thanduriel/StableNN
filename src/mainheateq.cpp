@@ -37,7 +37,11 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-	System heatEq;
+	std::array<T, N> heatCoefs{};
+	heatCoefs.fill(1.0);
+	for (size_t i = 0; i < N / 2; ++i)
+		heatCoefs[i] = 0.5 + static_cast<double>(i) / N;
+	System heatEq(heatCoefs);
 
 	auto trainingStates = generateStates(heatEq, 24, 0x612FF6AEu);
 	auto validStates = generateStates(heatEq, 4, 0x195A4C);
@@ -93,6 +97,7 @@ int main()
 		const double timeStep = *params.get<double>("time_step");
 		systems::discretization::AnalyticHeatEq analytic(heatEq, timeStep, validStates[0]);
 		systems::discretization::FiniteDifferencesHeatEq finiteDiffs(heatEq, timeStep);
+		systems::discretization::FiniteDifferencesImplicit finiteDiffsImpl(heatEq, timeStep);
 
 		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 	//	torch::load(net, *params.get<std::string>("name"));
@@ -102,17 +107,23 @@ int main()
 		eval::checkEnergy(net->layers.front(), 64);
 	//	for (size_t i = 0; i < net->layers.size(); ++i)
 	//		nn::exportTensor(net->layers[i]->weight, "heateq" + std::to_string(i) + ".txt");
-	/*	eval::HeatRenderer renderer(timeStep*100.f, [&, state = validStates[0]]() mutable
+
+		std::vector<double> diffusivity;
+		diffusivity.reserve(N);
+		for (double d : heatEq.getHeatCoefficients())
+			diffusivity.push_back(d);
+		eval::HeatRenderer renderer(timeStep*100.f, diffusivity, [&, state = validStates[0]]() mutable
 			{
-				state = nn(state);
+				state = finiteDiffs(state);
 				std::vector<double> exState;
+				exState.reserve(N);
 				for (double d : state)
 					exState.push_back(d);
 				return exState;
 			});
-		renderer.run();*/
+		renderer.run();
 
 		eval::EvalOptions options;
-		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, nn);
+		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, finiteDiffsImpl, nn);
 	}
 }

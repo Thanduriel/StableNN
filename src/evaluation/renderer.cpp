@@ -53,9 +53,10 @@ namespace eval {
 		}
 	}
 
-	HeatRenderer::HeatRenderer(double _deltaTime, Integrator _integrator)
+	HeatRenderer::HeatRenderer(double _deltaTime, std::vector<double> _diffusivity, Integrator _integrator)
 		: m_deltaTime(_deltaTime),
-		m_integrator(_integrator)
+		m_integrator(_integrator),
+		m_diffusivity(_diffusivity)
 	{
 
 	}
@@ -73,6 +74,7 @@ namespace eval {
 		// + 1 for origin, + 1 to close the loop
 		sf::VertexArray triangles(sf::TriangleFan, state.size() + 2);
 		triangles[0].position = origin;
+		triangles[0].color = sf::Color(255, 255, 255);
 
 		int steps = 0;
 		while (window.isOpen())
@@ -91,8 +93,13 @@ namespace eval {
 				triangles[i + 1].position = origin
 					+ BASE_RADIUS * dir
 					+ static_cast<float>(state[i]) * dir;
+
+				const sf::Uint8 red = m_diffusivity[i] < 1.0 ? static_cast<sf::Uint8>(m_diffusivity[i] * 255) : 0;
+				const sf::Uint8 blue = m_diffusivity[i] > 1.0 ? static_cast<sf::Uint8>((m_diffusivity[i]-1.0) * 255) : 0;
+				triangles[i + 1].color = sf::Color(red, 255 - red, 255 - red);
 			}
 			triangles[state.size() + 1].position = triangles[1].position;
+			triangles[state.size() + 1].color = triangles[1].color;
 
 			window.clear(sf::Color::Black);
 			window.draw(triangles);

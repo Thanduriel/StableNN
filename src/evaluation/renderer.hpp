@@ -20,11 +20,12 @@ namespace eval {
 	{
 	public:
 		using Integrator = std::function < std::vector<double>() >;
-		HeatRenderer(double _deltaTime, Integrator _integrator);
+		HeatRenderer(double _deltaTime, std::vector<double> _diffusivity, Integrator _integrator);
 
 		void run();
 	private:
 		double m_deltaTime;
+		std::vector<double> m_diffusivity;
 		Integrator m_integrator;
 	};
 }
