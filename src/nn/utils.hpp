@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../systems/state.hpp"
 #include <torch/torch.h>
 #include <memory>
 
@@ -18,4 +19,23 @@ namespace nn {
 	torch::Tensor lp_loss(const torch::Tensor& input, const torch::Tensor& target, c10::Scalar p);
 
 	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName);
+
+	// Functor which converts an array of system states into a tensor
+	struct StateToTensor
+	{
+		template<typename System>
+		torch::Tensor operator()(const System&,
+			const typename System::State* _state,
+			int64_t _numStates,
+			int64_t _batchSize,
+			const c10::TensorOptions& _options) const
+		{
+			assert(_numStates % _batchSize == 0);
+			constexpr int64_t stateSize = systems::sizeOfState<System>();
+
+			return torch::from_blob(const_cast<typename System::State*>(_state),
+				{ _batchSize, stateSize * _numStates / _batchSize },
+				_options);
+		}
+	};
 }

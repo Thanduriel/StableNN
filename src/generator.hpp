@@ -2,15 +2,18 @@
 
 #include "helpers.hpp"
 #include "nn/dataset.hpp"
+#include "nn/utils.hpp"
 #include "systems/state.hpp"
 
-template<typename System, typename Integrator>
+template<typename System, typename Integrator, typename InputMaker = nn::StateToTensor>
 class DataGenerator
 {
 	using SysState = typename System::State;
 public:
 	DataGenerator(const System& _system, const Integrator& _integrator) 
-		: m_system(_system), m_integrator(_integrator)
+		: m_system(_system), 
+		m_integrator(_integrator),
+		m_tensorOptions(c10::CppTypeToScalarType<typename System::ValueT>())
 	{
 	}
 
@@ -52,12 +55,13 @@ public:
 					timeSeries.push_back(results[i + j]);
 				}
 
+			InputMaker stateToTensor;
 			const int64_t size = _numSamples;
-			torch::Tensor in = torch::from_blob(timeSeries.data(), { size, inputSize }, c10::TensorOptions(c10::ScalarType::Double));
+			torch::Tensor in = stateToTensor(m_system, timeSeries.data(), timeSeries.size(), size, m_tensorOptions);
 			torch::Tensor out = torch::from_blob(
 				_useSingleOutput ? (results.data() + _numInputSteps + _inOutShift - 1) : (timeSeries.data() + _numInputSteps * _inOutShift),
 				{ size, outputSize }, 
-				c10::TensorOptions(c10::ScalarType::Double));
+				m_tensorOptions);
 
 			if (!inputs.defined())
 			{
@@ -102,4 +106,5 @@ private:
 
 	System m_system;
 	Integrator m_integrator;
+	c10::TensorOptions m_tensorOptions;
 };

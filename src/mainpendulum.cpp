@@ -58,7 +58,7 @@ void evaluate(
 	if constexpr (SHOW_VISUAL)
 	{
 		// copy integrator because nn::Integrator may have an internal state
-		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
+		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
 		auto visState = initialState;
 		// warmup to see long term behavior
 		for (int i = 0; i < 10000; ++i)
@@ -86,7 +86,7 @@ void evaluate(
 		_options,
 		referenceIntegrate, 
 		leapFrog, 
-		nn::Integrator<System, Networks, NumTimeSteps>(_networks, initialStates)...);
+		nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
 }
 
 template<size_t NumTimeSteps, typename... Networks>
@@ -142,7 +142,7 @@ void makeStableFrequencyData(const System& system, const nn::HyperParams& params
 			auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(param);
 			torch::load(othNet, name);
 
-			nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
+			nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
 			auto [attractors, repellers] = eval::findAttractors(system, integrator, false);
 			std::vector<double> stablePeriods;
 			for (double attractor : attractors)
@@ -342,7 +342,7 @@ int main()
 
 		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 		torch::load(othNet, *params.get<std::string>("name"));
-		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(othNet);
+		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
 	//	auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
 		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);
 	/*	evaluate<NUM_INPUTS>(system,

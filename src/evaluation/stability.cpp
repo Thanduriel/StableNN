@@ -54,5 +54,24 @@ namespace eval {
 		}
 
 		std::cout << "Energy does not increase: " << isPositiveDefinite << std::endl;
+		
+		const int64_t filterSize = _conv->options.kernel_size()->front();
+		const int64_t halfSize = filterSize / 2;
+		const torch::Tensor filter = _conv->weight.squeeze();
+		bool symmetric = true;
+		double sum = 0.0;
+		for (int64_t j = 0; j < halfSize; ++j)
+		{
+		//	std::cout << (filter[j] - filter[filterSize - j - 1]).item<double>() << "\n";
+			if ((filter[j] - filter[filterSize - j - 1]).item<double>() > std::numeric_limits<double>::epsilon() * 16.0)
+			{
+				symmetric = false;
+			//	break;
+			}
+			sum += std::abs(filter[j].item<double>()) + std::abs(filter[filterSize - j - 1].item<double>());
+		}
+
+		std::cout << filter[halfSize].item<double>() + sum;
+	//	std::cout << "Holds for any size: " << (sum < filter[halfSize].item<double>()) << std::endl;
 	}
 }

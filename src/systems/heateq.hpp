@@ -26,6 +26,12 @@ namespace systems {
 			return e;
 		}
 
+		// return actual index with respect to circular domain
+		constexpr size_t index(size_t i) const
+		{
+			return (i + N) % N;
+		}
+
 		const std::array<T, N>& getHeatCoefficients() const { return m_heatCoefficients; }
 	private:
 		std::array<T, N> m_heatCoefficients;

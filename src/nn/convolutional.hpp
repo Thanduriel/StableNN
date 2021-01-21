@@ -11,6 +11,7 @@ namespace nn {
 			: input_size_(_inputSize), filter_size_(_filterSize) {}
 
 		TORCH_ARG(int64_t, input_size);
+		TORCH_ARG(int64_t, num_channels) = 1;
 		TORCH_ARG(int64_t, num_layers) = 1;
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(int64_t, filter_size);

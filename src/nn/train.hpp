@@ -10,7 +10,7 @@
 
 namespace nn {
 
-	template<typename Network, typename System, typename Integrator>
+	template<typename Network, typename System, typename Integrator, typename InputMaker = nn::StateToTensor>
 	struct TrainNetwork
 	{
 		using State = typename System::State;
@@ -26,7 +26,7 @@ namespace nn {
 		{
 			const int64_t hyperSampleRate = _params.get<int>("hyper_sample_rate", HYPER_SAMPLE_RATE);
 			Integrator referenceIntegrator(m_system, *_params.get<double>("time_step") / hyperSampleRate);
-			DataGenerator<System, Integrator> generator(m_system, referenceIntegrator);
+			DataGenerator<System, Integrator, InputMaker> generator(m_system, referenceIntegrator);
 
 			namespace dat = torch::data;
 			const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
@@ -184,9 +184,9 @@ namespace nn {
 		static std::mutex s_loggingMutex;
 	};
 
-	template<typename Network, typename System, typename Integrator>
-	std::mutex TrainNetwork<Network, System, Integrator>::s_initMutex;
+	template<typename Network, typename System, typename Integrator, typename InputMaker>
+	std::mutex TrainNetwork<Network, System, Integrator, InputMaker>::s_initMutex;
 
-	template<typename Network, typename System, typename Integrator>
-	std::mutex TrainNetwork<Network, System, Integrator>::s_loggingMutex;
+	template<typename Network, typename System, typename Integrator, typename InputMaker>
+	std::mutex TrainNetwork<Network, System, Integrator, InputMaker>::s_loggingMutex;
 }

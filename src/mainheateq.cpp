@@ -9,6 +9,7 @@
 #include "evaluation/stability.hpp"
 #include <random>
 
+constexpr bool USE_LOCAL_DIFFUSIFITY = true;
 constexpr size_t N = 64;
 using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
@@ -46,15 +47,23 @@ int main()
 	auto trainingStates = generateStates(heatEq, 24, 0x612FF6AEu);
 	auto validStates = generateStates(heatEq, 4, 0x195A4C);
 
-	using Integrator = systems::discretization::AnalyticHeatEq<T, System::NumPoints>;
+	using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY, 
+		systems::discretization::FiniteDifferencesImplicit<T,N,1>,
+		systems::discretization::AnalyticHeatEq<T, System::NumPoints>>;
+
+	using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
+		systems::discretization::MakeInputHeatEq,
+		nn::StateToTensor>;
+
 	using NetType = nn::Convolutional;
-	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(heatEq, trainingStates, validStates);
+	nn::TrainNetwork<NetType, System, Integrator, InputMaker> trainNetwork(heatEq, trainingStates, validStates);
 
 	nn::HyperParams params;
 	params["hyper_sample_rate"] = 1;
 	params["train_samples"] = 512;
 	params["valid_samples"] = 1024;
 	params["num_epochs"] = 1024;
+	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 
 	params["time_step"] = 0.0001;
 	params["lr"] = 0.025;
@@ -68,7 +77,7 @@ int main()
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["augment"] = 2;
 	params["hidden_size"] = static_cast<int>(N);
-	params["filter_size"] = 3;
+	params["filter_size"] = 33;
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(nn::identity);
@@ -96,29 +105,22 @@ int main()
 	{
 		const double timeStep = *params.get<double>("time_step");
 		systems::discretization::AnalyticHeatEq analytic(heatEq, timeStep, validStates[0]);
-		systems::discretization::FiniteDifferencesHeatEq finiteDiffs(heatEq, timeStep);
+		systems::discretization::FiniteDifferencesExplicit finiteDiffs(heatEq, timeStep);
 		systems::discretization::FiniteDifferencesImplicit finiteDiffsImpl(heatEq, timeStep);
 
 		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 	//	torch::load(net, *params.get<std::string>("name"));
-		torch::load(net, "0_0_heateq64_conv.pt");
-		nn::Integrator<System, decltype(net), NUM_INPUTS> nn(net);
+		torch::load(net, "2_0_heateq64_conv.pt");
+		nn::Integrator<System, decltype(net), NUM_INPUTS, InputMaker> nn(heatEq, net);
 
 		eval::checkEnergy(net->layers.front(), 64);
 	//	for (size_t i = 0; i < net->layers.size(); ++i)
 	//		nn::exportTensor(net->layers[i]->weight, "heateq" + std::to_string(i) + ".txt");
 
-		std::vector<double> diffusivity;
-		diffusivity.reserve(N);
-		for (double d : heatEq.getHeatCoefficients())
-			diffusivity.push_back(d);
-		eval::HeatRenderer renderer(timeStep*100.f, diffusivity, [&, state = validStates[0]]() mutable
+		eval::HeatRenderer renderer(timeStep*100.f, N, heatEq.getHeatCoefficients().data(), [&, state = validStates[0]]() mutable
 			{
 				state = finiteDiffs(state);
-				std::vector<double> exState;
-				exState.reserve(N);
-				for (double d : state)
-					exState.push_back(d);
+				std::vector<double> exState(state.begin(), state.end());
 				return exState;
 			});
 		renderer.run();

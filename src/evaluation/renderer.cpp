@@ -53,12 +53,14 @@ namespace eval {
 		}
 	}
 
-	HeatRenderer::HeatRenderer(double _deltaTime, std::vector<double> _diffusivity, Integrator _integrator)
+	HeatRenderer::HeatRenderer(double _deltaTime, size_t _domainSize, const double* _diffusivity, Integrator _integrator)
 		: m_deltaTime(_deltaTime),
-		m_integrator(_integrator),
-		m_diffusivity(_diffusivity)
+		m_domainSize(_domainSize),
+		m_diffusivity(_diffusivity, _diffusivity + _domainSize),
+		m_integrator(_integrator)
 	{
-
+	//	m_diffusivity.resize(m_domainSize);
+	//	std::copy(_diffusivity, _diffusivity + _domainSize, m_diffusivity.data());
 	}
 
 	constexpr float BASE_RADIUS = 8.f;

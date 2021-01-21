@@ -45,6 +45,7 @@ namespace nn {
 		return ConvolutionalOptions(*_params.get<size_t>("num_inputs"), *_params.get<int>("filter_size"))
 			.num_layers(*_params.get<int>("depth"))
 			.bias(*_params.get<bool>("bias"))
+			.num_channels(*_params.get<int>("num_channels"))
 			.activation(*_params.get<nn::ActivationFn>("activation"));
 	}
 }
