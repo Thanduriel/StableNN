@@ -9,7 +9,7 @@
 #include "evaluation/stability.hpp"
 #include <random>
 
-constexpr bool USE_LOCAL_DIFFUSIFITY = true;
+constexpr bool USE_LOCAL_DIFFUSIFITY = false;
 constexpr size_t N = 64;
 using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
@@ -40,9 +40,12 @@ int main()
 {
 	std::array<T, N> heatCoefs{};
 	heatCoefs.fill(1.0);
-	for (size_t i = 0; i < N / 2; ++i)
-		heatCoefs[i] = 0.5 + static_cast<double>(i) / N;
-	System heatEq(heatCoefs);
+	if (USE_LOCAL_DIFFUSIFITY)
+	{
+		for (size_t i = 0; i < N / 2; ++i)
+			heatCoefs[i] = 0.5 + static_cast<double>(i) / N;
+	}
+	System heatEq(heatCoefs, 1.0);
 
 	auto trainingStates = generateStates(heatEq, 24, 0x612FF6AEu);
 	auto validStates = generateStates(heatEq, 4, 0x195A4C);
@@ -117,15 +120,15 @@ int main()
 	//	for (size_t i = 0; i < net->layers.size(); ++i)
 	//		nn::exportTensor(net->layers[i]->weight, "heateq" + std::to_string(i) + ".txt");
 
-		eval::HeatRenderer renderer(timeStep*100.f, N, heatEq.getHeatCoefficients().data(), [&, state = validStates[0]]() mutable
+	/*	eval::HeatRenderer renderer(timeStep*100.f, N, heatEq.getHeatCoefficients().data(), [&, state = validStates[0]]() mutable
 			{
 				state = finiteDiffs(state);
 				std::vector<double> exState(state.begin(), state.end());
 				return exState;
 			});
-		renderer.run();
+		renderer.run();*/
 
 		eval::EvalOptions options;
-		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, finiteDiffsImpl, nn);
+		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, finiteDiffsImpl/*, nn*/);
 	}
 }

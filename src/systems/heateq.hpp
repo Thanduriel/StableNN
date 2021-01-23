@@ -5,7 +5,6 @@
 namespace systems {
 
 	// 1D heat equation with equidistant spatial discretization on a circle
-	// with radius = 2 pi
 	template<typename T, int N>
 	class HeatEquation
 	{
@@ -14,8 +13,9 @@ namespace systems {
 		using State = std::array<T, N>;
 		constexpr static int NumPoints = N;
 
-		HeatEquation() { m_heatCoefficients.fill(1.0); }
-		HeatEquation(const std::array<T, N>& _heatCoefficients) : m_heatCoefficients(_heatCoefficients) {}
+		HeatEquation(T _radius = 1.0) : m_radius(_radius) { m_heatCoefficients.fill(1.0); }
+		HeatEquation(const std::array<T, N>& _heatCoefficients, T _radius = 1.0) 
+			: m_heatCoefficients(_heatCoefficients), m_radius(_radius) {}
 
 		T energy(const State& _state) const
 		{
@@ -32,8 +32,10 @@ namespace systems {
 			return (i + N) % N;
 		}
 
-		const std::array<T, N>& getHeatCoefficients() const { return m_heatCoefficients; }
+		const T radius() const { return m_radius; }
+		const std::array<T, N>& heatCoefficients() const { return m_heatCoefficients; }
 	private:
 		std::array<T, N> m_heatCoefficients;
+		T m_radius;
 	};
 }

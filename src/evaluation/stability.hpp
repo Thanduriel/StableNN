@@ -31,5 +31,6 @@ namespace eval {
 	// Returns a matrix A such that A*x is equivalent to the application of _conv.
 	torch::Tensor toMatrix(const torch::nn::Conv1d& _conv, int64_t _size);
 
+	// Checks that this convolution reduces the amount of total energy.
 	void checkEnergy(const torch::nn::Conv1d& _conv, int64_t _size);
 }

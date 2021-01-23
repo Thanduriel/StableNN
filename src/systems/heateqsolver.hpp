@@ -16,8 +16,13 @@ namespace discretization {
 
 		// The default _initialState should only be used if operator() is never called.
 		AnalyticHeatEq(const HeatEquation<T, N>& _system, T _dt, const State& _initialState = {})
-			: m_dt(_dt)
+			: m_system(_system),
+			m_dt(_dt),
+			m_rSqr(_system.radius() * _system.radius())
 		{
+			// variable heat coefficients are currently not supported
+			assert(std::all_of(m_system.heatCoefficients().begin(), m_system.heatCoefficients().end(), [](T v) { return v == 1.0; }));
+
 			const torch::Tensor s = torch::from_blob(const_cast<T*>(_initialState.data()),
 				{ static_cast<int64_t>(_initialState.size()) },
 				c10::TensorOptions(c10::CppTypeToScalarType<T>()));
@@ -27,12 +32,8 @@ namespace discretization {
 		State operator()(const State& _state) 
 		{
 			m_t += m_dt;
-			torch::Tensor scale = torch::zeros_like(m_initialStateF);
-			for (int64_t i = 0; i < scale.size(0); ++i)
-			{
-				scale[i] = std::exp(-i*i * m_t);
-			}
-
+			
+			const torch::Tensor scale = getGreenFn(m_t);
 			const torch::Tensor nextF = scale * m_initialStateF;
 			const torch::Tensor next = torch::fft_irfft(nextF, _state.size());
 
@@ -40,13 +41,26 @@ namespace discretization {
 		}
 
 		T getDeltaTime() const { return m_dt; }
+
+		torch::Tensor getGreenFn(T _time) const
+		{
+			torch::Tensor scale = torch::zeros_like(m_initialStateF);
+			for (int64_t n = 0; n < scale.size(0); ++n)
+			{
+				scale[n] = std::exp(-n * n * _time / m_rSqr);
+			}
+
+			return scale;
+		}
 	private:
+		const HeatEquation<T, N>& m_system;
 		T m_dt;
 		T m_t = 0.0;
+		T m_rSqr;
 		torch::Tensor m_initialStateF;
 	};
 
-	template<typename T, int N, int Dif = 2>
+	template<typename T, int N, int Dif = 1>
 	struct FiniteDifferencesExplicit
 	{
 		using State = typename HeatEquation<T, N>::State;
@@ -57,7 +71,7 @@ namespace discretization {
 			m_r(0.0)
 		{
 			// double sized intervals so that the first order central differences uses whole steps
-			const T h = 2.0 * PI / N;
+			const T h = m_system.radius() * 2.0 * PI / N;
 			const T hSqr = (Dif * Dif * h * h);
 			m_r = m_dt / hSqr;
 			// stability criteria
@@ -67,7 +81,7 @@ namespace discretization {
 		State operator()(const State& _state) const
 		{
 			State next;
-			const auto& a = m_system.getHeatCoefficients();
+			const auto& a = m_system.heatCoefficients();
 
 			for (size_t i = 0; i < next.size(); ++i)
 			{
@@ -98,11 +112,11 @@ namespace discretization {
 			m_options(c10::CppTypeToScalarType<T>())
 		{
 			// double sized intervals so that the first order central differences uses whole steps
-			const T h = 2.0 * PI / N;
+			const T h = m_system.radius() * 2.0 * PI / N;
 			const T hSqr = (Dif * Dif * h * h);
 			const T r = _dt / hSqr;
 
-			const auto& a = m_system.getHeatCoefficients();
+			const auto& a = m_system.heatCoefficients();
 
 			constexpr int64_t m = N;
 			const T f = Dif == 1 ? 1.0 : -1.0;
@@ -158,7 +172,7 @@ namespace discretization {
 			torch::Tensor stateInp = torch::from_blob(const_cast<typename HeatEquation<T, N>::State*>(_states),
 				{ _batchSize, 1, stateSize * statesPerBatch },
 				_options);
-			torch::Tensor sysInp = torch::from_blob(const_cast<T*>(_system.getHeatCoefficients().data()),
+			torch::Tensor sysInp = torch::from_blob(const_cast<T*>(_system.heatCoefficients().data()),
 				{ 1, 1, stateSize },
 				_options);
 			if (statesPerBatch > 1 || _batchSize > 1)

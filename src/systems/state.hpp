@@ -2,7 +2,6 @@
 
 #include <array>
 #include <iostream>
-//#include <torch/torch.h>
 
 namespace systems {
 
@@ -18,11 +17,6 @@ namespace systems {
 		return sizeof(typename System::State) / sizeof(typename System::ValueT);
 	}
 
-/*	template<typename System>
-	torch::Tensor toTensor(const System::State& _state)
-	{
-
-	}*/
 }
 
 template<typename T, std::size_t Size>
