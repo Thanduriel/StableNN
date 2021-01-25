@@ -90,7 +90,7 @@ private:
 		// a statefull integrator with non const operator() needs to be recreated
 		Integrator integrator = m_integrator;
 		if constexpr (!is_callable<const Integrator, SysState>::value)
-			integrator = Integrator(m_system, m_integrator.getDeltaTime(), _initialState);
+			integrator.init(_initialState);
 
 		const size_t computeSteps = _steps * _subSteps;
 		// start at 1 because we already have the initial state

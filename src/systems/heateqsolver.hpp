@@ -3,8 +3,7 @@
 #include "heateq.hpp"
 #include "state.hpp"
 #include "../constants.hpp"
-#include <torch/torch.h>
-#include <c10/core/ScalarType.h>
+#include "../nn/utils.hpp"
 
 namespace systems {
 namespace discretization {
@@ -23,10 +22,18 @@ namespace discretization {
 			// variable heat coefficients are currently not supported
 			assert(std::all_of(m_system.heatCoefficients().begin(), m_system.heatCoefficients().end(), [](T v) { return v == 1.0; }));
 
+			init(_initialState);
+		}
+
+		// Initialize integrator with a new _initialState for t = 0.
+		void init(const State& _initialState)
+		{
 			const torch::Tensor s = torch::from_blob(const_cast<T*>(_initialState.data()),
 				{ static_cast<int64_t>(_initialState.size()) },
 				c10::TensorOptions(c10::CppTypeToScalarType<T>()));
 			m_initialStateF = torch::fft_rfft(s, _initialState.size());
+
+			m_t = 0.0;
 		}
 
 		State operator()(const State& _state) 
@@ -140,8 +147,6 @@ namespace discretization {
 
 		State operator()(const State& _state) const
 		{
-			auto options = c10::TensorOptions(c10::CppTypeToScalarType<T>());
-
 			const torch::Tensor b = torch::from_blob(const_cast<T*>(_state.data()), { 1, static_cast<int64_t>(N), 1 }, m_options);
 			const torch::Tensor x = torch::lu_solve(b, std::get<0>(m_LU), std::get<1>(m_LU));
 
@@ -151,6 +156,71 @@ namespace discretization {
 	private:
 		const HeatEquation<T, N>& m_system;
 		std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> m_LU;
+		c10::TensorOptions m_options;
+	};
+
+	// Wrapper which increases the internal spartial and temporal sampling to reduce the error.
+	// @param M internal spatial resolution
+	template<typename T, int N, int M>
+	class SuperSampleIntegrator
+	{
+		using SmallState = typename HeatEquation<T, N>::State;
+	public:
+		SuperSampleIntegrator(const HeatEquation<T, N>& _system, T _dt, int _sampleRate, const SmallState& _state)
+			: m_system(),
+			m_state{},
+			m_sampleRate(_sampleRate),
+			m_integrator(m_system, _dt / _sampleRate),
+			m_options(c10::CppTypeToScalarType<T>())
+		{
+			// upscale heat coefficients via linear interpolation
+			const auto& smallCoefs = _system.heatCoefficients();
+			std::array<T, M> coefficients;
+			const T ratio = static_cast<T>(N) / static_cast<T>(M);
+			for (int i = 0; i < M; ++i)
+			{
+				const T current = i * ratio;
+				const int lower = std::floor(current);
+				const int upper = std::ceil(current);
+				const T t = current - lower;
+
+				coefficients[i] = smallCoefs[lower] * (1.0 - t) + smallCoefs[upper] * t;
+			}
+			m_system = HeatEquation<T, M>(coefficients, _system.radius());
+		/*	torch::Tensor small = nn::arrayToTensor(_system.heatCoefficients(), m_options);
+			small = torch::fft_rfft(small);
+			torch::Tensor large = torch::fft_irfft(small, M);
+			m_system = HeatEquation<T,M>(nn::tensorToArray<T, M>(large), _system.radius());*/
+
+			init(_state);
+		}
+
+		void init(const SmallState& _state)
+		{
+			// upsale state with fft
+			torch::Tensor stateSmall = nn::arrayToTensor(_state, m_options);
+			stateSmall = torch::fft_rfft(stateSmall);
+			torch::Tensor stateLarge = torch::fft_irfft(stateSmall, M);
+			m_state = nn::tensorToArray<T, M>(stateLarge);
+		}
+
+		SmallState operator()(const SmallState&)
+		{
+			for (int i = 0; i < m_sampleRate; ++i)
+				m_state = m_integrator(m_state);
+
+			// downscale state with fft
+			torch::Tensor stateLarge = torch::fft_rfft(nn::arrayToTensor(m_state, m_options));
+			torch::Tensor stateSmall = torch::fft_irfft(stateLarge, N);
+
+			return nn::tensorToArray<T,N>(stateSmall);
+		}
+
+	private:
+		HeatEquation<T, M> m_system;
+		typename HeatEquation<T, M>::State m_state;
+		int m_sampleRate;
+		FiniteDifferencesExplicit<T,M> m_integrator;
 		c10::TensorOptions m_options;
 	};
 

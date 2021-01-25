@@ -2,6 +2,7 @@
 
 #include "../systems/state.hpp"
 #include <torch/torch.h>
+#include <c10/core/ScalarType.h>
 #include <memory>
 
 namespace nn {
@@ -19,6 +20,20 @@ namespace nn {
 	torch::Tensor lp_loss(const torch::Tensor& input, const torch::Tensor& target, c10::Scalar p);
 
 	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName);
+
+	template<typename T, size_t N>
+	torch::Tensor arrayToTensor(const std::array<T, N>& _data, const c10::TensorOptions& _options = c10::TensorOptions(c10::CppTypeToScalarType<T>()))
+	{
+		return torch::from_blob(const_cast<T*>(_data.data()),
+			{ static_cast<int64_t>(N) },
+			_options);
+	}
+
+	template<typename T, size_t N>
+	std::array<T,N> tensorToArray(const torch::Tensor& _tensor)
+	{
+		return *reinterpret_cast<std::array<T, N>*>(_tensor.data_ptr<T>());
+	}
 
 	// Functor which converts an array of system states into a tensor
 	struct StateToTensor

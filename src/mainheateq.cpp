@@ -8,6 +8,7 @@
 #include "evaluation/evaluation.hpp"
 #include "evaluation/stability.hpp"
 #include <random>
+#include <chrono>
 
 constexpr bool USE_LOCAL_DIFFUSIFITY = false;
 constexpr size_t N = 64;
@@ -111,6 +112,8 @@ int main()
 		systems::discretization::FiniteDifferencesExplicit finiteDiffs(heatEq, timeStep);
 		systems::discretization::FiniteDifferencesImplicit finiteDiffsImpl(heatEq, timeStep);
 
+		systems::discretization::SuperSampleIntegrator<T, N, N*2> superSampleFiniteDifs(heatEq, timeStep, 2, validStates[0]);
+
 		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
 	//	torch::load(net, *params.get<std::string>("name"));
 		torch::load(net, "2_0_heateq64_conv.pt");
@@ -129,6 +132,6 @@ int main()
 		renderer.run();*/
 
 		eval::EvalOptions options;
-		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, finiteDiffsImpl/*, nn*/);
+		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, finiteDiffsImpl, superSampleFiniteDifs/*, nn*/);
 	}
 }
