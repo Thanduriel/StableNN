@@ -1,9 +1,76 @@
 #include "renderer.hpp"
 #include "../constants.hpp"
 #include <SFML/Graphics.hpp>
+#include <SFML/Graphics/Color.hpp>
 #include <cmath>
 
 namespace eval {
+
+	struct HSV 
+	{
+		float h;       // angle in degrees
+		float s;       // a fraction between 0 and 1
+		float v;       // a fraction between 0 and 1
+	};
+
+	sf::Color HSVtoRGB(HSV in)
+	{
+		sf::Color out;
+		if (in.s <= 0.0) // < is bogus, just shuts up warnings
+		{
+			out.r = in.v * 255;
+			out.g = in.v * 255;
+			out.b = in.v * 255;
+			return out;
+		}
+		double hh = in.h;
+		if (hh >= 360.0) hh = 0.0;
+		hh /= 60.0;
+		int i = hh;
+		double ff = hh - i;
+
+		const sf::Uint8 v = in.v * 255;
+		const sf::Uint8 p = in.v * (1.0 - in.s) * 255;
+		const sf::Uint8 q = in.v * (1.0 - (in.s * ff)) * 255;
+		const sf::Uint8 t = in.v * (1.0 - (in.s * (1.0 - ff))) * 255;
+
+		switch (i) {
+		case 0:
+			out.r = v;
+			out.g = t;
+			out.b = p;
+			break;
+		case 1:
+			out.r = q;
+			out.g = v;
+			out.b = p;
+			break;
+		case 2:
+			out.r = p;
+			out.g = v;
+			out.b = t;
+			break;
+
+		case 3:
+			out.r = p;
+			out.g = q;
+			out.b = v;
+			break;
+		case 4:
+			out.r = t;
+			out.g = p;
+			out.b = v;
+			break;
+		case 5:
+		default:
+			out.r = v;
+			out.g = p;
+			out.b = q;
+			break;
+		}
+
+		return out;
+	}
 
 	PendulumRenderer::PendulumRenderer(double _deltaTime)
 		: m_deltaTime(_deltaTime)
@@ -56,11 +123,18 @@ namespace eval {
 	HeatRenderer::HeatRenderer(double _deltaTime, size_t _domainSize, const double* _diffusivity, Integrator _integrator)
 		: m_deltaTime(_deltaTime),
 		m_domainSize(_domainSize),
-		m_diffusivity(_diffusivity, _diffusivity + _domainSize),
+		m_diffusivity(_domainSize, 0.0),
 		m_integrator(_integrator)
 	{
-	//	m_diffusivity.resize(m_domainSize);
-	//	std::copy(_diffusivity, _diffusivity + _domainSize, m_diffusivity.data());
+
+		const auto [minDif, maxDif] = std::minmax_element(_diffusivity, _diffusivity + _domainSize);
+		const double interval = (*maxDif - *minDif) * 0.5;
+
+		if (interval > 1.e-6)
+		{
+			for (size_t i = 0; i < _domainSize; ++i)
+				m_diffusivity[i] = static_cast<float>((_diffusivity[i] - *minDif) / interval - 1.0);
+		}
 	}
 
 	constexpr float BASE_RADIUS = 8.f;
@@ -71,7 +145,7 @@ namespace eval {
 		std::vector<double> state = m_integrator();
 
 		sf::RenderWindow window(sf::VideoMode(512, 512), "heateq");
-		window.setFramerateLimit(static_cast<unsigned>(1.0 / m_deltaTime));
+		window.setFramerateLimit(std::min(static_cast<unsigned>(1.0 / m_deltaTime), 60u));
 
 		// + 1 for origin, + 1 to close the loop
 		sf::VertexArray triangles(sf::TriangleFan, state.size() + 2);
@@ -96,9 +170,8 @@ namespace eval {
 					+ BASE_RADIUS * dir
 					+ static_cast<float>(state[i]) * dir;
 
-				const sf::Uint8 red = m_diffusivity[i] < 1.0 ? static_cast<sf::Uint8>(m_diffusivity[i] * 255) : 0;
-				const sf::Uint8 blue = m_diffusivity[i] > 1.0 ? static_cast<sf::Uint8>((m_diffusivity[i]-1.0) * 255) : 0;
-				triangles[i + 1].color = sf::Color(red, 255 - red, 255 - red);
+				HSV color{ m_diffusivity[i] > 0.0 ? 0.f : 240.f, std::abs(m_diffusivity[i]), 1.f };
+				triangles[i + 1].color = HSVtoRGB(color);
 			}
 			triangles[state.size() + 1].position = triangles[1].position;
 			triangles[state.size() + 1].color = triangles[1].color;

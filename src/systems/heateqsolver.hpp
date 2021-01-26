@@ -184,7 +184,7 @@ namespace discretization {
 				const int upper = std::ceil(current);
 				const T t = current - lower;
 
-				coefficients[i] = smallCoefs[lower] * (1.0 - t) + smallCoefs[upper] * t;
+				coefficients[i] = smallCoefs[lower] * (1.0 - t) + smallCoefs[std::min(upper, N-1)] * t;
 			}
 			m_system = HeatEquation<T, M>(coefficients, _system.radius());
 		/*	torch::Tensor small = nn::arrayToTensor(_system.heatCoefficients(), m_options);

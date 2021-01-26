@@ -25,8 +25,10 @@ namespace nn {
 		double operator()(const nn::HyperParams& _params) const
 		{
 			const int64_t hyperSampleRate = _params.get<int>("hyper_sample_rate", HYPER_SAMPLE_RATE);
-			Integrator referenceIntegrator(m_system, *_params.get<double>("time_step") / hyperSampleRate);
-			DataGenerator<System, Integrator, InputMaker> generator(m_system, referenceIntegrator);
+			// todo: use multiple systems for data generation
+			const System system = _params.get<System>("system", m_system);
+			Integrator referenceIntegrator(system, *_params.get<double>("time_step") / hyperSampleRate);
+			DataGenerator<System, Integrator, InputMaker> generator(system, referenceIntegrator);
 
 			namespace dat = torch::data;
 			const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
@@ -44,7 +46,7 @@ namespace nn {
 				dat::DataLoaderOptions().batch_size(USE_LBFGS ? std::numeric_limits< size_t>::max() : 64));
 			auto validationLoader = dat::make_data_loader(
 				validationSet,
-				dat::DataLoaderOptions().batch_size(64));
+				dat::DataLoaderOptions().batch_size(_params.get<int>("batch_size", 64)));
 
 			if constexpr (THREAD_FIXED_SEED)
 			{
@@ -75,14 +77,20 @@ namespace nn {
 
 			auto makeOptimizer = [&_params, &net]()
 			{
-				if constexpr (USE_LBFGS)
+				if constexpr (OPTIMIZER == Optimizer::LBFGS)
 					return torch::optim::LBFGS(net->parameters(),
 						torch::optim::LBFGSOptions(*_params.get<double>("lr")));
-				else
+				else if constexpr (OPTIMIZER == Optimizer::ADAM)
 					return torch::optim::Adam(net->parameters(),
 						torch::optim::AdamOptions(_params.get<double>("lr", 3.e-4))
 						.weight_decay(_params.get<double>("weight_decay", 1.e-6))
 						.amsgrad(_params.get<bool>("amsgrad", false)));
+				else if constexpr (OPTIMIZER == Optimizer::SGD)
+					return torch::optim::SGD(net->parameters(),
+						torch::optim::SGDOptions(_params.get<double>("lr", 0.01))
+						.weight_decay(_params.get<double>("weight_decay", 1.e-6))
+						.momentum(_params.get<double>("momentum", 0.9))
+						.dampening(_params.get<double>("dampening", 0.1)));
 			};
 			auto optimizer = makeOptimizer();
 

@@ -26,7 +26,7 @@ namespace eval {
 	private:
 		double m_deltaTime;
 		size_t m_domainSize;
-		std::vector<double> m_diffusivity;
+		std::vector<float> m_diffusivity;
 		Integrator m_integrator;
 	};
 }

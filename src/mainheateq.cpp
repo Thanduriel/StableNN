@@ -22,7 +22,6 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	states.reserve(_numStates);
 
 	std::default_random_engine rng(_seed);
-	
 	std::normal_distribution<T> energy(128.f, 64.f);
 
 	for (size_t i = 0; i < _numStates; ++i)
@@ -37,6 +36,43 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	return states;
 }
 
+std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed)
+{
+	std::vector<System> systems;
+	systems.reserve(_numSystems);
+
+	std::default_random_engine rng(_seed);
+	constexpr T maxChange = 0.05;
+	std::uniform_real_distribution<T> base(0.5, 3.0);
+	for (size_t i = 0; i < _numSystems; ++i)
+	{
+		const T avg = base(rng);
+		std::uniform_real_distribution<T> dist(-avg*0.9, +avg*0.9);
+
+		std::array<T, N> coefs;
+		for (size_t j = 0; j < N; ++j)
+			coefs[j] = avg + dist(rng);
+
+		// smoothing until neighboring points have a max distance of maxChange
+		bool isSmooth = true;
+		do {
+			isSmooth = true;
+			for (size_t j = 0; j < N; ++j)
+			{
+				const T next = coefs[(j+1) % N];
+				const T da = coefs[j] - next;
+				if (std::abs(da) > maxChange)
+					isSmooth = false;
+				coefs[j] = 0.75 * coefs[j] + 0.125 * next + 0.125 * coefs[(j - 1 + N) % N];
+			}
+		} while (!isSmooth);
+
+		systems.emplace_back(coefs);
+	}
+
+	return systems;
+}
+
 int main()
 {
 	std::array<T, N> heatCoefs{};
@@ -44,15 +80,18 @@ int main()
 	if (USE_LOCAL_DIFFUSIFITY)
 	{
 		for (size_t i = 0; i < N / 2; ++i)
-			heatCoefs[i] = 0.5 + static_cast<double>(i) / N;
+		{
+			heatCoefs[i] = 0.75 + static_cast<double>(i) / N;
+			heatCoefs[N-i-1] = 0.75 + static_cast<double>(i) / N;
+		}
 	}
 	System heatEq(heatCoefs, 1.0);
 
 	auto trainingStates = generateStates(heatEq, 24, 0x612FF6AEu);
-	auto validStates = generateStates(heatEq, 4, 0x195A4C);
+	auto validStates = generateStates(heatEq, 3, 0x195A4C);
 
 	using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY, 
-		systems::discretization::FiniteDifferencesImplicit<T,N,1>,
+		systems::discretization::SuperSampleIntegrator<T,N, N*4>,
 		systems::discretization::AnalyticHeatEq<T, System::NumPoints>>;
 
 	using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
@@ -66,12 +105,13 @@ int main()
 	params["hyper_sample_rate"] = 1;
 	params["train_samples"] = 512;
 	params["valid_samples"] = 1024;
+	params["batch_size"] = 1024;
 	params["num_epochs"] = 1024;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 
 	params["time_step"] = 0.0001;
-	params["lr"] = 0.025;
-	params["weight_decay"] = 1e-5; //4
+	params["lr"] = 0.002;
+	params["weight_decay"] = 0.0;
 
 	params["depth"] = 1;
 	params["diffusion"] = 0.1;
@@ -85,7 +125,7 @@ int main()
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(nn::identity);
-	params["name"] = std::string("heateq64_conv")
+	params["name"] = std::string("heateq64_conv_adam")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(*params.get<int>("hidden_size"))
@@ -93,10 +133,15 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("heateq64_conv");
+		params["name"] = std::string("temp");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-			{	{"filter_size", {3, 17, 33}},
-				{"lr", {0.02, 0.025, 0.03}},
+			{//	{"filter_size", {3, 17, 33}},
+			//	{"lr", {0.02, 0.025, 0.03}},
+				{"lr", {0.004, 0.003, 0.002}},
+			//	{"amsgrad", {false, true}},
+				{"num_epochs", {256,512, 1024}},
+			//	{ "momentum", {0.5, 0.6, 0.7} },
+			//	{ "dampening", {0.5, 0.4, 0.3} },
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
 			}, params);
 
@@ -123,13 +168,15 @@ int main()
 	//	for (size_t i = 0; i < net->layers.size(); ++i)
 	//		nn::exportTensor(net->layers[i]->weight, "heateq" + std::to_string(i) + ".txt");
 
-	/*	eval::HeatRenderer renderer(timeStep*100.f, N, heatEq.getHeatCoefficients().data(), [&, state = validStates[0]]() mutable
+		auto systems = generateSystems(4, 0xF21B50C);
+		systems::discretization::FiniteDifferencesExplicit finiteDiffs2(systems[2], timeStep);
+		eval::HeatRenderer renderer(timeStep, N, systems[2].heatCoefficients().data(), [&, state = validStates[0]]() mutable
 			{
-				state = finiteDiffs(state);
+				state = finiteDiffs2(state);
 				std::vector<double> exState(state.begin(), state.end());
 				return exState;
 			});
-		renderer.run();*/
+		renderer.run();
 
 		eval::EvalOptions options;
 		eval::evaluate(heatEq, validStates[0], options, analytic, finiteDiffs, finiteDiffsImpl, superSampleFiniteDifs/*, nn*/);
