@@ -7,6 +7,7 @@
 #include "hyperparam.hpp"
 #include <torch/torch.h>
 #include <mutex>
+#include <chrono>
 
 namespace nn {
 
@@ -14,9 +15,15 @@ namespace nn {
 	struct TrainNetwork
 	{
 		using State = typename System::State;
+		using ValueT = typename System::ValueT;
 
 		TrainNetwork(const System& _system, std::vector<State> _trainStates, std::vector<State> _validStates)
-			: m_system(_system),
+			: TrainNetwork(std::vector{ _system }, std::move(_trainStates), std::move(_validStates))
+		{
+		}
+
+		TrainNetwork(std::vector<System> _systems, std::vector<State> _trainStates, std::vector<State> _validStates)
+			: m_systems(std::move(_systems)),
 			m_trainStates(std::move(_trainStates)),
 			m_validStates(std::move(_validStates))
 		{
@@ -24,18 +31,46 @@ namespace nn {
 
 		double operator()(const nn::HyperParams& _params) const
 		{
-			const int64_t hyperSampleRate = _params.get<int>("hyper_sample_rate", HYPER_SAMPLE_RATE);
-			// todo: use multiple systems for data generation
-			const System system = _params.get<System>("system", m_system);
-			Integrator referenceIntegrator(system, *_params.get<double>("time_step") / hyperSampleRate);
-			DataGenerator<System, Integrator, InputMaker> generator(system, referenceIntegrator);
+			int64_t hyperSampleRate = _params.get<int>("hyper_sample_rate", HYPER_SAMPLE_RATE);
+			// system is just a placeholder
+			auto makeIntegrator = [&]()
+			{
+				// integrator implements temporal hyper sampling
+				if constexpr (std::is_constructible_v<Integrator, System, ValueT, State, int>)
+				{
+					return Integrator(m_systems[0], *_params.get<double>("time_step"), State{}, hyperSampleRate);
+					hyperSampleRate = 1;
+				}
+				else
+					return Integrator(m_systems[0], *_params.get<double>("time_step") / hyperSampleRate);
+			};
+			Integrator referenceIntegrator = makeIntegrator();
+			
+			// distribute systems to training and validation generation
+			const size_t numTotalStates = m_validStates.size() + m_trainStates.size();
+			const size_t numTrainSystems = std::max(static_cast<size_t>(1), (m_trainStates.size() * m_systems.size()) / numTotalStates );
+			const size_t numValidSystems = std::max(static_cast<size_t>(1), m_systems.size() - numTrainSystems);
 
+			DataGenerator<System, Integrator, InputMaker> trainGenerator(
+				std::vector<System>(m_systems.begin(), m_systems.begin() + numTrainSystems), 
+				referenceIntegrator);
+			DataGenerator<System, Integrator, InputMaker> validGenerator(
+				std::vector<System>(m_systems.end() - numValidSystems, m_systems.end()),
+				referenceIntegrator);
+
+			auto start = std::chrono::high_resolution_clock::now();
 			namespace dat = torch::data;
 			const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
-			auto dataset = generator.generate(m_trainStates, *_params.get<int>("train_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
+			auto dataset = trainGenerator.generate(m_trainStates, *_params.get<int>("train_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
 				.map(dat::transforms::Stack<>());
-			auto validationSet = generator.generate(m_validStates, *_params.get<int>("valid_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
+			auto validationSet = validGenerator.generate(m_validStates, *_params.get<int>("valid_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
 				.map(dat::transforms::Stack<>());
+
+			auto end = std::chrono::high_resolution_clock::now();
+			const float genTime = std::chrono::duration<float>(end - start).count();
+			// not constexpr so that genTime is used
+			if (MODE != Mode::TRAIN_MULTI)
+				std::cout << "Generating data took " << genTime << "s\n";
 
 			// LBFGS does not work with mini batches
 			using Sampler = std::conditional_t<USE_SEQ_SAMPLER,
@@ -170,13 +205,13 @@ namespace nn {
 					}
 				}
 			}
-			if (LOG_LOSS)
+			if constexpr(LOG_LOSS)
 			{
 				std::unique_lock<std::mutex> lock(s_loggingMutex);
 				std::ofstream lossLog("losses.txt", std::ios::app);
 				lossLog << bestValidLoss << std::endl;
 			}
-			if (SAVE_NET)
+			if constexpr(SAVE_NET)
 			{
 				torch::save(bestNet, _params.get<std::string>("name", "net") + ".pt");
 			}
@@ -185,7 +220,7 @@ namespace nn {
 		}
 
 	private:
-		System m_system;
+		std::vector<System> m_systems;
 		std::vector<State> m_trainStates;
 		std::vector<State> m_validStates;
 		static std::mutex s_initMutex;

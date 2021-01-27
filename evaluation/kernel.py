@@ -5,7 +5,8 @@ import math
 
 matplotlib.style.use('seaborn')
 
-names = ["heateq1.txt", "heateq2.txt", "heateq3.txt"]
+names = ["green.txt", "heateq_adam3.txt", "heateq3.txt"]
+#names = ["heateq1.txt", "heateq2.txt", "heateq3.txt"]
 markers = ["o", "s", "."]
 
 data = []

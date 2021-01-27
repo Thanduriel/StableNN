@@ -22,12 +22,6 @@ namespace discretization {
 			// variable heat coefficients are currently not supported
 			assert(std::all_of(m_system.heatCoefficients().begin(), m_system.heatCoefficients().end(), [](T v) { return v == 1.0; }));
 
-			init(_initialState);
-		}
-
-		// Initialize integrator with a new _initialState for t = 0.
-		void init(const State& _initialState)
-		{
 			const torch::Tensor s = torch::from_blob(const_cast<T*>(_initialState.data()),
 				{ static_cast<int64_t>(_initialState.size()) },
 				c10::TensorOptions(c10::CppTypeToScalarType<T>()));
@@ -36,20 +30,25 @@ namespace discretization {
 			m_t = 0.0;
 		}
 
+		AnalyticHeatEq(const AnalyticHeatEq& _oth, const HeatEquation<T, N>& _system, const State& _initialState)
+			: AnalyticHeatEq(_system, _oth.deltaTime(), _initialState)
+		{}
+
 		State operator()(const State& _state) 
 		{
 			m_t += m_dt;
 			
-			const torch::Tensor scale = getGreenFn(m_t);
+			const torch::Tensor scale = getGreenFnFt(m_t);
 			const torch::Tensor nextF = scale * m_initialStateF;
 			const torch::Tensor next = torch::fft_irfft(nextF, _state.size());
 
-			return *reinterpret_cast<State*>(next.data_ptr<T>());
+			return nn::tensorToArray<T,N>(next);
 		}
 
-		T getDeltaTime() const { return m_dt; }
+		T deltaTime() const { return m_dt; }
 
-		torch::Tensor getGreenFn(T _time) const
+		// Green's function in the frequency domain
+		torch::Tensor getGreenFnFt(T _time) const
 		{
 			torch::Tensor scale = torch::zeros_like(m_initialStateF);
 			for (int64_t n = 0; n < scale.size(0); ++n)
@@ -58,6 +57,16 @@ namespace discretization {
 			}
 
 			return scale;
+		}
+
+		// Green's function in the spatial domain (convolution kernel)
+		torch::Tensor getGreenFn(T _time, int _size = N) const
+		{
+			// restore convolution
+			torch::Tensor green = torch::fft_irfft(getGreenFnFt(_time), _size);
+			// rotate so that peak is in the middle
+			green = green.roll({ _size / 2 }, {0});
+			return green;
 		}
 	private:
 		const HeatEquation<T, N>& m_system;
@@ -93,16 +102,17 @@ namespace discretization {
 			for (size_t i = 0; i < next.size(); ++i)
 			{
 				const T dxx = (_state[m_system.index(i - Dif)] - 2.0 * _state[i] + _state[m_system.index(i + Dif)]);
-
 				const size_t i_0 = m_system.index(i - 1);
 				const size_t i_2 = m_system.index(i + 1);
 				const T dx = _state[i_0] - _state[i_2];
+
 				next[i] = _state[i] + m_r * ((a[i_0] - a[i_2]) * dx + a[i] * dxx);
 			}
 
 			return next;
 		}
 
+		T deltaTime() const { return m_dt; }
 	private:
 		const HeatEquation<T, N>& m_system;
 		T m_r;
@@ -166,10 +176,11 @@ namespace discretization {
 	{
 		using SmallState = typename HeatEquation<T, N>::State;
 	public:
-		SuperSampleIntegrator(const HeatEquation<T, N>& _system, T _dt, int _sampleRate, const SmallState& _state)
+		SuperSampleIntegrator(const HeatEquation<T, N>& _system, T _dt, const SmallState& _state = {}, int _sampleRate = 1)
 			: m_system(),
 			m_state{},
 			m_sampleRate(_sampleRate),
+			m_deltaTime(_dt),
 			m_integrator(m_system, _dt / _sampleRate),
 			m_options(c10::CppTypeToScalarType<T>())
 		{
@@ -192,16 +203,16 @@ namespace discretization {
 			torch::Tensor large = torch::fft_irfft(small, M);
 			m_system = HeatEquation<T,M>(nn::tensorToArray<T, M>(large), _system.radius());*/
 
-			init(_state);
-		}
-
-		void init(const SmallState& _state)
-		{
 			// upsale state with fft
 			torch::Tensor stateSmall = nn::arrayToTensor(_state, m_options);
 			stateSmall = torch::fft_rfft(stateSmall);
 			torch::Tensor stateLarge = torch::fft_irfft(stateSmall, M);
 			m_state = nn::tensorToArray<T, M>(stateLarge);
+		}
+
+		SuperSampleIntegrator(const SuperSampleIntegrator& _oth, const HeatEquation<T, N>& _system, const SmallState& _state)
+			: SuperSampleIntegrator(_system, _oth.m_deltaTime, _state, _oth.m_sampleRate)
+		{
 		}
 
 		SmallState operator()(const SmallState&)
@@ -216,10 +227,13 @@ namespace discretization {
 			return nn::tensorToArray<T,N>(stateSmall);
 		}
 
+		T deltaTime() const { return m_deltaTime; }
+
 	private:
 		HeatEquation<T, M> m_system;
 		typename HeatEquation<T, M>::State m_state;
 		int m_sampleRate;
+		T m_deltaTime;
 		FiniteDifferencesExplicit<T,M> m_integrator;
 		c10::TensorOptions m_options;
 	};

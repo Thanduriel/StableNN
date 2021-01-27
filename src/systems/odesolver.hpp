@@ -21,6 +21,7 @@ namespace discretization {
 			return next;
 		}
 
+		T deltaTime() const { return m_dt; }
 	private:
 		const System& m_system;
 		T m_dt;
@@ -45,6 +46,7 @@ namespace discretization {
 			return next;
 		}
 
+		T deltaTime() const { return m_dt; }
 	private:
 		const System& m_system;
 		T m_dt;

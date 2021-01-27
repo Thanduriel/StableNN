@@ -24,7 +24,7 @@ enum struct Optimizer {
 	LBFGS
 };
 
-constexpr Mode MODE = Mode::EVALUATE;
+constexpr Mode MODE = Mode::TRAIN_MULTI;
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true;
 constexpr bool LOG_LOSS = false;

@@ -11,7 +11,12 @@ class DataGenerator
 	using SysState = typename System::State;
 public:
 	DataGenerator(const System& _system, const Integrator& _integrator) 
-		: m_system(_system), 
+		: DataGenerator({ _system }, _integrator)
+	{
+	}
+
+	DataGenerator(std::vector<System> _systems, const Integrator& _integrator)
+		: m_systems(std::move(_systems)),
 		m_integrator(_integrator),
 		m_tensorOptions(c10::CppTypeToScalarType<typename System::ValueT>())
 	{
@@ -42,9 +47,11 @@ public:
 		torch::Tensor inputs;
 		torch::Tensor outputs;
 
-		for (auto& state : _initialStates)
+		for(size_t k = 0; k < _initialStates.size(); ++k)
 		{
-			auto results = runSimulation(state, samplesReq + _numInputSteps - 1, _downSampleRate);
+			const SysState& state = _initialStates[k];
+			const System& system = m_systems[k % m_systems.size()];
+			auto results = runSimulation(system, state, samplesReq + _numInputSteps - 1, _downSampleRate);
 			std::vector<SysState> timeSeries;
 
 			const int64_t samplesForSeries = _useSingleOutput ? _numSamples : samplesReq;
@@ -57,7 +64,7 @@ public:
 
 			InputMaker stateToTensor;
 			const int64_t size = _numSamples;
-			torch::Tensor in = stateToTensor(m_system, timeSeries.data(), timeSeries.size(), size, m_tensorOptions);
+			torch::Tensor in = stateToTensor(system, timeSeries.data(), timeSeries.size(), size, m_tensorOptions);
 			torch::Tensor out = torch::from_blob(
 				_useSingleOutput ? (results.data() + _numInputSteps + _inOutShift - 1) : (timeSeries.data() + _numInputSteps * _inOutShift),
 				{ size, outputSize }, 
@@ -78,7 +85,8 @@ public:
 		return { inputs, outputs };
 	}
 private:
-	auto runSimulation( const SysState& _initialState,
+	auto runSimulation( const System& _system,
+		const SysState& _initialState,
 		size_t _steps,
 		size_t _subSteps) const
 	{
@@ -88,9 +96,14 @@ private:
 		results.push_back(state);
 
 		// a statefull integrator with non const operator() needs to be recreated
-		Integrator integrator = m_integrator;
-		if constexpr (!is_callable<const Integrator, SysState>::value)
-			integrator.init(_initialState);
+		Integrator integrator = [this, &_system, &_initialState]() 
+		{
+			if constexpr (!is_callable<const Integrator, SysState>::value)
+				return Integrator(m_integrator, _system, _initialState);
+			else 
+				return Integrator(_system, m_integrator.deltaTime());
+				//return m_integrator;
+		}();
 
 		const size_t computeSteps = _steps * _subSteps;
 		// start at 1 because we already have the initial state
@@ -104,7 +117,7 @@ private:
 		return results;
 	}
 
-	System m_system;
+	std::vector<System> m_systems;
 	Integrator m_integrator;
 	c10::TensorOptions m_tensorOptions;
 };
