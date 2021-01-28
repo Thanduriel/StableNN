@@ -102,7 +102,6 @@ private:
 				return Integrator(m_integrator, _system, _initialState);
 			else 
 				return Integrator(_system, m_integrator.deltaTime());
-				//return m_integrator;
 		}();
 
 		const size_t computeSteps = _steps * _subSteps;

@@ -38,8 +38,9 @@ namespace nn {
 				// integrator implements temporal hyper sampling
 				if constexpr (std::is_constructible_v<Integrator, System, ValueT, State, int>)
 				{
-					return Integrator(m_systems[0], *_params.get<double>("time_step"), State{}, hyperSampleRate);
+					auto integ = Integrator(m_systems[0], *_params.get<double>("time_step"), State{}, hyperSampleRate);
 					hyperSampleRate = 1;
+					return integ;
 				}
 				else
 					return Integrator(m_systems[0], *_params.get<double>("time_step") / hyperSampleRate);
