@@ -76,7 +76,13 @@ namespace discretization {
 		torch::Tensor m_initialStateF;
 	};
 
-	template<typename T, int N, int Dif = 1>
+	template<typename T>
+	constexpr auto LAPLACE_STENCILS = std::make_tuple(
+		std::array<T, 3>{ 1.0, -2.0, 1.0 },
+	//	std::array<T, 5>{ -1.0, 16.0, -30.0, 16.0, -1.0 });
+		std::array<T, 5>{ -1.0 / 12.0, 4.0 / 3.0, -5.0 / 2.0, 4.0 / 3.0, -1.0 / 12.0 });
+
+	template<typename T, int N, int Order = 1>
 	struct FiniteDifferencesExplicit
 	{
 		using State = typename HeatEquation<T, N>::State;
@@ -88,7 +94,7 @@ namespace discretization {
 		{
 			// double sized intervals so that the first order central differences uses whole steps
 			const T h = m_system.radius() * 2.0 * PI / N;
-			const T hSqr = (Dif * Dif * h * h);
+			const T hSqr = (h * h);
 			m_r = m_dt / hSqr;
 			// stability criteria
 			assert(m_r <= 0.5);
@@ -99,14 +105,19 @@ namespace discretization {
 			State next;
 			const auto& a = m_system.heatCoefficients();
 
+			const auto& stencil = std::get<Order-1>(LAPLACE_STENCILS<T>);
+			const size_t shift = stencil.size() / 2;
+
 			for (size_t i = 0; i < next.size(); ++i)
 			{
-				const T dxx = (_state[m_system.index(i - Dif)] - 2.0 * _state[i] + _state[m_system.index(i + Dif)]);
-				const size_t i_0 = m_system.index(i - 1);
+				T dxx = 0.0;
+				for(size_t j = 0; j < stencil.size(); ++j)
+					dxx += stencil[j] * _state[m_system.index(i + j - shift)];
+			/*	const size_t i_0 = m_system.index(i - 1);
 				const size_t i_2 = m_system.index(i + 1);
-				const T dx = _state[i_0] - _state[i_2];
+				const T dx = _state[i_0] - _state[i_2];*/
 
-				next[i] = _state[i] + m_r * ((a[i_0] - a[i_2]) * dx + a[i] * dxx);
+				next[i] = _state[i] + m_r * (/*(a[i_0] - a[i_2]) * dx +*/ a[i] * dxx);
 			}
 
 			return next;
@@ -119,7 +130,7 @@ namespace discretization {
 		T m_dt;
 	};
 
-	template<typename T, int N, int Dif = 1>
+	template<typename T, int N, int Order = 1>
 	struct FiniteDifferencesImplicit
 	{
 		using State = typename HeatEquation<T, N>::State;
@@ -130,25 +141,27 @@ namespace discretization {
 		{
 			// double sized intervals so that the first order central differences uses whole steps
 			const T h = m_system.radius() * 2.0 * PI / N;
-			const T hSqr = (Dif * Dif * h * h);
+			const T hSqr = (h * h);
 			const T r = _dt / hSqr;
 
 			const auto& a = m_system.heatCoefficients();
 
 			constexpr int64_t m = N;
-			const T f = Dif == 1 ? 1.0 : -1.0;
-			const torch::Tensor kernel = -r * torch::tensor({1.0, 1.0, -2.0, f, 1.0}, m_options);
+			const auto& stencil = std::get<Order - 1>(LAPLACE_STENCILS<T>);
+			const size_t shift = stencil.size() / 2;
+
+			const torch::Tensor kernel = -r * nn::arrayToTensor(stencil, m_options);
 			torch::Tensor mat = torch::zeros({ m, m }, m_options);
 			for (int64_t i = 0; i < N; ++i)
 			{
 				const T da = a[m_system.index(i + 1)] - a[m_system.index(i - 1)];
-				const torch::Tensor scale = Dif == 1 ? 
-					torch::tensor({ 0.0, a[i], a[i], a[i], 0.0 })
-					 : torch::tensor({ a[i], da, a[i], da, a[i] });
+				const torch::Tensor scale = Order == 1 ? 
+					torch::tensor({ a[i], a[i], a[i] }, m_options)
+					 : torch::tensor({ a[i], a[i], a[i], a[i], a[i] }, m_options);
 				
-				for (int64_t j = 0; j < 5; ++j)
+				for (size_t j = 0; j < stencil.size(); ++j)
 				{
-					int64_t idx = static_cast<int64_t>(m_system.index(i + j - 2));
+					int64_t idx = static_cast<int64_t>(m_system.index(i + j - shift));
 					mat.index_put_({ i,idx }, kernel[j] * scale[j]);
 				}
 			}
@@ -175,6 +188,8 @@ namespace discretization {
 	class SuperSampleIntegrator
 	{
 		using SmallState = typename HeatEquation<T, N>::State;
+		using LargeState = typename HeatEquation<T, M>::State;
+		using BaseIntegrator = FiniteDifferencesExplicit<T, M, 1>;
 	public:
 		SuperSampleIntegrator(const HeatEquation<T, N>& _system, T _dt, const SmallState& _state = {}, int _sampleRate = 1)
 			: m_system(),
@@ -220,21 +235,26 @@ namespace discretization {
 			for (int i = 0; i < m_sampleRate; ++i)
 				m_state = m_integrator(m_state);
 
-			// downscale state with fft
-			torch::Tensor stateLarge = torch::fft_rfft(nn::arrayToTensor(m_state, m_options));
+			return downscaleState(m_state);
+		}
+
+		SmallState downscaleState(const LargeState& _large) const
+		{
+			torch::Tensor stateLarge = torch::fft_rfft(nn::arrayToTensor(_large, m_options));
 			torch::Tensor stateSmall = torch::fft_irfft(stateLarge, N);
 
-			return nn::tensorToArray<T,N>(stateSmall);
+			return nn::tensorToArray<T, N>(stateSmall);
 		}
 
 		T deltaTime() const { return m_deltaTime; }
-
+		const HeatEquation<T, M>& internalSystem() const { return m_system; }
+		const LargeState& internalState() const { return m_state; }
 	private:
 		HeatEquation<T, M> m_system;
-		typename HeatEquation<T, M>::State m_state;
+		LargeState m_state;
 		int m_sampleRate;
 		T m_deltaTime;
-		FiniteDifferencesExplicit<T,M> m_integrator;
+		BaseIntegrator m_integrator;
 		c10::TensorOptions m_options;
 	};
 

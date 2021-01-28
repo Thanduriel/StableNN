@@ -36,8 +36,9 @@ namespace nn {
 		// batch dimension
 		if (x.dim() < 3)
 			x = x.unsqueeze(0);
-		for (auto& layer : layers)
-			x = options.activation()(layer(x));
+		for(size_t i = 0; i < layers.size()-1; ++i)
+			x = options.activation()(layers[i](x));
+		x = layers.back()(x);
 
 		return x.squeeze();
 	}

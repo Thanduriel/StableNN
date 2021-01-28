@@ -5,6 +5,7 @@
 #include "../defs.hpp"
 #include "../generator.hpp"
 #include "hyperparam.hpp"
+#include "lrscheduler.hpp"
 #include <torch/torch.h>
 #include <mutex>
 #include <chrono>
@@ -129,6 +130,7 @@ namespace nn {
 						.dampening(_params.get<double>("dampening", 0.1)));
 			};
 			auto optimizer = makeOptimizer();
+			auto lrScheduler = LearningRateScheduler(optimizer, _params.get<double>("lr_decay", 1.0));
 
 			double bestValidLoss = std::numeric_limits<double>::max();
 
@@ -163,6 +165,7 @@ namespace nn {
 
 					optimizer.step(closure);
 				}
+				lrScheduler.step();
 
 				// validation
 				net->eval();
