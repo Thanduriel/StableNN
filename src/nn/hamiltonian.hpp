@@ -16,6 +16,7 @@ namespace nn {
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 	};
 
+	// Dense network with second-order discretization scheme. Imposes no restrictions on the weight matrix.
 	class HamiltonianImpl : public torch::nn::Cloneable<HamiltonianImpl>
 	{
 	public:
@@ -35,6 +36,7 @@ namespace nn {
 
 	TORCH_MODULE(Hamiltonian);
 
+	// Affine transformation of a two part state.
 	class HamiltonianCellImpl : public torch::nn::Cloneable<HamiltonianCellImpl>
 	{
 	public:
@@ -59,6 +61,8 @@ namespace nn {
 
 	TORCH_MODULE(HamiltonianCell);
 
+	// Hamiltonian with state augmented by a zero initialized momentum and with leap frog discretization.
+	// Weights will be of size input_size x augment_size.
 	class HamiltonianAugmentedImpl : public torch::nn::Cloneable<HamiltonianAugmentedImpl>
 	{
 	public:
@@ -77,6 +81,7 @@ namespace nn {
 
 	TORCH_MODULE(HamiltonianAugmented);
 
+	// Layers like HamiltonianAugmented but the actual state is split evenly between position and momentum.
 	class HamiltonianInterleafedImpl : public torch::nn::Cloneable<HamiltonianInterleafedImpl>
 	{
 	public:

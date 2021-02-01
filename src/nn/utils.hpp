@@ -35,7 +35,7 @@ namespace nn {
 		return *reinterpret_cast<std::array<T, N>*>(_tensor.data_ptr<T>());
 	}
 
-	// Functor which converts an array of system states into a tensor
+	// Functor which converts an array of system states into a 2-d tensor
 	struct StateToTensor
 	{
 		template<typename System>
@@ -53,4 +53,39 @@ namespace nn {
 				_options);
 		}
 	};
+
+	// Similar to StateToTensor, but introduces an explicit time dimension
+	// @param TimeLast if true, the last dimension is time, otherwise it is the state
+	template<bool TimeLast = true>
+	struct StateToTensorTimeseries
+	{
+		template<typename System>
+		torch::Tensor operator()(const System&,
+			const typename System::State* _state,
+			int64_t _numStates,
+			int64_t _batchSize,
+			const c10::TensorOptions& _options) const
+		{
+			assert(_numStates % _batchSize == 0);
+			constexpr int64_t stateSize = systems::sizeOfState<System>();
+
+			torch::Tensor tensor = torch::from_blob(const_cast<typename System::State*>(_state),
+				{ _batchSize, _numStates / _batchSize, stateSize },
+				_options);
+			if constexpr (TimeLast)
+				return tensor.permute({ 0,2,1 });
+			else
+				return tensor;
+		}
+	};
+
+	// Specialize this for a network architecture that requires different inputs.
+	template<typename Network>
+	struct InputMakerSelector
+	{
+		using type = StateToTensor;
+	};
+
+	template<typename Network>
+	using MakeTensor_t = typename InputMakerSelector<Network>::type;
 }

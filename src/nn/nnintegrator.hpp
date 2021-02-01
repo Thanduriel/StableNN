@@ -7,7 +7,7 @@
 
 namespace nn{
 
-	template<typename System, typename Network, size_t NumStates = 1, typename InputMaker = StateToTensor>
+	template<typename System, typename Network, size_t NumStates = 1, typename InputMaker = MakeTensor_t<Network>>
 	class Integrator
 	{
 		using State = typename System::State;

@@ -1,4 +1,5 @@
 #include "stability.hpp"
+#include "../constants.hpp"
 
 namespace eval {
 
@@ -13,6 +14,9 @@ namespace eval {
 	{
 		using namespace torch::indexing;
 
+		// layer weight requiring a gradient would otherwise spread to mat
+		torch::NoGradGuard guard;
+
 		const int64_t filterSize = _conv->options.kernel_size()->front();
 		const int64_t halfSize = filterSize / 2;
 		const torch::Tensor filter = _conv->weight.squeeze();
@@ -23,8 +27,6 @@ namespace eval {
 		auto options = _conv->weight.options();
 		torch::Tensor mat = torch::zeros({ _size, _size }, options.requires_grad(false));
 
-		// layer weight requiring a gradient would otherwise spread to mat
-		torch::NoGradGuard guard;
 		for (int64_t i = 0; i < _size; ++i)
 		{
 			for (int64_t j = 0; j < filterSize; ++j)
@@ -36,6 +38,46 @@ namespace eval {
 			}
 		}
 		return mat;
+	}
+
+	template<typename T>
+	T power(const T& a, int p)
+	{
+		if (p == 0) return 1.0;
+		T x = a;
+
+		for (int i = 0; i < p; ++i)
+			x *= a;
+
+		return x;
+	}
+
+	torch::Tensor eigs(const torch::nn::Conv1d& _conv, int64_t _size)
+	{
+		// layer weight requiring a gradient would otherwise spread to mat
+		torch::NoGradGuard guard;
+
+		const int64_t filterSize = _conv->options.kernel_size()->front();
+		const int64_t halfSize = filterSize / 2;
+		const torch::Tensor filter = _conv->weight.squeeze().roll({ halfSize }, {0});
+
+		assert(c10::holds_alternative<torch::enumtype::kCircular>(_conv->options.padding_mode()));
+		assert(filterSize <= _size);
+		
+		using namespace std::literals::complex_literals;
+		const std::complex<double> w = std::exp(2.0 * PI * 1i / static_cast<double>(_size));
+
+		torch::Tensor vals = torch::zeros({_size, 2}, filter.options());
+		for (int64_t i = 0; i < _size; ++i)
+		{
+			std::complex<double> lambda = 0.0;
+			for (int64_t j = 0; j < filterSize; ++j)
+			{
+				lambda += filter[j].item<double>() * power(w, i * j);
+			}
+			vals[i] = torch::tensor({ lambda.real(), lambda.imag() }, filter.options());
+		}
+		return vals;
 	}
 
 	void checkEnergy(const torch::nn::Conv1d& _conv, int64_t _size)
@@ -62,7 +104,6 @@ namespace eval {
 		double sum = 0.0;
 		for (int64_t j = 0; j < halfSize; ++j)
 		{
-		//	std::cout << (filter[j] - filter[filterSize - j - 1]).item<double>() << "\n";
 			if ((filter[j] - filter[filterSize - j - 1]).item<double>() > std::numeric_limits<double>::epsilon() * 16.0)
 			{
 				symmetric = false;

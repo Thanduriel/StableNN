@@ -12,7 +12,7 @@
 
 namespace nn {
 
-	template<typename Network, typename System, typename Integrator, typename InputMaker = nn::StateToTensor>
+	template<typename Network, typename System, typename Integrator, typename InputMaker = MakeTensor_t<Network>>
 	struct TrainNetwork
 	{
 		using State = typename System::State;
@@ -32,11 +32,11 @@ namespace nn {
 
 		double operator()(const nn::HyperParams& _params) const
 		{
-			int64_t hyperSampleRate = _params.get<int>("hyper_sample_rate", HYPER_SAMPLE_RATE);
+			int64_t hyperSampleRate = *_params.get<int>("hyper_sample_rate");
 			// system is just a placeholder
 			auto makeIntegrator = [&]()
 			{
-				// integrator implements temporal hyper sampling
+				// integrator implements temporal hyper sampling already
 				if constexpr (std::is_constructible_v<Integrator, System, ValueT, State, int>)
 				{
 					auto integ = Integrator(m_systems[0], *_params.get<double>("time_step"), State{}, hyperSampleRate);
@@ -74,16 +74,17 @@ namespace nn {
 			if (MODE != Mode::TRAIN_MULTI)
 				std::cout << "Generating data took " << genTime << "s\n";
 
-			// LBFGS does not work with mini batches
+			// LBFGS does not work with mini batches and random sampling
 			using Sampler = std::conditional_t<USE_SEQ_SAMPLER,
 				dat::samplers::SequentialSampler,
 				dat::samplers::RandomSampler>;
 			auto data_loader = dat::make_data_loader<Sampler>(
 				dataset,
-				dat::DataLoaderOptions().batch_size(USE_LBFGS ? std::numeric_limits< size_t>::max() : 64));
-			auto validationLoader = dat::make_data_loader(
+				dat::DataLoaderOptions().batch_size(USE_LBFGS ? std::numeric_limits< size_t>::max() : _params.get<int>("batch_size", 64)));
+			// make validation as fast as possible
+			auto validationLoader = dat::make_data_loader<dat::samplers::SequentialSampler>(
 				validationSet,
-				dat::DataLoaderOptions().batch_size(_params.get<int>("batch_size", 64)));
+				dat::DataLoaderOptions().batch_size(std::numeric_limits< size_t>::max()));
 
 			if constexpr (THREAD_FIXED_SEED)
 			{
@@ -98,9 +99,10 @@ namespace nn {
 				s_initMutex.unlock();
 			}
 
-			auto lossFn = [](const torch::Tensor& self, const torch::Tensor& target)
+			const int loss_p = _params.get("loss_p", 2);
+			auto lossFn = [loss_p](const torch::Tensor& self, const torch::Tensor& target)
 			{
-				return nn::lp_loss(self, target, 3);
+				return nn::lp_loss(self, target, loss_p);
 			};
 
 			auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
@@ -126,8 +128,12 @@ namespace nn {
 					return torch::optim::SGD(net->parameters(),
 						torch::optim::SGDOptions(_params.get<double>("lr", 0.01))
 						.weight_decay(_params.get<double>("weight_decay", 1.e-6))
-						.momentum(_params.get<double>("momentum", 0.9))
-						.dampening(_params.get<double>("dampening", 0.1)));
+						.momentum(_params.get<double>("momentum", 0.0))
+						.dampening(_params.get<double>("dampening", 0.0)));
+				else if constexpr (OPTIMIZER == Optimizer::RMSPROP)
+					return torch::optim::RMSprop(net->parameters(),
+						torch::optim::RMSpropOptions(_params.get<double>("lr", 0.001))
+						.momentum(_params.get<double>("momentum", 0.9)));
 			};
 			auto optimizer = makeOptimizer();
 			auto lrScheduler = LearningRateScheduler(optimizer, _params.get<double>("lr_decay", 1.0));

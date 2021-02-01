@@ -32,6 +32,7 @@ namespace nn {
 		return x;
 	}
 
+	// ****************************************************************** //
 	MultiLayerPerceptronExtImpl::MultiLayerPerceptronExtImpl(const MLPOptions& _options)
 		: options(_options)
 	{

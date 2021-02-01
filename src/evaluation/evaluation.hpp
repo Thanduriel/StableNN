@@ -48,6 +48,7 @@ namespace eval {
 
 		stateLog.push_back(currentState);
 
+		std::cout << "===============================================\n";
 		const auto initialEnergy = _system.energy(_initialState);
 		std::cout << "initial state:  " << _initialState << "\n";
 		std::cout << "initial energy: " << initialEnergy << std::endl;
@@ -120,17 +121,17 @@ namespace eval {
 		std::cout.precision(5);
 		std::cout << std::fixed;
 
-		std::cout << "mse============================================\n";
+		std::cout << "mse -------------------------------------------\n";
 		for (double err : cumulativeError)
 		{
 			std::cout << err / _options.numShortTermSteps << ", ";
 		}
 		std::cout << "\n";
 
-		if (!_options.numLongTermSteps)
+		if (_options.numLongTermSteps)
 		{
 			// long term energy behavior
-			std::cout << "longterm=======================================" << "\n";
+			std::cout << "longterm --------------------------------------" << "\n";
 			for (int i = 0; i < _options.numLongTermSteps; ++i)
 			{
 				for (int j = 0; j < 4096; ++j)

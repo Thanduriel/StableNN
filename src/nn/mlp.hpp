@@ -17,6 +17,7 @@ namespace nn {
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 	};
 
+	// Fully connected multi-layer perceptron with residual connections.
 	struct MultiLayerPerceptronImpl : public torch::nn::Cloneable<MultiLayerPerceptronImpl>
 	{
 		using Options = MLPOptions;
@@ -32,6 +33,7 @@ namespace nn {
 
 	TORCH_MODULE(MultiLayerPerceptron);
 
+	// Extension which adds training scalars to both the residual and added parts.
 	struct MultiLayerPerceptronExtImpl : public torch::nn::Cloneable<MultiLayerPerceptronExtImpl>
 	{
 		using Options = MLPOptions;

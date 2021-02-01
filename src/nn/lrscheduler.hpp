@@ -4,6 +4,7 @@
 
 namespace nn {
 
+	// Map optimizers to their respective options
 	template<typename Optimizer>
 	struct OptimzerToOptions;
 
@@ -16,6 +17,11 @@ namespace nn {
 	template<>
 	struct OptimzerToOptions<torch::optim::SGD> { using value_t = torch::optim::SGDOptions; };
 
+	template<>
+	struct OptimzerToOptions<torch::optim::RMSprop> { using value_t = torch::optim::RMSpropOptions; };
+
+
+	// Exponentially decaying learning rate.
 	template<typename Optimizer>
 	class LearningRateScheduler
 	{

@@ -11,6 +11,7 @@
 #include "generator.hpp"
 #include "nn/antisymmetric.hpp"
 #include "nn/hamiltonian.hpp"
+#include "nn/tcn.hpp"
 #include "nn/inoutwrapper.hpp"
 #include "nn/utils.hpp"
 #include "nn/nnmaker.hpp"
@@ -30,6 +31,9 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
+// simulation related
+constexpr int HYPER_SAMPLE_RATE = 128;
+
 
 template<size_t NumTimeSteps, typename... Networks>
 void evaluate(
@@ -47,7 +51,7 @@ void evaluate(
 	{
 		discret::LeapFrog<System> forward(system, _timeStep / HYPER_SAMPLE_RATE);
 		auto state = _state;
-		for (int64_t i = 0; i < HYPER_SAMPLE_RATE; ++i)
+		for (int i = 0; i < HYPER_SAMPLE_RATE; ++i)
 			state = forward(state);
 		return state;
 	};
@@ -197,14 +201,6 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-/*	auto nn_inp = torch::ones({3,2});
-	auto state = torch::zeros({ 3,2,4 });
-	state = torch::cat({ state.slice(2, 1), nn_inp.unsqueeze(2) }, 2);
-	nn_inp *= 2.0;
-	state = torch::cat({ state.slice(2, 1), nn_inp.unsqueeze(2) }, 2);
-	std::cout << state;
-	return 0;*/
-
 	System system(0.1, 9.81, 0.5);
 
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
@@ -223,34 +219,46 @@ int main()
 			});
 		renderer.run();
 	}*/
+	using NetType = nn::TCN;
+
 	using Integrator = systems::discretization::LeapFrog<System>;
-	using NetType = nn::HamiltonianInterleafed;
 	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
 	params["train_samples"] = 16;
 	params["valid_samples"] = 16;
+	params["hyper_sample_rate"] = HYPER_SAMPLE_RATE;
 
 	params["time_step"] = 0.05;
 	params["lr"] = 0.085;//4e-4;
 	params["weight_decay"] = 1e-6; //4
-	params["depth"] = 2;
+	params["loss_p"] = 3;
+	params["lr_decay"] = 0.999;
+	params["batch_size"] = 64;
+	params["num_epochs"] = 256;
+
+	params["depth"] = 4;
 	params["diffusion"] = 0.1;
 	params["bias"] = false;
 	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
-	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
-	params["augment"] = 2;
+	params["num_outputs"] = static_cast<size_t>(USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS);
 	params["hidden_size"] = HIDDEN_SIZE;
-	params["train_in"] = true;
+	params["train_in"] = false;
 	params["train_out"] = false;
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
-	params["name"] = std::string("mlp_t0025_")
+
+	params["augment"] = 2;
+	params["kernel_size"] = 3;
+	params["residual_blocks"] = 2;
+	params["num_channels"] = systems::sizeOfState<System>();
+	params["window_size"] = NUM_INPUTS;
+
+	params["name"] = std::string("tcn")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
-		+ std::to_string(*params.get<int>("hidden_size"))
-		+ ".pt";
+		+ std::to_string(*params.get<int>("hidden_size"));
 
 /*	auto testFn = [](const nn::HyperParams& params)
 	{
@@ -286,7 +294,10 @@ int main()
 
 
 	if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
-		std::cout << trainNetwork(params) << "\n";
+	{
+		const auto loss = trainNetwork(params);
+		std::cout << "Finished training. Final validation loss: " << loss << "\n";
+	}
 
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
@@ -326,7 +337,7 @@ int main()
 		//	evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
 		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
 
-		nn::HyperParams antisymParams = params;
+	/*	nn::HyperParams antisymParams = params;
 		antisymParams["train_in"] = true;
 		antisymParams["train_out"] = true;
 		antisymParams["diffusion"] = 0.11;
@@ -338,18 +349,18 @@ int main()
 		nn::HyperParams resnetParams = params;
 		resnetParams["train_in"] = true;
 		resnetParams["name"] = std::string("resnet.pt");
-		auto resNet = nn::makeNetwork<nn::MultiLayerPerceptron, USE_WRAPPER, 2>(params);
+		auto resNet = nn::makeNetwork<nn::MultiLayerPerceptron, USE_WRAPPER, 2>(params);*/
 
 		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-		torch::load(othNet, *params.get<std::string>("name"));
+		torch::load(othNet, *params.get<std::string>("name") + ".pt");
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
 	//	auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
-		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);
-	/*	evaluate<NUM_INPUTS>(system,
+	//	makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);
+		evaluate<NUM_INPUTS>(system,
 			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
 			* params.get<double>("time_step"),
 			options,
-			othNet);*/
+			othNet);
 		return 0;
 
 		//	std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));

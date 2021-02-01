@@ -41,7 +41,6 @@ namespace nn {
 		}
 
 		return flipped ? x0 : x1;
-
 	}
 
 
@@ -109,6 +108,7 @@ namespace nn {
 		return mat;
 	}
 
+	// ****************************************************************** //
 	HamiltonianAugmentedImpl::HamiltonianAugmentedImpl(const HamiltonianOptions& _options)
 		: options(_options)
 	{
@@ -171,13 +171,9 @@ namespace nn {
 	torch::Tensor HamiltonianInterleafedImpl::forward(const Tensor& _input)
 	{
 		using namespace torch::indexing;
-		auto size = _input.sizes().vec();
-		size.back() = options.augment_size();
 		const int64_t halfSize = options.input_size() / 2;
 		Tensor y = _input.dim() == 2 ? _input.index({ "...", Slice(0, halfSize) }) : _input.index({ Slice(0, halfSize) });
 		Tensor z = _input.dim() == 2 ? _input.index({ "...", Slice(halfSize) }) : _input.index({ Slice(halfSize) });
-	//	Tensor z = _input.index({"...", Slice(1, c10::nullopt, 2)}); // z_{j-1/2}
-	//	Tensor y = _input.index({ "...", Slice(0, c10::nullopt, 2) });; // y_j
 
 		auto& activation = options.activation();
 		for (auto& layer : layers)
@@ -187,9 +183,6 @@ namespace nn {
 		}
 
 		Tensor combined = torch::cat({ y,z }, _input.dim()-1);
-	//	Tensor combined = torch::zeros_like(_input);
-	//	combined.index_put_({ "...", Slice(1, c10::nullopt, 2) }, z);
-	//	combined.index_put_({ "...", Slice(0, c10::nullopt, 2) }, y);
 		return combined;
 	}
 }

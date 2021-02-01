@@ -279,11 +279,14 @@ namespace discretization {
 			torch::Tensor sysInp = torch::from_blob(const_cast<T*>(_system.heatCoefficients().data()),
 				{ 1, 1, stateSize },
 				_options);
+
+			// extend system infos to same size as states
 			if (statesPerBatch > 1 || _batchSize > 1)
 			{
 				sysInp = sysInp.repeat({ _batchSize, 1, statesPerBatch });
 			}
-
+			
+			// combine system and state channel
 			return torch::cat({ stateInp, sysInp }, 1);
 		}
 	};

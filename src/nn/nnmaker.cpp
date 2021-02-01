@@ -4,6 +4,7 @@
 #include "antisymmetric.hpp"
 #include "hamiltonian.hpp"
 #include "convolutional.hpp"
+#include "tcn.hpp"
 
 namespace nn {
 
@@ -42,10 +43,20 @@ namespace nn {
 	template<>
 	ConvolutionalOptions makeOptions<ConvolutionalOptions>(const HyperParams& _params)
 	{
-		return ConvolutionalOptions(*_params.get<size_t>("num_inputs"), *_params.get<int>("filter_size"))
+		return ConvolutionalOptions(*_params.get<size_t>("num_inputs"), *_params.get<int>("kernel_size"))
 			.num_layers(*_params.get<int>("depth"))
 			.bias(*_params.get<bool>("bias"))
 			.num_channels(*_params.get<int>("num_channels"))
+			.activation(*_params.get<nn::ActivationFn>("activation"));
+	}
+
+	template<>
+	TCNOptions makeOptions<TCNOptions>(const HyperParams& _params)
+	{
+		return TCNOptions(*_params.get<size_t>("num_channels"), *_params.get<size_t>("num_channels"), *_params.get<size_t>("window_size"))
+			.bias(*_params.get<bool>("bias"))
+			.kernel_size(*_params.get<int>("kernel_size"))
+			.residual_blocks(*_params.get<int>("residual_blocks"))
 			.activation(*_params.get<nn::ActivationFn>("activation"));
 	}
 }

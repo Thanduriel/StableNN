@@ -96,16 +96,17 @@ int main()
 	using NetType = nn::Convolutional;
 
 	nn::HyperParams params;
-	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 8 : 1;
+	params["time_step"] = 0.0001;
+	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 64;
 	params["train_samples"] = 512;
 	params["valid_samples"] = 1024;
-	params["batch_size"] = 1024;
-	params["num_epochs"] = 512;
+	params["batch_size"] = 256;
+	params["num_epochs"] = USE_LBFGS ? 312 : 1024;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
+	params["loss_p"] = 3;
 
-	params["time_step"] = 0.0001;
-	params["lr"] = 0.01;
-	params["lr_decay"] = 0.99;
+	params["lr"] = USE_LBFGS ? 0.05 : 0.05;
+	params["lr_decay"] = USE_LBFGS ? 0.99 : 0.99;
 	params["weight_decay"] = 0.0;
 
 	params["depth"] = 1;
@@ -116,11 +117,11 @@ int main()
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["augment"] = 2;
 	params["hidden_size"] = static_cast<int>(N);
-	params["filter_size"] = 33;
+	params["kernel_size"] = 33;
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(nn::identity);
-	params["name"] = std::string("heateq64_conv_fd2")
+	params["name"] = std::string("heateq64_conv_rmsprop")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(*params.get<int>("hidden_size"));
@@ -133,33 +134,34 @@ int main()
 		auto systems = USE_LOCAL_DIFFUSIFITY ? generateSystems(trainingStates.size() + validStates.size(), 0x6341241)
 			: std::vector<System>{ heatEq };
 
-		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY, // USE_LOCAL_DIFFUSIFITY
-			systems::discretization::SuperSampleIntegrator<T, N, N * 4>,
+		using Integrator = std::conditional_t<true, // USE_LOCAL_DIFFUSIFITY
+			systems::discretization::SuperSampleIntegrator<T, N, N * 32>,
 			systems::discretization::AnalyticHeatEq<T, System::NumPoints>>;
 		
 		nn::TrainNetwork<NetType, System, Integrator, InputMaker> trainNetwork(systems, trainingStates, validStates);
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			params["name"] = std::string("temp2");
+			params["name"] = std::string("temp3");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"filter_size", {3, 17, 33}},
 				//	{"lr", {0.02, 0.025, 0.03}},
-					{"lr", {0.002, 0.001, 0.00075}},
-					//	{"amsgrad", {false, true}},
-						{"num_epochs", {2048}},
-						//	{ "momentum", {0.5, 0.6, 0.7} },
-						//	{ "dampening", {0.5, 0.4, 0.3} },
+					{"lr", {0.05, 0.075, 0.1}},
+					{"lr_decay", {0.993, 0.99, 0.985}},
+				//	{"amsgrad", {false, true}},
+				//	{"num_epochs", {2048}},
+				//	{ "momentum", {0.5, 0.6, 0.7} },
+				//	{ "dampening", {0.5, 0.4, 0.3} },
 						//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::relu), nn::ActivationFn(torch::sigmoid)}}
 				}, params);
 
-			hyperOptimizer.run(3);
+			hyperOptimizer.run(6);
 		}
 		if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 			std::cout << trainNetwork(params) << "\n";
 	}
 
-	if constexpr (MODE == Mode::EVALUATE)
+	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
 		auto validStates = generateStates(heatEq, 3, 0x195A4C);
 		auto& state = validStates[0];
@@ -172,11 +174,11 @@ int main()
 		disc::AnalyticHeatEq analytic(system, timeStep, state);
 		disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, timeStep);
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
-		disc::SuperSampleIntegrator<T, N, N * 8> superSampleFiniteDifs(system, timeStep, state, 4);
+		disc::SuperSampleIntegrator<T, N, N * 32> superSampleFiniteDifs(system, timeStep, state, 64);
 
 		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-	//	torch::load(net, *params.get<std::string>("name") + ".pt");
-	//	torch::load(net, "3_0_temp2.pt");
+		torch::load(net, *params.get<std::string>("name") + ".pt");
+	//	torch::load(net, "0_1_temp3.pt");
 		nn::Integrator<System, decltype(net), NUM_INPUTS, InputMaker> nn(system, net);
 
 	//	nn::exportTensor(analytic.getGreenFn(timeStep, 63), "green.txt");
@@ -184,38 +186,41 @@ int main()
 	//	for (size_t i = 0; i < net->layers.size(); ++i)
 	//		nn::exportTensor(net->layers[i]->weight, "heateq_adam2" + std::to_string(i) + ".txt");
 
-	/*	auto systems = generateSystems(4, 0xF21B50C);
-		systems::discretization::FiniteDifferencesExplicit finiteDiffs2(systems[2], timeStep);
-		eval::HeatRenderer renderer(timeStep, N, systems[2].heatCoefficients().data(), [&, state = validStates[0]]() mutable
+		if constexpr (SHOW_VISUAL)
+		{
+			auto systems = generateSystems(4, 0xF21B50C);
+			systems::discretization::FiniteDifferencesExplicit finiteDiffs2(systems[2], timeStep);
+			eval::HeatRenderer renderer(timeStep, N, systems[2].heatCoefficients().data(), [&, state = validStates[0]]() mutable
 			{
 				state = finiteDiffs2(state);
 				std::vector<double> exState(state.begin(), state.end());
 				return exState;
 			});
-		renderer.run();*/
+			renderer.run();
+		}
 
 		eval::EvalOptions options;
 		options.numShortTermSteps = 256;
-		for(auto& state : trainingStates)
+	/*	for(auto& state : trainingStates)
 		{
 			disc::AnalyticHeatEq analytic(system, timeStep, state);
 			disc::SuperSampleIntegrator<T, N, N * 8> superSampleFiniteDifs(system, timeStep, state, 4);
 			disc::SuperSampleIntegrator<T, N, N * 16> superSampleFiniteDifs1(system, timeStep, state, 16);
 			disc::SuperSampleIntegrator<T, N, N * 32> superSampleFiniteDifs2(system, timeStep, state, 64);
 
-		/*	disc::AnalyticHeatEq analyticLargeIntern(superSampleFiniteDifs2.internalSystem(), timeStep, superSampleFiniteDifs2.internalState());
+			disc::AnalyticHeatEq analyticLargeIntern(superSampleFiniteDifs2.internalSystem(), timeStep, superSampleFiniteDifs2.internalState());
 			auto analytic2 = [&](const State&)
 			{
 				auto state = analyticLargeIntern({});
 				return superSampleFiniteDifs2.downscaleState(state);
-			};*/
+			};
 
 			eval::evaluate(heatEq, state, options, analytic, finiteDiffs, superSampleFiniteDifs, superSampleFiniteDifs1, superSampleFiniteDifs2);
 			break;
-		}
+		}*/
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 			eval::evaluate(heatEq, state, options, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl, nn);
 		else
-			eval::evaluate(heatEq, state, options, analytic, finiteDiffs, finiteDiffsImpl);
+			eval::evaluate(heatEq, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl, nn);
 	}
 }
