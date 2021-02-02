@@ -14,6 +14,7 @@ namespace nn {
 		TORCH_ARG(int64_t, out_channels);
 		TORCH_ARG(int64_t, window_size);
 		TORCH_ARG(int64_t, residual_blocks) = 1;
+		TORCH_ARG(int64_t, block_size) = 2;
 		TORCH_ARG(int64_t, kernel_size) = 3;
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;

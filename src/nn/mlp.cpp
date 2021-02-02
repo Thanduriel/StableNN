@@ -26,8 +26,9 @@ namespace nn {
 
 	torch::Tensor MultiLayerPerceptronImpl::forward(torch::Tensor x)
 	{
+		auto& activation = options.activation();
 		for (auto& layer : layers)
-			x = x + options.activation()(layer(x));
+			x = x + activation(layer(x));
 
 		return x;
 	}

@@ -230,12 +230,12 @@ int main()
 	params["hyper_sample_rate"] = HYPER_SAMPLE_RATE;
 
 	params["time_step"] = 0.05;
-	params["lr"] = 0.085;//4e-4;
+	params["lr"] = USE_LBFGS ? 0.1 : 0.01;//4e-4;
 	params["weight_decay"] = 1e-6; //4
 	params["loss_p"] = 3;
-	params["lr_decay"] = 0.999;
+	params["lr_decay"] = USE_LBFGS ? 0.998 : 0.998;
 	params["batch_size"] = 64;
-	params["num_epochs"] = 256;
+	params["num_epochs"] = USE_LBFGS ? 256 : 4096;
 
 	params["depth"] = 4;
 	params["diffusion"] = 0.1;
@@ -253,7 +253,6 @@ int main()
 	params["kernel_size"] = 3;
 	params["residual_blocks"] = 2;
 	params["num_channels"] = systems::sizeOfState<System>();
-	params["window_size"] = NUM_INPUTS;
 
 	params["name"] = std::string("tcn")
 		+ std::to_string(NUM_INPUTS) + "_"
@@ -270,26 +269,32 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("hamiltonianInterleafed");
+		params["name"] = std::string("TCN");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-			{	{"depth", {2, 4}},
+			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
-				{"lr", {0.08, 0.085}},
+			//	{"lr", {0.01, 0.1}},
+			//	{"lr_decay", {0.998, 0.997, 0.996}},
+			//	{"batch_size", {64, 128}},
+			//	{"num_epochs", {4096}},
 			//	{"weight_decay", {1e-6, 1e-5}},
-				{"time", { 1.0, 2.0}},
+			//	{"time", { 1.0, 2.0}},
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
-			//	{"hidden_size", {4, 8, 16}},
 			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
-			//	{"num_inputs", {4ull, 8ull, 16ull}}
-				{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(torch::sin)}}
+				{"hidden_size", {2, 4}},
+				{"num_inputs", {4ull, 8ull}},
+			//	{"kernel_size", {3, 5}},
+				{"residual_blocks", {1,2}},
+				{"block_size", {1,3}},
+			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(torch::sin)}}
 			}, params);
 
-		hyperOptimizer.run(8);
+		hyperOptimizer.run(4);
 	}
 
 

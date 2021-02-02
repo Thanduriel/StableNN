@@ -14,6 +14,19 @@ namespace nn {
 		return Module(std::dynamic_pointer_cast<ModuleImpl>(_module->clone()));
 	}
 
+	template<typename Module>
+	int64_t countParams(const Module& _module)
+	{
+		int64_t numParams = 0;
+		for (auto& tensor : _module->parameters())
+		{
+			if (tensor.requires_grad())
+				numParams += tensor.numel();
+		}
+
+		return numParams;
+	}
+
 	// shift entries left in a tensor (batch size x time series) and adds _newEntry to the end.
 	torch::Tensor shiftTimeSeries(const torch::Tensor& _old, const torch::Tensor& _newEntry, int _stateSize);
 

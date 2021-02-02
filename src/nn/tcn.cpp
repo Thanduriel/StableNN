@@ -26,7 +26,7 @@ namespace nn {
 			dropout_layer = nullptr;
 			layers.clear();
 
-			constexpr int stack_size = 2;
+			const int64_t stack_size = options.block_size();
 			const int64_t dilation = options.dilation();
 			const int64_t kernel_size = options.kernel_size();
 			const int64_t in_channels = options.in_channels();
