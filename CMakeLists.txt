@@ -1,6 +1,8 @@
 cmake_minimum_required (VERSION 3.12)
 project (StableNN)
 
+OPTION(USE_GRAPHICS "link SFML for visualisations" OFF)
+
 #---------------------------------------------------------------------------------------
 # main project
 #---------------------------------------------------------------------------------------
@@ -9,6 +11,10 @@ project (StableNN)
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp" "src/*.hpp" "src/*.inl")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainpendulum.cpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainheateq.cpp")
+
+if(NOT USE_GRAPHICS)
+	list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/evaluation/renderer.cpp")
+endif(NOT USE_GRAPHICS)
 
 # organize the files according to the organisation in the file system
 # from: http:#cmake.3232098.n2.nabble.com/Keep-folder-structure-in-Visual-Studio-Project-generated-with-CMake-td7586044.html
@@ -60,6 +66,7 @@ endif (MSVC)
 find_package(Torch REQUIRED)
 target_link_libraries(stableNN PUBLIC "${TORCH_LIBRARIES}")
 
+if (USE_GRAPHICS)
 find_package(SFML COMPONENTS system graphics window QUIET)
 if (NOT SFML_FOUND)
 	message("SFML not found. Attempting to use local version.")
@@ -72,5 +79,6 @@ if (NOT SFML_FOUND)
 	set(SFML_BUILD_NETWORK FALSE)
 	target_include_directories(stableNN PRIVATE "dependencies/SFML/include")
 	add_subdirectory("dependencies/SFML")
-endif()
+endif(NOT SFML_FOUND)
 target_link_libraries(stableNN PRIVATE sfml-system sfml-graphics sfml-window)
+endif(USE_GRAPHICS)

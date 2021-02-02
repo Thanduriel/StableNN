@@ -54,4 +54,5 @@ constexpr bool USE_SEQ_SAMPLER = USE_LBFGS;
 constexpr uint64_t TORCH_SEED = 9378341130ul; // 9378341130ul
 
 // evaluation
+// only set to true if build option USE_GRAPHICS=true
 constexpr bool SHOW_VISUAL = false;

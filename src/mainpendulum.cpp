@@ -297,7 +297,6 @@ int main()
 		hyperOptimizer.run(4);
 	}
 
-
 	if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 	{
 		const auto loss = trainNetwork(params);
