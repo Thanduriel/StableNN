@@ -86,6 +86,7 @@ namespace nn {
 				if (dropout_layer)
 					x = dropout_layer(x);
 			}
+
 			return x + (residual ? residual(in) : in);
 		}
 

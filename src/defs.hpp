@@ -21,7 +21,7 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN_EVALUATE;
+constexpr Mode MODE = Mode::TRAIN_MULTI;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
@@ -38,7 +38,7 @@ enum struct Optimizer {
 	RMSPROP,
 	LBFGS
 };
-constexpr Optimizer OPTIMIZER = Optimizer::RMSPROP;
+constexpr Optimizer OPTIMIZER = Optimizer::LBFGS;
 constexpr bool USE_LBFGS = OPTIMIZER == Optimizer::LBFGS;
 
 // only relevant in TRAIN_MULTI to enforce same initial rng state for all networks

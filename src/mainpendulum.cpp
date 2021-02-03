@@ -252,6 +252,7 @@ int main()
 	params["augment"] = 2;
 	params["kernel_size"] = 3;
 	params["residual_blocks"] = 2;
+	params["block_size"] = 2;
 	params["num_channels"] = systems::sizeOfState<System>();
 
 	params["name"] = std::string("tcn")
@@ -286,11 +287,11 @@ int main()
 			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
-				{"hidden_size", {2, 4}},
-				{"num_inputs", {static_cast<size_t>(4), static_cast<size_t(8)}},
-			//	{"kernel_size", {3, 5}},
-				{"residual_blocks", {1,2}},
-				{"block_size", {1,3}},
+				{"hidden_size", {2, 4, 8}},
+				{"num_inputs", {static_cast<size_t>(4), static_cast<size_t>(8), static_cast<size_t>(16)}},
+				{"kernel_size", {3,5}},
+				{"residual_blocks", {1,2,3}},
+				{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(torch::sin)}}
 			}, params);
 
