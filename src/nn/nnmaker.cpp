@@ -60,6 +60,7 @@ namespace nn {
 			.bias(*_params.get<bool>("bias"))
 			.kernel_size(*_params.get<int>("kernel_size"))
 			.residual_blocks(*_params.get<int>("residual_blocks"))
-			.activation(*_params.get<nn::ActivationFn>("activation"));
+			.activation(*_params.get<nn::ActivationFn>("activation"))
+			.block_size(*_params.get<int>("block_size"));
 	}
 }

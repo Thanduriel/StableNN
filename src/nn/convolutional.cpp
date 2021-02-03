@@ -38,8 +38,11 @@ namespace nn {
 			x = x.unsqueeze(0);
 
 		auto& activation = options.activation();
-		for(size_t i = 0; i < layers.size()-1; ++i)
-			x = activation(layers[i](x));
+		for (size_t i = 0; i < layers.size() - 1; ++i)
+		{
+			torch::Tensor y = activation(layers[i](x));
+			x = options.residual() ? x + y : y;
+		}
 		x = layers.back()(x);
 
 		return x.squeeze();

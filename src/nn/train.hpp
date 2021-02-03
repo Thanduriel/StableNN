@@ -18,15 +18,17 @@ namespace nn {
 		using State = typename System::State;
 		using ValueT = typename System::ValueT;
 
-		TrainNetwork(const System& _system, std::vector<State> _trainStates, std::vector<State> _validStates)
-			: TrainNetwork(std::vector{ _system }, std::move(_trainStates), std::move(_validStates))
+		TrainNetwork(const System& _system, std::vector<State> _trainStates, std::vector<State> _validStates, std::vector<size_t> _warmupSteps = {})
+			: TrainNetwork(std::vector{ _system }, std::move(_trainStates), std::move(_validStates), std::move(_warmupSteps))
 		{
 		}
 
-		TrainNetwork(std::vector<System> _systems, std::vector<State> _trainStates, std::vector<State> _validStates)
+		TrainNetwork(std::vector<System> _systems, std::vector<State> _trainStates, std::vector<State> _validStates, 
+			std::vector<size_t> _warmupSteps = {})
 			: m_systems(std::move(_systems)),
 			m_trainStates(std::move(_trainStates)),
-			m_validStates(std::move(_validStates))
+			m_validStates(std::move(_validStates)),
+			m_warmupSteps(std::move(_warmupSteps))
 		{
 		}
 
@@ -52,7 +54,7 @@ namespace nn {
 			const size_t numTotalStates = m_validStates.size() + m_trainStates.size();
 			const size_t numTrainSystems = std::max(static_cast<size_t>(1), (m_trainStates.size() * m_systems.size()) / numTotalStates );
 			const size_t numValidSystems = std::max(static_cast<size_t>(1), m_systems.size() - numTrainSystems);
-
+			
 			DataGenerator<System, Integrator, InputMaker> trainGenerator(
 				std::vector<System>(m_systems.begin(), m_systems.begin() + numTrainSystems), 
 				referenceIntegrator);
@@ -63,9 +65,9 @@ namespace nn {
 			auto start = std::chrono::high_resolution_clock::now();
 			namespace dat = torch::data;
 			const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
-			auto dataset = trainGenerator.generate(m_trainStates, *_params.get<int>("train_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
+			auto dataset = trainGenerator.generate(m_trainStates, *_params.get<int>("train_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS, m_warmupSteps)
 				.map(dat::transforms::Stack<>());
-			auto validationSet = validGenerator.generate(m_validStates, *_params.get<int>("valid_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS)
+			auto validationSet = validGenerator.generate(m_validStates, *_params.get<int>("valid_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS, m_warmupSteps)
 				.map(dat::transforms::Stack<>());
 
 			auto end = std::chrono::high_resolution_clock::now();
@@ -211,7 +213,7 @@ namespace nn {
 							std::cout << "#";
 						for (int k = progress; k < intervals; ++k)
 							std::cout << " ";
-						std::cout << "> train loss: " << totalLoss.item<double>() << "\n";
+						std::cout << "> [" << epoch << "/" << numEpochs << "] train loss: " << totalLoss.item<double>() << "\n";
 					}
 				}
 			}
@@ -233,6 +235,7 @@ namespace nn {
 		std::vector<System> m_systems;
 		std::vector<State> m_trainStates;
 		std::vector<State> m_validStates;
+		std::vector<size_t> m_warmupSteps;
 		static std::mutex s_initMutex;
 		static std::mutex s_loggingMutex;
 	};

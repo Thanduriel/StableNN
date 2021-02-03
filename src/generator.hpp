@@ -32,9 +32,11 @@ public:
 		int64_t _downSampleRate = 1,
 		int64_t _numInputSteps = 1,
 		bool _useSingleOutput = true,
-		int64_t _inOutShift = 1) const
+		int64_t _inOutShift = 1,
+		const std::vector<size_t> _warmup = {}) const
 	{
 		assert(_initialStates.size() >= 1);
+		assert(_warmup.size() == _initialStates.size() || _warmup.empty());
 		if (_numInputSteps == 1) _useSingleOutput = true;
 
 		constexpr int64_t stateSize = systems::sizeOfState<System>();
@@ -51,7 +53,8 @@ public:
 		{
 			const SysState& state = _initialStates[k];
 			const System& system = m_systems[k % m_systems.size()];
-			auto results = runSimulation(system, state, samplesReq + _numInputSteps - 1, _downSampleRate);
+			auto results = runSimulation(system, state, samplesReq + _numInputSteps - 1, _downSampleRate, 
+				_warmup.empty() ? static_cast<size_t>(0) : _warmup[k % _warmup.size()]);
 			std::vector<SysState> timeSeries;
 
 			const int64_t samplesForSeries = _useSingleOutput ? _numSamples : samplesReq;
@@ -88,12 +91,12 @@ private:
 	auto runSimulation( const System& _system,
 		const SysState& _initialState,
 		size_t _steps,
-		size_t _subSteps) const
+		size_t _subSteps,
+		size_t _warmup) const
 	{
 		SysState state{ _initialState };
 		std::vector<SysState> results;
 		results.reserve(_steps);
-		results.push_back(state);
 
 		// a statefull integrator with non const operator() needs to be recreated
 		Integrator integrator = [this, &_system, &_initialState]() 
@@ -104,7 +107,12 @@ private:
 				return Integrator(_system, m_integrator.deltaTime());
 		}();
 
+		const size_t warmupStates = _steps * _warmup;
+		for (size_t i = 0; i < _warmup; ++i)
+			state = integrator(state);
+
 		const size_t computeSteps = _steps * _subSteps;
+		results.push_back(state);
 		// start at 1 because we already have the initial state
 		for (size_t i = 1; i < computeSteps; ++i)
 		{

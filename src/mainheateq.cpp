@@ -97,16 +97,16 @@ int main()
 
 	nn::HyperParams params;
 	params["time_step"] = 0.0001;
-	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 64;
-	params["train_samples"] = 512;
-	params["valid_samples"] = 1024;
-	params["batch_size"] = 256;
-	params["num_epochs"] = USE_LBFGS ? 312 : 1024;
+	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 1;
+	params["train_samples"] = 256;
+	params["valid_samples"] = 512;
+	params["batch_size"] = 512;
+	params["num_epochs"] = USE_LBFGS ? 256 : 2248;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["loss_p"] = 3;
 
-	params["lr"] = USE_LBFGS ? 0.05 : 0.05;
-	params["lr_decay"] = USE_LBFGS ? 0.99 : 0.99;
+	params["lr"] = USE_LBFGS ? 0.05 : 0.01;
+	params["lr_decay"] = USE_LBFGS ? 0.99 : 0.995;
 	params["weight_decay"] = 0.0;
 
 	params["depth"] = 1;
@@ -128,17 +128,18 @@ int main()
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{
-		auto trainingStates = generateStates(heatEq, 24, 0x612FF6AEu);
-		auto validStates = generateStates(heatEq, 3, 0x195A4C);
+		auto trainingStates = generateStates(heatEq, 32, 0x612FF6AEu);
+		auto validStates = generateStates(heatEq, 4, 0x195A4Cu);
+		auto warmupSteps = std::vector<size_t>{ 0, 0, 0, 256 };
+
+		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
+			systems::discretization::SuperSampleIntegrator<T, N, N * 32>,
+			systems::discretization::AnalyticHeatEq<T, System::NumPoints>>;
 
 		auto systems = USE_LOCAL_DIFFUSIFITY ? generateSystems(trainingStates.size() + validStates.size(), 0x6341241)
 			: std::vector<System>{ heatEq };
-
-		using Integrator = std::conditional_t<true, // USE_LOCAL_DIFFUSIFITY
-			systems::discretization::SuperSampleIntegrator<T, N, N * 32>,
-			systems::discretization::AnalyticHeatEq<T, System::NumPoints>>;
 		
-		nn::TrainNetwork<NetType, System, Integrator, InputMaker> trainNetwork(systems, trainingStates, validStates);
+		nn::TrainNetwork<NetType, System, Integrator, InputMaker> trainNetwork(systems, trainingStates, validStates, warmupSteps);
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{

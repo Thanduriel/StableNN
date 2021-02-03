@@ -3,6 +3,10 @@ project (StableNN)
 
 OPTION(USE_GRAPHICS "link SFML for visualisations" OFF)
 
+if(CMAKE_CONFIGURATION_TYPES)      
+	set(CMAKE_CONFIGURATION_TYPES Debug Release)
+endif()
+
 #---------------------------------------------------------------------------------------
 # main project
 #---------------------------------------------------------------------------------------
@@ -53,10 +57,18 @@ set_target_properties(heateq PROPERTIES
 )
 target_link_libraries(heateq stableNN)
 
+include(CheckIPOSupported)
+check_ipo_supported(RESULT result)
+if(result)
+	set_property(TARGET stableNN pendulum heateq PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+endif()
+
 if (MSVC)
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT pendulum)
 else()
-	target_compile_options(pendulum PUBLIC -Wall -Wextra -pedantic)
+	# public options are propagated to the other targets
+	target_compile_options(stableNN PUBLIC "$<$<CONFIG:DEBUG>:-Wall;-pedantic>")
+	target_compile_options(stableNN PUBLIC "$<$<CONFIG:RELEASE>:-Wall;-pedantic;-O3;-march=native>")
 endif (MSVC)
 
 #---------------------------------------------------------------------------------------

@@ -16,6 +16,7 @@ namespace nn {
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(int64_t, filter_size);
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
+		TORCH_ARG(bool, residual) = false;
 	};
 
 	struct ConvolutionalImpl : public torch::nn::Cloneable<ConvolutionalImpl>
