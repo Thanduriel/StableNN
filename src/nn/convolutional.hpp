@@ -7,14 +7,14 @@ namespace nn {
 
 	struct ConvolutionalOptions
 	{
-		ConvolutionalOptions(int64_t _inputSize, int64_t _filterSize) 
-			: input_size_(_inputSize), filter_size_(_filterSize) {}
+		ConvolutionalOptions(int64_t _numChannels, int64_t _filterSize) 
+			: num_channels_(_numChannels), hidden_channels_(_numChannels), filter_size_(_filterSize) {}
 
-		TORCH_ARG(int64_t, input_size);
-		TORCH_ARG(int64_t, num_channels) = 1;
+		TORCH_ARG(int64_t, num_channels);
+		TORCH_ARG(int64_t, hidden_channels);
+		TORCH_ARG(int64_t, filter_size);
 		TORCH_ARG(int64_t, num_layers) = 1;
 		TORCH_ARG(bool, bias) = false;
-		TORCH_ARG(int64_t, filter_size);
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 		TORCH_ARG(bool, residual) = false;
 	};
@@ -30,6 +30,7 @@ namespace nn {
 
 		Options options;
 		std::vector<torch::nn::Conv1d> layers;
+		torch::nn::Conv1d residual;
 	};
 
 	TORCH_MODULE(Convolutional);

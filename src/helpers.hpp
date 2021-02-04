@@ -15,10 +15,3 @@ struct is_callable_impl {
 
 template<typename T, typename ... Args>
 using is_callable = typename is_callable_impl<T, Args...>::type;
-
-template<typename T, typename... Args>
-struct UnpackFunction
-{
-    UnpackFunction(void(T::*)(Args ...) const) {};
-    UnpackFunction(void(T::*)(Args ...)) {};
-};

@@ -36,7 +36,6 @@ public:
 		const std::vector<size_t> _warmup = {}) const
 	{
 		assert(_initialStates.size() >= 1);
-		assert(_warmup.size() == _initialStates.size() || _warmup.empty());
 		if (_numInputSteps == 1) _useSingleOutput = true;
 
 		constexpr int64_t stateSize = systems::sizeOfState<System>();

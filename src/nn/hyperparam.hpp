@@ -19,15 +19,19 @@ namespace nn {
 		T get(const std::string& _key, const T& _defaultValue) const
 		{
 			const auto it = data.find(_key);
-			return it != data.end() ? std::any_cast<T>(it->second) : _defaultValue;
+			if (std::optional<T> opt; it != data.end() && (opt = cast<T>(it->second)).has_value())
+			{
+				return *opt;
+			}
+			return _defaultValue;
 		}
 
 		template<typename T>
 		std::optional<T> get(const std::string& _key) const
 		{
 			const auto it = data.find(_key);
-			if (it != data.end() && it->second.type() == typeid(T))
-				return std::any_cast<T>(it->second);
+			if (it != data.end())
+				return cast<T>(it->second);
 			else return {};
 		}
 
@@ -37,6 +41,54 @@ namespace nn {
 		auto begin() { return data.begin(); }
 		auto end() { return data.end(); }
 	private:
+		// determine whether tuple contains a specific type
+		template <typename T, typename Tuple>
+		struct has_type;
+
+		template <typename T, typename... Us>
+		struct has_type<T, std::tuple<Us...>> : std::disjunction<std::is_same<T, Us>...> {};
+
+		using INTEGRAL_TYPES = std::tuple<int, unsigned, int64_t, size_t, uint64_t>;
+
+		template<typename T>
+		static std::optional<T> cast(const std::any& any)
+		{
+			if(any.type() == typeid(T))
+				return std::any_cast<T>(any);
+
+			// integral types are somewhat interchangeable
+			if constexpr (has_type<T, INTEGRAL_TYPES>::value)
+			{
+				return tryCastTuple<T>(any, INTEGRAL_TYPES{});
+			}
+
+			return std::nullopt;
+		}
+
+		template<typename T, typename... Us>
+		static std::optional<T> tryCastTuple(const std::any& any, std::tuple<Us...>)
+		{
+			return tryCastTuple<T, Us...>(any);
+		}
+
+		template<typename T, typename U, typename... Us>
+		static std::optional<T> tryCastTuple(const std::any& any)
+		{
+			if (any.type() == typeid(U))
+			{
+				const U u = std::any_cast<U>(any);
+				const T t = static_cast<T>(u);
+				if (static_cast<U>(t) != u) // check that no information is lost
+					std::cout << "[Warning] Stored parameter " << u << " was cast to " << t << std::endl;
+				return t;
+			}
+
+			if constexpr (sizeof...(Us))
+				return tryCastTuple<T, Us...>(any);
+			else
+				return std::nullopt;
+		}
+
 		std::unordered_map<std::string, std::any> data;
 	};
 

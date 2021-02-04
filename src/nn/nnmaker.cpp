@@ -43,10 +43,11 @@ namespace nn {
 	template<>
 	ConvolutionalOptions makeOptions<ConvolutionalOptions>(const HyperParams& _params)
 	{
-		return ConvolutionalOptions(*_params.get<size_t>("num_inputs"), *_params.get<int>("kernel_size"))
+		return ConvolutionalOptions(*_params.get<int>("num_channels"), *_params.get<int>("kernel_size"))
 			.num_layers(*_params.get<int>("depth"))
 			.bias(*_params.get<bool>("bias"))
-			.num_channels(*_params.get<int>("num_channels"))
+			.hidden_channels(*_params.get<int>("hidden_channels"))
+			.residual(_params.get<bool>("residual", false))
 			.activation(*_params.get<nn::ActivationFn>("activation"));
 	}
 

@@ -20,7 +20,7 @@ namespace discretization {
 			m_rSqr(_system.radius() * _system.radius())
 		{
 			// variable heat coefficients are currently not supported
-			assert(std::all_of(m_system.heatCoefficients().begin(), m_system.heatCoefficients().end(), [](T v) { return v == 1.0; }));
+		//	assert(std::all_of(m_system.heatCoefficients().begin(), m_system.heatCoefficients().end(), [](T v) { return v == 1.0; }));
 
 			const torch::Tensor s = torch::from_blob(const_cast<T*>(_initialState.data()),
 				{ static_cast<int64_t>(_initialState.size()) },
