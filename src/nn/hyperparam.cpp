@@ -9,28 +9,13 @@
 
 
 namespace nn {
-
-	template<typename Dummy, typename T, typename... Types>
-	static void serialize(std::ostream& _out, const std::any& _val)
-	{
-		if (_val.type() == typeid(T))
-			_out << std::any_cast<T>(_val);
-		else
-		{
-			if constexpr (static_cast<bool>(sizeof...(Types)))
-				serialize<Dummy, Types...>(_out, _val);
-			else
-				_out << "Unknown type " << _val.type().name();
-		}
-	}
-
 	std::ostream& operator<<(std::ostream& _out, const HyperParams& _params)
 	{
 		std::cout << "{";
 		for (const auto& [name, value] : _params.data)
 		{
 			_out << name << " : ";
-			serialize<void, int, double, float, int32_t, int64_t, uint32_t, size_t, std::string, bool, ActivationFn>(_out, value);
+			value.print(_out, value.any);
 			std::cout << ", ";
 		}
 		std::cout << "}";
@@ -203,38 +188,4 @@ namespace nn {
 
 		return { indK, flatInd };
 	}
-
-	RandomSearchOptimizer::RandomSearchOptimizer(const TrainFn& _trainFn, uint32_t _seed)
-		: m_trainFn(_trainFn),
-		m_rng(_seed)
-	{}
-
-	void RandomSearchOptimizer::run(int _tries)
-	{
-		HyperParams bestParams;
-		double bestLoss = std::numeric_limits<double>::max();
-
-		for (int i = 0; i < _tries; ++i)
-		{
-			HyperParams params;
-			for (auto& [name, sampler] : m_paramSamplers)
-			{
-				params[name] = sampler(m_rng);
-			}
-
-			const double loss = m_trainFn(params);
-			std::cout << params << "\nwith loss: " << loss << std::endl;
-			if (loss < bestLoss)
-			{
-				bestLoss = loss;
-				bestParams = params;
-			}
-		}
-
-		std::cout << "\n============================\n best result:\n" << bestParams << "\n"
-			<< "loss: " << bestLoss << std::endl;
-	}
-
-
-
 }

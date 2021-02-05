@@ -242,7 +242,7 @@ int main()
 	params["bias"] = false;
 	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
-	params["num_outputs"] = static_cast<size_t>(USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS);
+	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["hidden_size"] = 2 * 2;
 	params["train_in"] = false;
 	params["train_out"] = false;
@@ -284,11 +284,11 @@ int main()
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
-			//	{"bias", {false, true}},
+				{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
 				{"hidden_size", {2, 4, 8}},
-				{"num_inputs", {static_cast<size_t>(4), static_cast<size_t>(8), static_cast<size_t>(16)}},
+				{"num_inputs", {4, 8, 16}},
 				{"kernel_size", {3,5}},
 				{"residual_blocks", {1,2,3}},
 				{"block_size", {1,2,3}},

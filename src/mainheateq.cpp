@@ -10,7 +10,7 @@
 #include <random>
 #include <chrono>
 
-constexpr bool USE_LOCAL_DIFFUSIFITY = true;
+constexpr bool USE_LOCAL_DIFFUSIFITY = false;
 constexpr size_t N = 64;
 using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
@@ -149,7 +149,7 @@ int main()
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {5}},
 					{"hidden_channels", {2,4,8}},
-					{"residual", {false, true}},
+				//	{"residual", {false, true}},
 					{"bias", {false, true}},
 					{"depth", {3,4,5}},
 				//	{"lr", {0.02, 0.025, 0.03}},

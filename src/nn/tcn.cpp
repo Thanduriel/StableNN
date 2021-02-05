@@ -146,7 +146,7 @@ namespace nn {
 			layers->push_back(torch::nn::Flatten());
 			layers->push_back(torch::nn::Linear(
 				torch::nn::LinearOptions(options.window_size() * options.hidden_channels(), options.out_channels())
-				.bias(false)));
+				.bias(options.bias())));
 		}
 		register_module("conv_layers", layers);
 	}

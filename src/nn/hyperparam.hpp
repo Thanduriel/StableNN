@@ -7,19 +7,73 @@
 #include <functional>
 #include <random>
 #include <optional>
+#include <exception>
+#include <typeinfo>
+#include <iostream>
 
 namespace nn {
+
+	namespace details {
+		template<typename S, typename T, typename = void>
+		struct is_stream_writable : std::false_type {};
+
+		template<typename S, typename T>
+		struct is_stream_writable<S, T,
+			std::void_t<  decltype(std::declval<S&>() << std::declval<T>())  > >
+			: std::true_type {};
+
+
+		template<typename T>
+		void printImpl(std::ostream& _out, const std::any& _any)
+		{
+			if constexpr (is_stream_writable<std::ostream, T>::value)
+				_out << std::any_cast<T>(_any);
+			else
+				_out << _any.type().name();
+		}
+	}
+
+	using PrintFn = void(std::ostream&, const std::any&);
+
+	struct ExtAny
+	{
+		std::any any;
+		PrintFn* print = nullptr;
+
+		ExtAny() = default;
+		ExtAny(const ExtAny& _oth) = default;
+		ExtAny(ExtAny&& _oth) = default;
+
+		template<typename T, std::enable_if_t<std::negation_v<std::is_same<std::decay_t<T>, ExtAny>>, int> = 0>
+		ExtAny(T&& _val)
+			: any(std::forward<T>(_val)),
+			print(&details::printImpl<T>)
+		{
+		}
+
+		ExtAny& operator=(const ExtAny& _val) = default;
+		ExtAny& operator=(ExtAny&& _val) = default;
+
+		template<typename T, std::enable_if_t<std::negation_v<std::is_same<std::decay_t<T>, ExtAny>>, int> = 0>
+		ExtAny& operator=(T&& _val)
+		{
+			any = std::forward<T>(_val);
+			print = &details::printImpl<T>;
+			return *this;
+		}
+	};
 
 	class HyperParams
 	{
 	public:
-		std::any& operator[](const std::string& key) { return data[key]; }
+
+		ExtAny& operator[](const std::string& key) { return data[key]; }
 
 		template<typename T>
 		T get(const std::string& _key, const T& _defaultValue) const
 		{
 			const auto it = data.find(_key);
-			if (std::optional<T> opt; it != data.end() && (opt = cast<T>(it->second)).has_value())
+			if (std::optional<T> opt; it != data.end() && (opt = cast<T>(it->second.any)).has_value())
 			{
 				return *opt;
 			}
@@ -31,7 +85,7 @@ namespace nn {
 		{
 			const auto it = data.find(_key);
 			if (it != data.end())
-				return cast<T>(it->second);
+				return cast<T>(it->second.any);
 			else return {};
 		}
 
@@ -50,6 +104,7 @@ namespace nn {
 
 		using INTEGRAL_TYPES = std::tuple<int, unsigned, int64_t, size_t, uint64_t>;
 
+		// less strict than std::any_cast allowing for some type conversions
 		template<typename T>
 		static std::optional<T> cast(const std::any& any)
 		{
@@ -65,6 +120,7 @@ namespace nn {
 			return std::nullopt;
 		}
 
+		// try all types in the tuple
 		template<typename T, typename... Us>
 		static std::optional<T> tryCastTuple(const std::any& any, std::tuple<Us...>)
 		{
@@ -79,7 +135,7 @@ namespace nn {
 				const U u = std::any_cast<U>(any);
 				const T t = static_cast<T>(u);
 				if (static_cast<U>(t) != u) // check that no information is lost
-					std::cout << "[Warning] Stored parameter " << u << " was cast to " << t << std::endl;
+					throw std::bad_any_cast();
 				return t;
 			}
 
@@ -89,10 +145,10 @@ namespace nn {
 				return std::nullopt;
 		}
 
-		std::unordered_map<std::string, std::any> data;
+		std::unordered_map<std::string, ExtAny> data;
 	};
 
-	using HyperParamGrid = std::vector<std::pair<std::string, std::vector<std::any>>>;
+	using HyperParamGrid = std::vector<std::pair<std::string, std::vector<ExtAny>>>;
 	using TrainFn = std::function<double(const HyperParams&)>;
 
 	class GridSearchOptimizer
@@ -108,30 +164,6 @@ namespace nn {
 		HyperParamGrid m_hyperGrid;
 		TrainFn m_trainFunc;
 		HyperParams m_defaultParams;
-	};
-
-
-	class RandomSearchOptimizer
-	{
-	public:
-		using RandomEngine = std::default_random_engine;
-
-		RandomSearchOptimizer(const TrainFn& _trainFn, uint32_t _seed);
-
-		template<typename Sampler>
-		void addParam(const std::string& _name, Sampler _sampler)
-		{
-		/*	m_paramSamplers.emplace_back(_name,[=](RandomEngine& _rng)
-				{
-					return { _sampler(_rng)};
-				});*/
-		}
-
-		void run(int _tries);
-	private:
-		std::vector<std::pair<std::string, std::function<std::any(RandomEngine& _rng)>>> m_paramSamplers;
-		TrainFn m_trainFn;
-		std::default_random_engine m_rng;
 	};
 
 }

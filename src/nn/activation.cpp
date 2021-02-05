@@ -9,7 +9,7 @@ namespace nn {
 		{torch::relu, "relu"},
 		{torch::sigmoid, "sigmoid"},
 		{identity, "identity"},
-		{zerosigmoid, "zerosigmoid"}
+		{zerosigmoid, "zerosigmoid"},
 	};
 
 	std::ostream& operator<<(std::ostream& _out, const ActivationFn& _activation)
