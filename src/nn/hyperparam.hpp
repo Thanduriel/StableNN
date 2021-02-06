@@ -61,6 +61,8 @@ namespace nn {
 			print = &details::printImpl<T>;
 			return *this;
 		}
+
+		friend std::ostream& operator<<(std::ostream& _out, const ExtAny& _any);
 	};
 
 	class HyperParams

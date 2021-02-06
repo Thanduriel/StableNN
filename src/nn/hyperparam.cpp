@@ -9,14 +9,19 @@
 
 
 namespace nn {
+	std::ostream& operator<<(std::ostream& _out, const ExtAny& _any)
+	{
+		_any.print(_out, _any.any);
+		return _out;
+	}
+
+
 	std::ostream& operator<<(std::ostream& _out, const HyperParams& _params)
 	{
 		std::cout << "{";
 		for (const auto& [name, value] : _params.data)
 		{
-			_out << name << " : ";
-			value.print(_out, value.any);
-			std::cout << ", ";
+			_out << name << " : " << value << ", ";
 		}
 		std::cout << "}";
 
@@ -113,6 +118,9 @@ namespace nn {
 			}
 			
 			std::cout << name << ": ";
+			for (size_t i = 0; i < values.size(); ++i)
+				std::cout << values[i] << ", ";
+			std::cout << "\n    ";
 			for (size_t i = 0; i < losses.size(); ++i)
 				std::cout << losses[i] / sizes[i] << ", ";
 			std::cout << "\n";
