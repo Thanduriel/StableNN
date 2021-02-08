@@ -10,6 +10,7 @@
 #include <random>
 #include <chrono>
 
+constexpr bool USE_WRAPPER = false;
 constexpr bool USE_LOCAL_DIFFUSIFITY = true;
 constexpr size_t N = 64;
 using System = systems::HeatEquation<double, N>;
@@ -141,7 +142,8 @@ int main()
 		auto systems = USE_LOCAL_DIFFUSIFITY ? generateSystems(trainingStates.size() + validStates.size(), 0x6341241)
 			: std::vector<System>{ heatEq };
 		
-		nn::TrainNetwork<NetType, System, Integrator, InputMaker> trainNetwork(systems, trainingStates, validStates, warmupSteps);
+		nn::TrainNetwork<NetType, System, Integrator, InputMaker, USE_WRAPPER> trainNetwork(
+			systems, trainingStates, validStates, warmupSteps);
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{

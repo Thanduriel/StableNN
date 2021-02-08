@@ -12,7 +12,9 @@
 
 namespace nn {
 
-	template<typename Network, typename System, typename Integrator, typename InputMaker = MakeTensor_t<Network>>
+	// @param UseWrapper Use a wrapper network to increase the number of inputs or reduce the number of outputs.
+	//					 Currently does not work with convolutional networks,
+	template<typename Network, typename System, typename Integrator, typename InputMaker = MakeTensor_t<Network>, bool UseWrapper = true>
 	struct TrainNetwork
 	{
 		using State = typename System::State;
@@ -72,7 +74,7 @@ namespace nn {
 
 			auto end = std::chrono::high_resolution_clock::now();
 			const float genTime = std::chrono::duration<float>(end - start).count();
-			// not constexpr so that genTime is used
+			// not constexpr to prevent warnings
 			if (MODE != Mode::TRAIN_MULTI)
 				std::cout << "Generating data took " << genTime << "s\n";
 
@@ -93,9 +95,9 @@ namespace nn {
 				s_initMutex.lock();
 				torch::manual_seed(TORCH_SEED);
 			}
-			constexpr int stateSize = systems::sizeOfState<System>();
-			auto net = nn::makeNetwork<Network, USE_WRAPPER, stateSize>(_params);
-			auto bestNet = nn::makeNetwork<Network, USE_WRAPPER, stateSize>(_params);
+
+			auto net = nn::makeNetwork<Network, UseWrapper>(_params);
+			auto bestNet = nn::makeNetwork<Network, UseWrapper>(_params);
 			if constexpr (THREAD_FIXED_SEED)
 			{
 				s_initMutex.unlock();
@@ -240,9 +242,9 @@ namespace nn {
 		static std::mutex s_loggingMutex;
 	};
 
-	template<typename Network, typename System, typename Integrator, typename InputMaker>
-	std::mutex TrainNetwork<Network, System, Integrator, InputMaker>::s_initMutex;
+	template<typename Network, typename System, typename Integrator, typename InputMaker, bool UseWrapper>
+	std::mutex TrainNetwork<Network, System, Integrator, InputMaker, UseWrapper>::s_initMutex;
 
-	template<typename Network, typename System, typename Integrator, typename InputMaker>
-	std::mutex TrainNetwork<Network, System, Integrator, InputMaker>::s_loggingMutex;
+	template<typename Network, typename System, typename Integrator, typename InputMaker, bool UseWrapper>
+	std::mutex TrainNetwork<Network, System, Integrator, InputMaker, UseWrapper>::s_loggingMutex;
 }

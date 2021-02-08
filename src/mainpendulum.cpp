@@ -31,8 +31,10 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
+constexpr bool USE_WRAPPER = true;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
+constexpr bool USE_SIMPLE_SYSTEM = true;
 
 
 template<size_t NumTimeSteps, typename... Networks>
@@ -143,7 +145,7 @@ void makeStableFrequencyData(const System& system, const nn::HyperParams& params
 			const auto& [name, timeStep] = names[i];
 			auto param = params;
 			param["time_step"] = timeStep;
-			auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(param);
+			auto othNet = nn::makeNetwork<NetType, USE_WRAPPER>(param);
 			torch::load(othNet, name);
 
 			nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
@@ -201,8 +203,8 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-	System system(0.5, 9.81, 0.5);
-//	System system(1.0, 1.0, 1.0);
+//	System system(0.5, 9.81, 0.5);
+	System system = USE_SIMPLE_SYSTEM ? System(1.0, 1.0, 1.0) : System(0.5, 9.81, 0.5);
 
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
 	trainingStates.push_back({ 3.0,0 });
@@ -211,7 +213,7 @@ int main()
 	validStates.push_back({ 2.95,0 });
 /*	for (auto& state : trainingStates)
 	{
-		systems::discretization::LeapFrog integrator(system, 0.05);
+		systems::discretization::LeapFrog integrator(system, 0.25);
 		eval::PendulumRenderer renderer(0.05);
 		renderer.addIntegrator([&integrator, s=state] () mutable
 			{
@@ -230,9 +232,9 @@ int main()
 	params["valid_samples"] = 16;
 	params["hyper_sample_rate"] = HYPER_SAMPLE_RATE;
 
-	params["time_step"] = 0.05;
-	params["lr"] = USE_LBFGS ? 0.1 : 0.005;//4e-4;
-	params["weight_decay"] = 1e-6; //4
+	params["time_step"] = USE_SIMPLE_SYSTEM ? 0.25 : 0.05;
+	params["lr"] = USE_LBFGS ? 0.1 : 0.001;//4e-4;
+	params["weight_decay"] = 0.0; //4
 	params["loss_p"] = 3;
 	params["lr_decay"] = USE_LBFGS ? 0.998 : 0.9995;
 	params["batch_size"] = 64;
@@ -257,7 +259,7 @@ int main()
 	params["block_size"] = 2;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("tcn")
+	params["name"] = std::string("mlp")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
 		+ std::to_string(*params.get<int>("hidden_size"));
@@ -276,10 +278,10 @@ int main()
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
-				{"lr", {0.006, 0.005, 0.004}},
-				{"lr_decay", {0.9996, 0.9995, 0.9994}},
-			//	{"batch_size", {64, 128}},
-			//	{"num_epochs", {4096}},
+				{"lr", {0.005, 0.001, 0.0005}},
+				{"lr_decay", {1.0, 0.9995, 0.999}},
+				{"batch_size", {64, 256}},
+				{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
 			//	{"time", { 1.0, 2.0}},
 			//	{"train_in", {false, true}},
@@ -294,7 +296,7 @@ int main()
 			//	{"kernel_size", {3,5}},
 			//	{"residual_blocks", {1,2,3}},
 			//	{"block_size", {1,2,3}},
-			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(torch::sin)}}
+			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}}
 			}, params);
 
 		hyperOptimizer.run(8);

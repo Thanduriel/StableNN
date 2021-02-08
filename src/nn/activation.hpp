@@ -15,5 +15,8 @@ namespace nn {
 	// odd sigmoid: f(x) = -f(-x)
 	inline torch::Tensor zerosigmoid(const torch::Tensor& x) { return torch::sigmoid(x) - 0.5; }
 
-	inline torch::Tensor cubicelu(const torch::Tensor& x) { return torch::elu(torch::pow(x, 3)); }
+	// fixed parameters so that it can be serialized
+	inline torch::Tensor elu(const torch::Tensor& x) { return torch::elu(x); }
+
+	inline torch::Tensor cubicrelu(const torch::Tensor& x) { return torch::relu(torch::pow(x, 3)); }
 }

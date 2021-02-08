@@ -10,6 +10,8 @@ namespace nn {
 		{torch::sigmoid, "sigmoid"},
 		{identity, "identity"},
 		{zerosigmoid, "zerosigmoid"},
+		{elu, "elu"},
+		{cubicrelu, "cubicrelu"}
 	};
 
 	std::ostream& operator<<(std::ostream& _out, const ActivationFn& _activation)
