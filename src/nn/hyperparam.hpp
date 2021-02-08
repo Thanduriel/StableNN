@@ -22,6 +22,13 @@ namespace nn {
 			std::void_t<  decltype(std::declval<S&>() << std::declval<T>())  > >
 			: std::true_type {};
 
+		template<typename S, typename T, typename = void>
+		struct is_stream_readable : std::false_type {};
+
+		template<typename S, typename T>
+		struct is_stream_readable<S, T,
+			std::void_t<  decltype(std::declval<S&>() >> std::declval<T&>())  > >
+			: std::true_type {};
 
 		template<typename T>
 		void printImpl(std::ostream& _out, const std::any& _any)
@@ -31,14 +38,29 @@ namespace nn {
 			else
 				_out << _any.type().name();
 		}
+
+		template<typename T>
+		void readImpl(std::istream& _in, std::any& _any)
+		{
+			if constexpr (is_stream_readable<std::istream, T>::value)
+			{
+				T val{};
+				_in >> val;
+				_any = val;
+			}
+			else
+			{
+				std::string s;
+				_in >> s; // still consume the element
+				std::cerr << "Could not read value of type " << _any.type().name() << "\n";
+			}
+		}
 	}
 
-	using PrintFn = void(std::ostream&, const std::any&);
-
-	struct ExtAny
+	class ExtAny
 	{
+	public:
 		std::any any;
-		PrintFn* print = nullptr;
 
 		ExtAny() = default;
 		ExtAny(const ExtAny& _oth) = default;
@@ -47,7 +69,8 @@ namespace nn {
 		template<typename T, std::enable_if_t<std::negation_v<std::is_same<std::decay_t<T>, ExtAny>>, int> = 0>
 		ExtAny(T&& _val)
 			: any(std::forward<T>(_val)),
-			print(&details::printImpl<T>)
+			m_print(&details::printImpl<T>),
+			m_read(&details::readImpl<std::decay_t<T>>)
 		{
 		}
 
@@ -58,11 +81,21 @@ namespace nn {
 		ExtAny& operator=(T&& _val)
 		{
 			any = std::forward<T>(_val);
-			print = &details::printImpl<T>;
+			m_print = &details::printImpl<T>;
+			m_read = &details::readImpl<std::decay_t<T>>;
 			return *this;
 		}
 
 		friend std::ostream& operator<<(std::ostream& _out, const ExtAny& _any);
+		// works only when already initialized with a type
+		friend std::istream& operator>>(std::istream& _out, ExtAny& _any);
+
+	private:
+		using PrintFn = void(std::ostream&, const std::any&);
+		using ReadFn = void(std::istream&, std::any&);
+
+		PrintFn* m_print = nullptr;
+		ReadFn* m_read = nullptr;
 	};
 
 	class HyperParams
@@ -92,6 +125,7 @@ namespace nn {
 		}
 
 		friend std::ostream& operator<<(std::ostream& _out, const HyperParams& _params);
+		friend std::istream& operator>>(std::istream& _in, HyperParams& _params);
 
 		// enable foreach loop
 		auto begin() { return data.begin(); }
@@ -105,6 +139,7 @@ namespace nn {
 		struct has_type<T, std::tuple<Us...>> : std::disjunction<std::is_same<T, Us>...> {};
 
 		using INTEGRAL_TYPES = std::tuple<int, unsigned, int64_t, size_t, uint64_t>;
+		using FLOATING_POINT_TYPES = std::tuple<float, double>;
 
 		// less strict than std::any_cast allowing for some type conversions
 		template<typename T>
@@ -115,9 +150,9 @@ namespace nn {
 
 			// integral types are somewhat interchangeable
 			if constexpr (has_type<T, INTEGRAL_TYPES>::value)
-			{
 				return tryCastTuple<T>(any, INTEGRAL_TYPES{});
-			}
+			if constexpr (has_type<T, FLOATING_POINT_TYPES>::value)
+				return tryCastTuple<T>(any, FLOATING_POINT_TYPES{});
 
 			return std::nullopt;
 		}

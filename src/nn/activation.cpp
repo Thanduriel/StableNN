@@ -23,16 +23,21 @@ namespace nn {
 		return _out;
 	}
 
-/*	int64_t toIndex(ActivationFn _fn)
+	std::istream& operator>>(std::istream& _in, ActivationFn& _activation)
 	{
-		auto it = std::find(ACTIVATIONS.begin(), ACTIVATIONS.end(), _fn);
-		assert(it != ACTIVATIONS.end());
+		std::string name;
+		_in >> name;
 
-		return std::distance(ACTIVATIONS.begin(), it);
+		auto it = std::find_if(ACTIVATION_NAMES.begin(), ACTIVATION_NAMES.end(), [&](const auto& pair) 
+			{
+				return pair.second == name;
+			});
+
+		if (it != ACTIVATION_NAMES.end())
+			_activation = *it->first;
+		else
+			std::cerr << "Unknown activation " << name << std::endl;
+
+		return _in;
 	}
-
-	ActivationFn fromIndex(int64_t _fn)
-	{
-		return ACTIVATIONS[_fn];
-	}*/
 }

@@ -11,8 +11,9 @@ constexpr size_t NUM_INPUTS = 1;
 // expect only the next time-step
 constexpr bool USE_SINGLE_OUTPUT = true;
 
-// use wrapper to increase the number of inputs or reduce the number of outputs
-constexpr bool USE_WRAPPER = false;//USE_SINGLE_OUTPUT && (NUM_INPUTS > 1 || HIDDEN_SIZE > 2);
+// Use wrapper to increase the number of inputs or reduce the number of outputs.
+// Does not work with convolutional architectures.
+constexpr bool USE_WRAPPER = false;
 
 enum struct Mode {
 	TRAIN,
@@ -21,12 +22,12 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN_MULTI;
+constexpr Mode MODE = Mode::EVALUATE;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
 constexpr int64_t NUM_FORWARDS = 1;
-constexpr bool SAVE_NET = false;
+constexpr bool SAVE_NET = true;
 static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be saved in order to be evaluated");
 
 // Append final validation loss of a trained network to a persistent log.
@@ -38,7 +39,7 @@ enum struct Optimizer {
 	RMSPROP,
 	LBFGS
 };
-constexpr Optimizer OPTIMIZER = Optimizer::ADAM;
+constexpr Optimizer OPTIMIZER = Optimizer::LBFGS;
 constexpr bool USE_LBFGS = OPTIMIZER == Optimizer::LBFGS;
 
 // only relevant in TRAIN_MULTI to enforce same initial rng state for all networks

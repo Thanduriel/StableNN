@@ -10,7 +10,7 @@
 #include <random>
 #include <chrono>
 
-constexpr bool USE_LOCAL_DIFFUSIFITY = false;
+constexpr bool USE_LOCAL_DIFFUSIFITY = true;
 constexpr size_t N = 64;
 using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
@@ -101,7 +101,7 @@ int main()
 	params["train_samples"] = 256;
 	params["valid_samples"] = 512;
 	params["batch_size"] = 256;
-	params["num_epochs"] = USE_LBFGS ? 256 : 1024;
+	params["num_epochs"] = USE_LBFGS ? 256 : 5;
 	params["loss_p"] = 3;
 
 	params["lr"] = USE_LBFGS ? 0.02 : 0.01;
@@ -119,7 +119,7 @@ int main()
 	params["hidden_size"] = N;
 	params["hidden_channels"] = 4;
 	params["kernel_size"] = 5;
-	params["residual"] = false;
+	params["residual"] = true;
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(nn::identity);
@@ -148,7 +148,7 @@ int main()
 			params["name"] = std::string("diffusivity2");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {5}},
-					{"hidden_channels", {2,4,8}},
+					{"hidden_channels", {4,8}},
 				//	{"residual", {false, true}},
 					{"bias", {false, true}},
 					{"depth", {3,4,5}},
@@ -162,7 +162,7 @@ int main()
 					{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::sigmoid)}}
 				}, params);
 
-			hyperOptimizer.run(8);
+			hyperOptimizer.run(4);
 		}
 		if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 			std::cout << trainNetwork(params) << "\n";
@@ -183,7 +183,7 @@ int main()
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
 		disc::SuperSampleIntegrator<T, N, N * 32> superSampleFiniteDifs(system, timeStep, state, 64);
 
-		auto net = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
+		auto net = nn::makeNetwork<NetType, USE_WRAPPER>(params);
 		torch::load(net, *params.get<std::string>("name") + ".pt");
 	//	torch::load(net, "0_1_0_1_diffusivity2.pt");
 		nn::Integrator<System, decltype(net), NUM_INPUTS, InputMaker> nn(system, net);

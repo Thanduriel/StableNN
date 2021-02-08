@@ -201,7 +201,8 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-	System system(0.1, 9.81, 0.5);
+	System system(0.5, 9.81, 0.5);
+//	System system(1.0, 1.0, 1.0);
 
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
 	trainingStates.push_back({ 3.0,0 });
@@ -210,8 +211,8 @@ int main()
 	validStates.push_back({ 2.95,0 });
 /*	for (auto& state : trainingStates)
 	{
-		Integrator integrator(system, TARGET_TIME_STEP);
-		eval::PendulumRenderer renderer(TARGET_TIME_STEP);
+		systems::discretization::LeapFrog integrator(system, 0.05);
+		eval::PendulumRenderer renderer(0.05);
 		renderer.addIntegrator([&integrator, s=state] () mutable
 			{
 				s = integrator(s);
@@ -219,7 +220,7 @@ int main()
 			});
 		renderer.run();
 	}*/
-	using NetType = nn::TCN;
+	using NetType = nn::MultiLayerPerceptron;
 
 	using Integrator = systems::discretization::LeapFrog<System>;
 	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(system, trainingStates, validStates);
@@ -230,10 +231,10 @@ int main()
 	params["hyper_sample_rate"] = HYPER_SAMPLE_RATE;
 
 	params["time_step"] = 0.05;
-	params["lr"] = USE_LBFGS ? 0.1 : 0.01;//4e-4;
+	params["lr"] = USE_LBFGS ? 0.1 : 0.005;//4e-4;
 	params["weight_decay"] = 1e-6; //4
 	params["loss_p"] = 3;
-	params["lr_decay"] = USE_LBFGS ? 0.998 : 0.998;
+	params["lr_decay"] = USE_LBFGS ? 0.998 : 0.9995;
 	params["batch_size"] = 64;
 	params["num_epochs"] = USE_LBFGS ? 256 : 4096;
 
@@ -243,6 +244,7 @@ int main()
 	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
+	params["state_size"] = systems::sizeOfState<System>();
 	params["hidden_size"] = 2 * 2;
 	params["train_in"] = false;
 	params["train_out"] = false;
@@ -274,8 +276,8 @@ int main()
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
-			//	{"lr", {0.01, 0.1}},
-			//	{"lr_decay", {0.998, 0.997, 0.996}},
+				{"lr", {0.006, 0.005, 0.004}},
+				{"lr_decay", {0.9996, 0.9995, 0.9994}},
 			//	{"batch_size", {64, 128}},
 			//	{"num_epochs", {4096}},
 			//	{"weight_decay", {1e-6, 1e-5}},
@@ -284,18 +286,18 @@ int main()
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
-				{"bias", {false, true}},
+			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
-				{"hidden_size", {2, 4, 8}},
-				{"num_inputs", {4, 8, 16}},
-				{"kernel_size", {3,5}},
-				{"residual_blocks", {1,2,3}},
-				{"block_size", {1,2,3}},
+			//	{"hidden_size", {2, 4, 8}},
+			//	{"num_inputs", {4, 8, 16}},
+			//	{"kernel_size", {3,5}},
+			//	{"residual_blocks", {1,2,3}},
+			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(torch::sin)}}
 			}, params);
 
-		hyperOptimizer.run(4);
+		hyperOptimizer.run(8);
 	}
 
 	if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
@@ -356,8 +358,7 @@ int main()
 		resnetParams["name"] = std::string("resnet.pt");
 		auto resNet = nn::makeNetwork<nn::MultiLayerPerceptron, USE_WRAPPER, 2>(params);*/
 
-		auto othNet = nn::makeNetwork<NetType, USE_WRAPPER, 2>(params);
-		torch::load(othNet, *params.get<std::string>("name") + ".pt");
+		auto othNet = nn::load<NetType, USE_WRAPPER>(*params.get<std::string>("name"), params);
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
 	//	auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
 	//	makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);

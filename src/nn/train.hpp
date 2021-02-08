@@ -201,7 +201,6 @@ namespace nn {
 					bestValidLoss = totalValidLossD;
 				}
 
-			//	lossFile << totalLoss.item<double>() << ", " << totalLossD << "\n";
 				if constexpr (MODE != Mode::TRAIN_MULTI)
 				{
 					if (epoch % 16 == 0)
@@ -225,7 +224,8 @@ namespace nn {
 			}
 			if constexpr(SAVE_NET)
 			{
-				torch::save(bestNet, _params.get<std::string>("name", "net") + ".pt");
+				//torch::save(bestNet, _params.get<std::string>("name", "net") + ".pt");
+				nn::save(bestNet, _params);
 			}
 
 			return bestValidLoss;

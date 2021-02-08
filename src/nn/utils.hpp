@@ -1,5 +1,7 @@
 #pragma once
 
+#include "hyperparam.hpp"
+#include "nnmaker.hpp"
 #include "../systems/state.hpp"
 #include <torch/torch.h>
 #include <c10/core/ScalarType.h>
@@ -27,7 +29,30 @@ namespace nn {
 		return numParams;
 	}
 
-	// shift entries left in a tensor (batch size x time series) and adds _newEntry to the end.
+	template<typename Module>
+	void save(const Module& _module, const HyperParams& _params)
+	{
+		auto name = _params.get<std::string>("name", "net");
+		torch::save(_module,  name + ".pt");
+		std::ofstream file(name + ".hparam");
+		file << _params;
+	}
+
+	// @param _name File name without ending.
+	template<typename NetType, bool UseWrapper>
+	auto load(const std::string& _name, const HyperParams& _params)
+	{
+		HyperParams params = _params;
+		std::ifstream file(_name + ".hparam");
+		file >> params;
+
+		auto net = nn::makeNetwork<NetType, UseWrapper>(params);
+		torch::load(net, _name + ".pt");
+
+		return net;
+	}
+
+	// Shift entries left in a tensor (batch size x time series) and adds _newEntry to the end.
 	torch::Tensor shiftTimeSeries(const torch::Tensor& _old, const torch::Tensor& _newEntry, int _stateSize);
 
 	torch::Tensor lp_loss(const torch::Tensor& input, const torch::Tensor& target, c10::Scalar p);

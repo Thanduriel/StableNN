@@ -11,21 +11,54 @@
 namespace nn {
 	std::ostream& operator<<(std::ostream& _out, const ExtAny& _any)
 	{
-		_any.print(_out, _any.any);
+		_any.m_print(_out, _any.any);
 		return _out;
 	}
 
+	std::istream& operator>>(std::istream& _stream, ExtAny& _any)
+	{
+		_any.m_read(_stream, _any.any);
+		return _stream;
+	}
 
 	std::ostream& operator<<(std::ostream& _out, const HyperParams& _params)
 	{
-		std::cout << "{";
+		_out << "{ ";
 		for (const auto& [name, value] : _params.data)
 		{
 			_out << name << " : " << value << ", ";
 		}
-		std::cout << "}";
+		_out << "}";
 
 		return _out;
+	}
+
+
+
+	std::istream& operator>>(std::istream& _in, HyperParams& _params)
+	{
+		std::string buf;
+		_in >> buf; // "{"
+		while (_in.good())
+		{
+			getline(_in, buf, ',');
+			std::stringstream entry(buf);
+
+			std::string key;
+			entry >> key;
+			if (key == "}") break;
+			entry >> buf; // ":"
+			auto it = _params.data.find(key);
+			if (it == _params.data.end())
+				std::cerr << "Unknown key " << key << std::endl;
+			else
+				entry >> it->second;
+
+		//	if(_in.peek() == ',')
+		//		_in >> buf; // ","
+		}
+
+		return _in;
 	}
 
 	GridSearchOptimizer::GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid,

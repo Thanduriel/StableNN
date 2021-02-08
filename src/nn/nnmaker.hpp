@@ -8,11 +8,12 @@ namespace nn {
 	template<typename Options>
 	Options makeOptions(const HyperParams& _params);
 
-	template<typename Net, bool UseWrapper, int StateSize>
+	template<typename Net, bool UseWrapper>
 	auto makeNetwork(const nn::HyperParams& _params)
 	{
-		const size_t numInputsNet = *_params.get<size_t>("num_inputs") * StateSize;
-		const size_t numOutputsNet = *_params.get<size_t>("num_outputs") * StateSize;
+		const size_t stateSize = *_params.get<size_t>("state_size");
+		const size_t numInputsNet = *_params.get<size_t>("num_inputs") * stateSize;
+		const size_t numOutputsNet = *_params.get<size_t>("num_outputs") * stateSize;
 
 		// convert params from states to values
 		HyperParams params;
