@@ -258,8 +258,9 @@ int main()
 
 	params["augment"] = 2;
 	params["kernel_size"] = 3;
-	params["residual_blocks"] = 2;
+	params["residual_blocks"] = 3;
 	params["block_size"] = 2;
+	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
 	params["name"] = std::string("TCN");
@@ -292,8 +293,8 @@ int main()
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
 			//	{"hidden_size", {2, 4, 8}},
-				{"num_inputs", {4, 16}},
-				{"kernel_size", {3,5}},
+				{"num_inputs", {4, 8, 16}},
+				{"kernel_size", {3}},
 				{"residual_blocks", {2,3}},
 				{"average", {false, true}},
 			//	{"block_size", {1,2,3}},

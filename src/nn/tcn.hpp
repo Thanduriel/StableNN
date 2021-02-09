@@ -26,7 +26,7 @@ namespace nn {
 		TORCH_ARG(double, dropout) = 0.0;
 
 		// compute local averages as inputs to dilated blocks
-		TORCH_ARG(bool, average) = true;
+		TORCH_ARG(bool, average) = false;
 	};
 
 	struct TCNImpl : public torch::nn::Cloneable<TCNImpl>

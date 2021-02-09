@@ -34,11 +34,10 @@ namespace nn {
 
 			if (options.average() && dilation > 1) 
 			{
-				const int kernel = options.dilation() * 2 - 1;
-				auto convOptions = torch::nn::Conv1dOptions(in_channels, out_channels, kernel_size)
+				const int64_t kernel = dilation * kernel_size - 1;
+				auto convOptions = torch::nn::Conv1dOptions(in_channels, in_channels, kernel)
 					.bias(false)
 					.padding(kernel / 2)
-					.dilation(kernel)
 					.padding_mode(torch::kZeros);
 
 				layers.emplace_back(torch::nn::Conv1d(convOptions));
