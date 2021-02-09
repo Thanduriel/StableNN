@@ -31,10 +31,10 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
-constexpr bool USE_WRAPPER = true;
+constexpr bool USE_WRAPPER = false;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
-constexpr bool USE_SIMPLE_SYSTEM = true;
+constexpr bool USE_SIMPLE_SYSTEM = false;
 
 
 template<size_t NumTimeSteps, typename... Networks>
@@ -222,10 +222,11 @@ int main()
 			});
 		renderer.run();
 	}*/
-	using NetType = nn::MultiLayerPerceptron;
+	using NetType = nn::TCN;
 
 	using Integrator = systems::discretization::LeapFrog<System>;
-	nn::TrainNetwork<NetType, System, Integrator> trainNetwork(system, trainingStates, validStates);
+	using TrainNetwork = nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, USE_WRAPPER>;
+	TrainNetwork trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
 	params["train_samples"] = 16;
@@ -236,9 +237,11 @@ int main()
 	params["lr"] = USE_LBFGS ? 0.1 : 0.001;//4e-4;
 	params["weight_decay"] = 0.0; //4
 	params["loss_p"] = 3;
-	params["lr_decay"] = USE_LBFGS ? 0.998 : 0.9995;
+	params["lr_decay"] = USE_LBFGS ? 0.998 : 0.999;
 	params["batch_size"] = 64;
 	params["num_epochs"] = USE_LBFGS ? 256 : 4096;
+	params["momentum"] = 0.9;
+	params["dampening"] = 0.0;
 
 	params["depth"] = 4;
 	params["diffusion"] = 0.1;
@@ -247,7 +250,7 @@ int main()
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
-	params["hidden_size"] = 2 * 2;
+	params["hidden_size"] = 2 * 4;
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["in_out_bias"] = false;
@@ -259,10 +262,7 @@ int main()
 	params["block_size"] = 2;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("mlp")
-		+ std::to_string(NUM_INPUTS) + "_"
-		+ std::to_string(*params.get<int>("depth")) + "_"
-		+ std::to_string(*params.get<int>("hidden_size"));
+	params["name"] = std::string("TCN");
 
 /*	auto testFn = [](const nn::HyperParams& params)
 	{
@@ -278,10 +278,10 @@ int main()
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
-				{"lr", {0.005, 0.001, 0.0005}},
-				{"lr_decay", {1.0, 0.9995, 0.999}},
-				{"batch_size", {64, 256}},
-				{"num_epochs", {4096, 8000}},
+			//	{"lr", {0.005, 0.001, 0.0005}},
+			//	{"lr_decay", {1.0, 0.9995, 0.999}},
+			//	{"batch_size", {64, 256}},
+			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
 			//	{"time", { 1.0, 2.0}},
 			//	{"train_in", {false, true}},
@@ -292,9 +292,10 @@ int main()
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
 			//	{"hidden_size", {2, 4, 8}},
-			//	{"num_inputs", {4, 8, 16}},
-			//	{"kernel_size", {3,5}},
-			//	{"residual_blocks", {1,2,3}},
+				{"num_inputs", {4, 16}},
+				{"kernel_size", {3,5}},
+				{"residual_blocks", {2,3}},
+				{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}}
 			}, params);
@@ -304,61 +305,12 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 	{
-		const auto loss = trainNetwork(params);
-		std::cout << "Finished training. Final validation loss: " << loss << "\n";
+		trainNetwork(params);
 	}
 
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
 		eval::EvalOptions options;
-	/*	nn::HyperParams hamiltonianParams(params);
-		hamiltonianParams["train_in"] = true;
-		hamiltonianParams["train_out"] = true;
-		hamiltonianParams["time"] = 4.0;
-		hamiltonianParams["name"] = std::string("hamiltonianIO.pt");
-		auto hamiltonianIO = nn::makeNetwork<nn::HamiltonianInterleafed, true, 2>(hamiltonianParams);
-		torch::load(hamiltonianIO, *hamiltonianParams.get<std::string>("name"));
-
-		hamiltonianParams["train_in"] = false;
-		//	hamiltonianParams["time"] = 2.0;
-		hamiltonianParams["name"] = std::string("hamiltonianO.pt");
-		auto hamiltonianO = nn::makeNetwork<nn::HamiltonianInterleafed, true, 2>(hamiltonianParams);
-		torch::load(hamiltonianO, *hamiltonianParams.get<std::string>("name"));
-
-		nn::HyperParams linearParams = params;
-		linearParams["train_in"] = false;
-		linearParams["train_out"] = false;
-		linearParams["name"] = std::string("lin_1_4.pt");
-		auto mlp = nn::makeNetwork<nn::MultiLayerPerceptron, true, 2>(linearParams);
-		torch::load(mlp, *linearParams.get<std::string>("name"));
-
-		nn::HyperParams antisymParams = params;
-		antisymParams["train_in"] = false;
-		antisymParams["train_out"] = true;
-		antisymParams["name"] = std::string("antiSymO.pt");
-		auto antiSym = nn::makeNetwork<nn::AntiSymmetric, true, 2>(antisymParams);
-		torch::load(antiSym, *antisymParams.get<std::string>("name"));
-
-		std::cout << eval::lipschitz(hamiltonianIO) << "\n";
-		std::cout << eval::lipschitz(hamiltonianO) << "\n";
-		std::cout << eval::lipschitz(mlp) << "\n";
-		std::cout << eval::lipschitz(antiSym) << "\n";*/
-		//	evaluate<NUM_INPUTS>(system, { { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } }, 
-		//		hamiltonianIO, hamiltonianO, mlp, antiSym);
-
-	/*	nn::HyperParams antisymParams = params;
-		antisymParams["train_in"] = true;
-		antisymParams["train_out"] = true;
-		antisymParams["diffusion"] = 0.11;
-		antisymParams["time"] = 3.0;
-		antisymParams["name"] = std::string("1_3_antisym2.pt");
-		auto antiSym = nn::makeNetwork<nn::AntiSymmetric, true, 2>(antisymParams);
-		torch::load(antiSym, *antisymParams.get<std::string>("name"));
-
-		nn::HyperParams resnetParams = params;
-		resnetParams["train_in"] = true;
-		resnetParams["name"] = std::string("resnet.pt");
-		auto resNet = nn::makeNetwork<nn::MultiLayerPerceptron, USE_WRAPPER, 2>(params);*/
 
 		auto othNet = nn::load<NetType, USE_WRAPPER>(*params.get<std::string>("name"), params);
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);

@@ -33,7 +33,7 @@ namespace nn {
 	{
 		using Options = TCNOptions;
 
-		TCNImpl(const Options& options);
+		explicit TCNImpl(const Options& options);
 
 		void reset() override;
 

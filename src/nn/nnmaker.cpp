@@ -62,6 +62,7 @@ namespace nn {
 			.kernel_size(*_params.get<int>("kernel_size"))
 			.residual_blocks(*_params.get<int>("residual_blocks"))
 			.activation(*_params.get<nn::ActivationFn>("activation"))
-			.block_size(*_params.get<int>("block_size"));
+			.block_size(*_params.get<int>("block_size"))
+			.average(*_params.get<bool>("average"));
 	}
 }

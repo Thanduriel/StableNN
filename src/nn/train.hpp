@@ -95,13 +95,14 @@ namespace nn {
 				s_initMutex.lock();
 				torch::manual_seed(TORCH_SEED);
 			}
-
 			auto net = nn::makeNetwork<Network, UseWrapper>(_params);
 			auto bestNet = nn::makeNetwork<Network, UseWrapper>(_params);
 			if constexpr (THREAD_FIXED_SEED)
 			{
 				s_initMutex.unlock();
 			}
+			if constexpr (MODE != Mode::TRAIN_MULTI)
+				std::cout << "Training network with " << nn::countParams(net) << " parameters.\n";
 
 			const int loss_p = _params.get("loss_p", 2);
 			auto lossFn = [loss_p](const torch::Tensor& self, const torch::Tensor& target)
@@ -146,6 +147,7 @@ namespace nn {
 
 			//std::ofstream lossFile("loss.txt");
 
+			start = std::chrono::high_resolution_clock::now();
 			const int64_t numEpochs = _params.get<int>("num_epochs", 2048);
 			for (int64_t epoch = 1; epoch <= numEpochs; ++epoch)
 			{
@@ -229,6 +231,12 @@ namespace nn {
 				//torch::save(bestNet, _params.get<std::string>("name", "net") + ".pt");
 				nn::save(bestNet, _params);
 			}
+			end = std::chrono::high_resolution_clock::now();
+			const float trainTime = std::chrono::duration<float>(end - start).count();
+			// not constexpr to prevent warnings
+			if (MODE != Mode::TRAIN_MULTI)
+				std::cout << "Finished training in " << trainTime 
+						  << "s. The final validation loss is" << bestValidLoss << ".\n";
 
 			return bestValidLoss;
 		}

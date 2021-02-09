@@ -122,6 +122,7 @@ namespace nn {
 		resOptions.in_channels(options.hidden_channels());
 		for (int i = 0; i < options.residual_blocks() - 1; ++i)
 		{
+			resOptions.dilation() = 2 << i;
 			layers->push_back(ResLayer(resOptions));
 		}
 
