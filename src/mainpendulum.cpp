@@ -251,19 +251,19 @@ int main()
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
 	params["hidden_size"] = 2 * 4;
-	params["train_in"] = false;
-	params["train_out"] = false;
+	params["train_in"] = true;
+	params["train_out"] = true;
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
 	params["augment"] = 2;
-	params["kernel_size"] = 3;
+	params["kernel_size"] = 5;
 	params["residual_blocks"] = 3;
 	params["block_size"] = 2;
 	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("TCN");
+	params["name"] = std::string("TCN_small");
 
 /*	auto testFn = [](const nn::HyperParams& params)
 	{
@@ -292,10 +292,10 @@ int main()
 			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
-			//	{"hidden_size", {2, 4, 8}},
-				{"num_inputs", {4, 8, 16}},
-				{"kernel_size", {3}},
-				{"residual_blocks", {2,3}},
+				{"hidden_size", {2, 4, 8}},
+				{"num_inputs", {8, 16}},
+				{"kernel_size", {3, 5}},
+				{"residual_blocks", {1,2,3}},
 				{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}}
@@ -314,6 +314,7 @@ int main()
 		eval::EvalOptions options;
 
 		auto othNet = nn::load<NetType, USE_WRAPPER>(*params.get<std::string>("name"), params);
+		nn::exportTensor(othNet->layers->at<torch::nn::LinearImpl>(othNet->layers->size()-1).weight, "outlinear.txt");
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
 	//	auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
 	//	makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);

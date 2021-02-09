@@ -6,7 +6,7 @@
 
 // number of time-steps given as inputs
 // This value only needs to be available at compile-time for evaluation.
-constexpr size_t NUM_INPUTS = 4;
+constexpr size_t NUM_INPUTS = 8;
 
 // expect only the next time-step
 constexpr bool USE_SINGLE_OUTPUT = true;
@@ -23,7 +23,7 @@ constexpr Mode MODE = Mode::TRAIN_MULTI;
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
 constexpr int64_t NUM_FORWARDS = 1;
-constexpr bool SAVE_NET = false;
+constexpr bool SAVE_NET = true;
 static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be saved in order to be evaluated");
 
 // Append final validation loss of a trained network to a persistent log.

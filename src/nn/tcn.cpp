@@ -14,7 +14,10 @@ namespace nn {
 	struct ResLayerImpl : public torch::nn::Cloneable<ResLayerImpl>
 	{
 		ResLayerImpl(const TCNResBlockOptions& _options)
-			: residual(nullptr), dropout_layer(nullptr), options(_options)
+			: residual(nullptr), 
+			dropout_layer(nullptr),
+			avg_residual(nullptr),
+			options(_options)
 		{
 			reset();
 		}
@@ -24,6 +27,7 @@ namespace nn {
 			// reset to no layer instead of default constructed
 			residual = nullptr;
 			dropout_layer = nullptr;
+			avg_residual = nullptr;
 			layers.clear();
 
 			const int64_t stack_size = options.block_size();
@@ -35,13 +39,19 @@ namespace nn {
 			if (options.average() && dilation > 1) 
 			{
 				const int64_t kernel = dilation * kernel_size - 1;
+				auto avgOptions = torch::nn::AvgPool1dOptions(kernel)
+					.padding(kernel / 2)
+					.stride(1)
+					.count_include_pad(false);
+			/*
 				auto convOptions = torch::nn::Conv1dOptions(in_channels, in_channels, kernel)
 					.bias(false)
 					.padding(kernel / 2)
 					.padding_mode(torch::kZeros);
 
-				layers.emplace_back(torch::nn::Conv1d(convOptions));
-				register_module("average", layers.back());
+				layers.emplace_back(torch::nn::Conv1d(convOptions));*/
+
+				avg_residual = register_module("average", torch::nn::AvgPool1d(avgOptions));
 			}
 
 			for (int i = 0; i < stack_size; ++i) 
@@ -66,6 +76,15 @@ namespace nn {
 				register_module("residual", residual);
 			}
 
+		/*	if (options.average())
+			{
+				auto avgOptions = torch::nn::AvgPool1dOptions(kernel_size)
+					.stride(2)
+					.padding(kernel_size / 2);
+
+				avg_residual = register_module("avg_residual", torch::nn::AvgPool1d(avgOptions));
+			}*/
+
 			// dropout layer does not have weights and can be reused
 			if (options.dropout() > 0.0) 
 			{
@@ -77,6 +96,9 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor x) 
 		{
 			auto in = x.clone();
+
+			if (avg_residual)
+				x = avg_residual(x);
 
 			auto activation = options.activation();
 			for (auto& layer : layers)
@@ -91,6 +113,7 @@ namespace nn {
 
 		std::vector<torch::nn::Conv1d> layers;
 		torch::nn::Conv1d residual;
+		torch::nn::AvgPool1d avg_residual;
 		torch::nn::Dropout dropout_layer;
 		TCNResBlockOptions options;
 	};
@@ -153,7 +176,10 @@ namespace nn {
 
 	torch::Tensor TCNImpl::forward(torch::Tensor x) 
 	{
-		x = layers->forward(x);
+		using namespace torch::indexing;
+		auto residual = x.index({ "...", options.window_size() - 1 });
+		x = layers->forward(x) + residual;
+
 		return x.squeeze().unsqueeze(0);
 	}
 

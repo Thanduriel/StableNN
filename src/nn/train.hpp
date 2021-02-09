@@ -236,7 +236,7 @@ namespace nn {
 			// not constexpr to prevent warnings
 			if (MODE != Mode::TRAIN_MULTI)
 				std::cout << "Finished training in " << trainTime 
-						  << "s. The final validation loss is" << bestValidLoss << ".\n";
+						  << "s. The final validation loss is " << bestValidLoss << ".\n";
 
 			return bestValidLoss;
 		}
