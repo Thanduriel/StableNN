@@ -18,7 +18,7 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN_MULTI;
+constexpr Mode MODE = Mode::TRAIN_EVALUATE;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.

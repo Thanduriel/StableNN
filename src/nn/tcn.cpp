@@ -36,23 +36,23 @@ namespace nn {
 			const int64_t in_channels = options.in_channels();
 			const int64_t out_channels = options.out_channels();
 
-			if (options.average() && dilation > 1) 
+		/*	if (options.average() && dilation > 1) 
 			{
 				const int64_t kernel = dilation * kernel_size - 1;
 				auto avgOptions = torch::nn::AvgPool1dOptions(kernel)
 					.padding(kernel / 2)
 					.stride(1)
 					.count_include_pad(false);
-			/*
+			
 				auto convOptions = torch::nn::Conv1dOptions(in_channels, in_channels, kernel)
 					.bias(false)
 					.padding(kernel / 2)
 					.padding_mode(torch::kZeros);
 
-				layers.emplace_back(torch::nn::Conv1d(convOptions));*/
+				layers.emplace_back(torch::nn::Conv1d(convOptions));
 
 				avg_residual = register_module("average", torch::nn::AvgPool1d(avgOptions));
-			}
+			}*/
 
 			for (int i = 0; i < stack_size; ++i) 
 			{
@@ -63,27 +63,31 @@ namespace nn {
 					.bias(options.bias())
 					.padding(kernel_size / 2 * dilation)
 					.dilation(dilation)
-					.padding_mode(torch::kZeros);
+					.padding_mode(torch::kZeros)
+					.stride(options.average() && i == stack_size - 1 ? 2 : 1);
 
 				layers.emplace_back(torch::nn::Conv1d(convOptions));
 				register_module("layer" + std::to_string(i), layers.back());
 			}
 
-			if (in_channels != out_channels) 
+			if (options.residual())
 			{
-				auto convOptions = torch::nn::Conv1dOptions(in_channels, out_channels, 1).bias(false);
-				residual = torch::nn::Conv1d(convOptions);
-				register_module("residual", residual);
+				if (in_channels != out_channels)
+				{
+					auto convOptions = torch::nn::Conv1dOptions(in_channels, out_channels, 1).bias(false);
+					residual = torch::nn::Conv1d(convOptions);
+					register_module("residual", residual);
+				}
+
+				if (options.average())
+				{
+					auto avgOptions = torch::nn::AvgPool1dOptions(kernel_size)
+						.stride(2)
+						.padding(kernel_size / 2);
+
+					avg_residual = register_module("avg_residual", torch::nn::AvgPool1d(avgOptions));
+				}
 			}
-
-		/*	if (options.average())
-			{
-				auto avgOptions = torch::nn::AvgPool1dOptions(kernel_size)
-					.stride(2)
-					.padding(kernel_size / 2);
-
-				avg_residual = register_module("avg_residual", torch::nn::AvgPool1d(avgOptions));
-			}*/
 
 			// dropout layer does not have weights and can be reused
 			if (options.dropout() > 0.0) 
@@ -97,9 +101,6 @@ namespace nn {
 		{
 			auto in = x.clone();
 
-			if (avg_residual)
-				x = avg_residual(x);
-
 			auto activation = options.activation();
 			for (auto& layer : layers)
 			{
@@ -108,7 +109,12 @@ namespace nn {
 					x = dropout_layer(x);
 			}
 
-			return x + (residual ? residual(in) : in);
+			if (avg_residual)
+				in = avg_residual(in);
+			if (residual)
+				in = residual(in);
+
+			return options.residual() ? x + in : x;
 		}
 
 		std::vector<torch::nn::Conv1d> layers;
@@ -144,33 +150,20 @@ namespace nn {
 		resOptions.in_channels(options.hidden_channels());
 		for (int i = 0; i < options.residual_blocks() - 1; ++i)
 		{
-			resOptions.dilation() = 2 << i;
+			if (!options.average())
+				resOptions.dilation() = 2 << i;
 			layers->push_back(ResLayer(resOptions));
 		}
 
-		// convolutional stack to reduce the output size
-		if (options.reduce_stack())
-		{
-			/*	int window = options.window_size();
-				while (window > 1) {
-					auto opts = torch::nn::Conv1dOptions(hidden_channels, hidden_channels, filter_size)
-						.stride(2)
-						.bias(options.bias())
-						.padding(filter_size / 2)
-						.padding_mode(torch::kZeros);
-					layers->push_back(convlayer(opts, options.activation()));
-					window >>= 1;
-				}
-				auto opts = torch::nn::Conv1dOptions(hidden_channels, options.out_channels(), 1);
-				layers->push_back(convlayer(opts, ACT::none));*/
-		}
-		else
-		{ // alternative is a simple fully connected linear layer
-			layers->push_back(torch::nn::Flatten());
-			layers->push_back(torch::nn::Linear(
-				torch::nn::LinearOptions(options.window_size() * options.hidden_channels(), options.out_channels())
-				.bias(options.bias())));
-		}
+		// fully connected linear layer to reach output size
+		layers->push_back(torch::nn::Flatten());
+		int64_t internal_size = options.window_size() * options.hidden_channels();
+		if (options.average()) // divide by 2 for each block
+			internal_size >>= options.residual_blocks();
+		layers->push_back(torch::nn::Linear(
+			torch::nn::LinearOptions(internal_size, options.out_channels())
+			.bias(options.bias())));
+
 		register_module("conv_layers", layers);
 	}
 

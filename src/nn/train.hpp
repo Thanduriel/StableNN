@@ -95,7 +95,9 @@ namespace nn {
 				s_initMutex.lock();
 				torch::manual_seed(TORCH_SEED);
 			}
-			auto net = nn::makeNetwork<Network, UseWrapper>(_params);
+
+			auto net = _params.get<bool>("load_net", false) ? nn::load<Network, UseWrapper>(_params) 
+				: nn::makeNetwork<Network, UseWrapper>(_params);
 			auto bestNet = nn::makeNetwork<Network, UseWrapper>(_params);
 			if constexpr (THREAD_FIXED_SEED)
 			{

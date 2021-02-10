@@ -40,14 +40,16 @@ namespace nn {
 
 	// @param _name File name without ending.
 	template<typename NetType, bool UseWrapper>
-	auto load(const std::string& _name, const HyperParams& _params)
+	auto load(const HyperParams& _params, const std::string& _name = "")
 	{
+		const std::string& name = _name.empty() ? *_params.get<std::string>("name") : _name;
+
 		HyperParams params = _params;
-		std::ifstream file(_name + ".hparam");
+		std::ifstream file(name + ".hparam");
 		file >> params;
 
 		auto net = nn::makeNetwork<NetType, UseWrapper>(params);
-		torch::load(net, _name + ".pt");
+		torch::load(net, name + ".pt");
 
 		return net;
 	}

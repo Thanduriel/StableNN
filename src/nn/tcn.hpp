@@ -19,14 +19,15 @@ namespace nn {
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 
-		// use convolutional stack to reduce output to one time-step
-		TORCH_ARG(bool, reduce_stack) = false;
-
 		// amount of dropout after convolutional layers
 		TORCH_ARG(double, dropout) = 0.0;
 
-		// compute local averages as inputs to dilated blocks
+		// uses stride instead of dilation to increase the effective window size
+		// adds AvgPool to residual connections to resize the output
 		TORCH_ARG(bool, average) = false;
+
+		// have residual connections between blocks
+		TORCH_ARG(bool, residual) = true;
 	};
 
 	struct TCNImpl : public torch::nn::Cloneable<TCNImpl>

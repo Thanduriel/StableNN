@@ -31,7 +31,8 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
-constexpr bool USE_WRAPPER = false;
+using NetType = nn::TCN;
+constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
 constexpr bool USE_SIMPLE_SYSTEM = false;
@@ -203,8 +204,7 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 int main()
 {
-//	System system(0.5, 9.81, 0.5);
-	System system = USE_SIMPLE_SYSTEM ? System(1.0, 1.0, 1.0) : System(0.5, 9.81, 0.5);
+	System system = USE_SIMPLE_SYSTEM ? System(1.0, 1.0, 1.0) : System(0.1, 9.81, 0.5);
 
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
 	trainingStates.push_back({ 3.0,0 });
@@ -222,8 +222,6 @@ int main()
 			});
 		renderer.run();
 	}*/
-	using NetType = nn::TCN;
-
 	using Integrator = systems::discretization::LeapFrog<System>;
 	using TrainNetwork = nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, USE_WRAPPER>;
 	TrainNetwork trainNetwork(system, trainingStates, validStates);
@@ -234,12 +232,12 @@ int main()
 	params["hyper_sample_rate"] = HYPER_SAMPLE_RATE;
 
 	params["time_step"] = USE_SIMPLE_SYSTEM ? 0.25 : 0.05;
-	params["lr"] = USE_LBFGS ? 0.1 : 0.001;//4e-4;
+	params["lr"] = USE_LBFGS ? 0.1 : 4e-4;//0.001;//4e-4;
 	params["weight_decay"] = 0.0; //4
 	params["loss_p"] = 3;
-	params["lr_decay"] = USE_LBFGS ? 0.998 : 0.999;
+	params["lr_decay"] = USE_LBFGS ? 1.0 : 1.0; // 0.998 : 0.999
 	params["batch_size"] = 64;
-	params["num_epochs"] = USE_LBFGS ? 256 : 4096;
+	params["num_epochs"] = USE_LBFGS ? 1024 : 4096;
 	params["momentum"] = 0.9;
 	params["dampening"] = 0.0;
 
@@ -250,28 +248,21 @@ int main()
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
-	params["hidden_size"] = 2 * 4;
+	params["hidden_size"] = 2 * 2;
 	params["train_in"] = true;
 	params["train_out"] = true;
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
 	params["augment"] = 2;
-	params["kernel_size"] = 5;
-	params["residual_blocks"] = 3;
+	params["kernel_size"] = 3;
+	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
 	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("TCN_small");
-
-/*	auto testFn = [](const nn::HyperParams& params)
-	{
-		return *params.get<double>("1") + *params.get<double>("10") + *params.get<double>("100");
-	};
-	nn::GridSearchOptimizer hyperOptimizer(testFn, { {"1", {0.0, 1.0, 2.0}}, {"10", {0.0, 10.0}}, {"100", {0.0, 100.0}} });
-	hyperOptimizer.run();
-	return 0;*/
+	params["name"] = std::string("TCN_stack_true");
+	params["load_net"] = false;
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
@@ -284,7 +275,7 @@ int main()
 			//	{"batch_size", {64, 256}},
 			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
-			//	{"time", { 1.0, 2.0}},
+			//	{"time", { 1.0, 2.0}},nn::
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
@@ -292,10 +283,10 @@ int main()
 			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
-				{"hidden_size", {2, 4, 8}},
-				{"num_inputs", {8, 16}},
-				{"kernel_size", {3, 5}},
-				{"residual_blocks", {1,2,3}},
+				{"hidden_size", {4, 8}},
+			//	{"num_inputs", {8}},
+			//	{"kernel_size", {3, 5}},
+			//	{"residual_blocks", {1,2,3}},
 				{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}}
@@ -313,14 +304,14 @@ int main()
 	{
 		eval::EvalOptions options;
 
-		auto othNet = nn::load<NetType, USE_WRAPPER>(*params.get<std::string>("name"), params);
-		nn::exportTensor(othNet->layers->at<torch::nn::LinearImpl>(othNet->layers->size()-1).weight, "outlinear.txt");
+		auto othNet = nn::load<NetType, USE_WRAPPER>(params);
+	//	nn::exportTensor(othNet->layers->at<torch::nn::LinearImpl>(othNet->layers->size()-1).weight, "outlinear.txt");
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
 	//	auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
-	//	makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet, antiSym);
+	//	makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), othNet);
 		evaluate<NUM_INPUTS>(system,
 			{ { 0.5, 0.0 }, { 1.0, 0.0 }, { 1.5, 0.0 }, { 2.0, 0.0 }, { 2.5, 0.0 }, { 3.0, 0.0 } },
-			* params.get<double>("time_step"),
+			*params.get<double>("time_step"),
 			options,
 			othNet);
 		return 0;
