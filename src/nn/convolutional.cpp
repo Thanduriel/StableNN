@@ -41,6 +41,8 @@ namespace nn {
 		}
 
 		convOptions.out_channels(1);
+		convOptions.kernel_size(1);
+		convOptions.padding(0);
 		layers.emplace_back(torch::nn::Conv1d(convOptions));
 		register_module("layer" + std::to_string(options.num_layers()-1), layers.back());
 	}
@@ -67,7 +69,7 @@ namespace nn {
 				x = y;
 			for (size_t i = 1; i < layers.size() - 1; ++i)
 			{
-				torch::Tensor y = activation(layers[i](x));
+				y = activation(layers[i](x));
 				x = options.residual() ? x + y : y;
 			}
 		}

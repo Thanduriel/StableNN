@@ -6,7 +6,7 @@
 
 // number of time-steps given as inputs
 // This value only needs to be available at compile-time for evaluation.
-constexpr size_t NUM_INPUTS = 8;
+constexpr size_t NUM_INPUTS = 1;
 
 // expect only the next time-step
 constexpr bool USE_SINGLE_OUTPUT = true;
@@ -38,7 +38,7 @@ enum struct Optimizer {
 	RMSPROP,
 	LBFGS
 };
-constexpr Optimizer OPTIMIZER = Optimizer::LBFGS;
+constexpr Optimizer OPTIMIZER = Optimizer::ADAM;
 constexpr bool USE_LBFGS = OPTIMIZER == Optimizer::LBFGS;
 
 // only relevant in TRAIN_MULTI to enforce same initial rng state for all networks

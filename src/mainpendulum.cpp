@@ -31,7 +31,7 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
-using NetType = nn::TCN;
+using NetType = nn::MultiLayerPerceptron;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
@@ -213,8 +213,8 @@ int main()
 	validStates.push_back({ 2.95,0 });
 /*	for (auto& state : trainingStates)
 	{
-		systems::discretization::LeapFrog integrator(system, 0.25);
-		eval::PendulumRenderer renderer(0.05);
+		systems::discretization::LeapFrog integrator(system, USE_SIMPLE_SYSTEM ? 0.25 : 0.05);
+		eval::PendulumRenderer renderer(0.5);
 		renderer.addIntegrator([&integrator, s=state] () mutable
 			{
 				s = integrator(s);
@@ -235,9 +235,10 @@ int main()
 	params["lr"] = USE_LBFGS ? 0.1 : 4e-4;//0.001;//4e-4;
 	params["weight_decay"] = 0.0; //4
 	params["loss_p"] = 3;
-	params["lr_decay"] = USE_LBFGS ? 1.0 : 1.0; // 0.998 : 0.999
+	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.2; // 0.998 : 0.999
+	params["lr_epoch_update"] = 1024;
 	params["batch_size"] = 64;
-	params["num_epochs"] = USE_LBFGS ? 2048 : 4096;
+	params["num_epochs"] = USE_LBFGS ? 256 : 3072;
 	params["momentum"] = 0.9;
 	params["dampening"] = 0.0;
 
@@ -248,7 +249,7 @@ int main()
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
-	params["hidden_size"] = 2 * 2;
+	params["hidden_size"] = 4;
 	params["train_in"] = true;
 	params["train_out"] = true;
 	params["in_out_bias"] = false;
@@ -261,7 +262,7 @@ int main()
 	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("mlpIO");
+	params["name"] = std::string("antisymSmall");
 	params["load_net"] = false;
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
@@ -275,19 +276,19 @@ int main()
 			//	{"batch_size", {64, 256}},
 			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
-			//	{"time", { 1.0, 2.0, 4.0 }},
+				{"time", { 0.5, 1.0, 2.0, 4.0 }},
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
 			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
-			//	{"diffusion", {0.0, 0.05, 0.1, 0.2, 0.5}},
+				{"diffusion", {0.0, 0.05, 0.1, 0.2, 0.5}},
 			//	{"hidden_size", {4, 8}},
 			//	{"num_inputs", {8}},
 			//	{"kernel_size", {3, 5}},
 			//	{"residual_blocks", {1,2,3}},
-				{"residual", {false, true}},
+			//	{"residual", {false, true}},
 			//	{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}}

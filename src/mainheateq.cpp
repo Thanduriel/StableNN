@@ -102,7 +102,7 @@ int main()
 	params["train_samples"] = 256;
 	params["valid_samples"] = 256;
 	params["batch_size"] = 512;
-	params["num_epochs"] = USE_LBFGS ? 256 : 1024;
+	params["num_epochs"] = USE_LBFGS ? 256 : 2048;
 	params["loss_p"] = 3;
 
 	params["lr"] = USE_LBFGS ? 0.05 : 0.001;
@@ -110,7 +110,7 @@ int main()
 	params["weight_decay"] = 0.0;
 
 	params["depth"] = 3;
-	params["bias"] = false;
+	params["bias"] = true;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
@@ -145,13 +145,13 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			params["name"] = std::string("diffusivity2");
+			params["name"] = std::string("single_output_kernel2");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {5}},
-				//	{"hidden_channels", {4,8}},
+					{"hidden_channels", {4,8}},
 				//	{"residual", {false, true}},
-					{"bias", {false, true}},
-				//	{"depth", {2,4}},
+				//	{"bias", {false, true}},
+					{"depth", {2,4}},
 				//	{"lr", {0.02, 0.025, 0.03}},
 				//	{"lr", {0.015, 0.01, 0.005}},
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
@@ -159,7 +159,7 @@ int main()
 				//	{"num_epochs", {2048}},
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
-					{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
+				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
 				}, params);
 
 			hyperOptimizer.run(2);

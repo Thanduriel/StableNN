@@ -52,14 +52,13 @@ namespace nn {
 	}
 
 	template<>
-	TCNOptions makeOptions<TCNOptions>(const HyperParams& _params)
+	TCNOptions<1> makeOptions<TCNOptions<1>>(const HyperParams& _params)
 	{
 		const size_t channels = *_params.get<size_t>("num_channels");
 		const size_t inputs = *_params.get<size_t>("num_inputs");
-		return TCNOptions(channels, channels, inputs / channels)
+		return TCNOptions<1>(channels, channels, inputs / channels, *_params.get<int>("kernel_size"))
 			.hidden_channels(_params.get<int>("hidden_size", channels))
 			.bias(*_params.get<bool>("bias"))
-			.kernel_size(*_params.get<int>("kernel_size"))
 			.residual_blocks(*_params.get<int>("residual_blocks"))
 			.residual(*_params.get<bool>("residual"))
 			.activation(*_params.get<nn::ActivationFn>("activation"))

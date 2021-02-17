@@ -27,12 +27,14 @@ namespace nn {
 	{
 		using OptimizerOptions = typename OptimzerToOptions<Optimizer>::value_t;
 	public:
-		LearningRateScheduler(Optimizer& _optimizer, double _rate)
-			: m_optimizer(_optimizer), m_rate(_rate)
+		LearningRateScheduler(Optimizer& _optimizer, double _rate, int64_t _epochUpdate = 1)
+			: m_optimizer(_optimizer), m_rate(_rate), m_epochUpdate(_epochUpdate)
 		{}
 
-		void step() const
+		void step(int64_t _epoch) const
 		{
+			if (_epoch % m_epochUpdate != 0) return;
+
 			for (auto& group : m_optimizer.param_groups())
 			{
 				if (group.has_options())
@@ -46,5 +48,6 @@ namespace nn {
 	private:
 		Optimizer& m_optimizer;
 		double m_rate;
+		int64_t m_epochUpdate;
 	};
 }

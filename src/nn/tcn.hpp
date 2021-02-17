@@ -5,9 +5,17 @@
 
 namespace nn {
 
+	template<size_t D>
 	struct TCNOptions
 	{
-		TCNOptions(int64_t in_channels, int64_t out_channels, int64_t window_size);
+		TCNOptions(int64_t in_channels, int64_t out_channels, int64_t window_size, torch::ExpandingArray<D> kernel_size)
+			: in_channels_(in_channels),
+			hidden_channels_(std::max(in_channels / 2, out_channels)),
+			out_channels_(out_channels),
+			window_size_(window_size),
+			kernel_size_(kernel_size)
+		{
+		}
 
 		TORCH_ARG(int64_t, in_channels);
 		TORCH_ARG(int64_t, hidden_channels);
@@ -15,7 +23,7 @@ namespace nn {
 		TORCH_ARG(int64_t, window_size);
 		TORCH_ARG(int64_t, residual_blocks) = 1;
 		TORCH_ARG(int64_t, block_size) = 2;
-		TORCH_ARG(int64_t, kernel_size) = 3;
+		TORCH_ARG(torch::ExpandingArray<D>, kernel_size);
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 
@@ -30,9 +38,11 @@ namespace nn {
 		TORCH_ARG(bool, residual) = true;
 	};
 
-	struct TCNImpl : public torch::nn::Cloneable<TCNImpl>
+	template<size_t D, typename Derived>
+	class TCNImpl : public torch::nn::Cloneable<Derived>
 	{
-		using Options = TCNOptions;
+	public:
+		using Options = TCNOptions<D>;
 
 		explicit TCNImpl(const Options& options);
 
@@ -41,10 +51,18 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor x);
 
 		torch::nn::Sequential layers;
-		TCNOptions options;
+		TCNOptions<D> options;
 	};
 
-	TORCH_MODULE(TCN);
+	class TCN1DImpl : public TCNImpl<1, TCN1DImpl>
+	{
+	public:
+		using TCNImpl<1, TCN1DImpl>::TCNImpl;
+	};
+
+	TORCH_MODULE(TCN1D);
+
+	using TCN = TCN1D;
 
 	template<>
 	struct InputMakerSelector<TCN>

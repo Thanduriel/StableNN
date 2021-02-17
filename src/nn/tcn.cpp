@@ -2,18 +2,30 @@
 
 namespace nn {
 
-	struct TCNResBlockOptions : public TCNOptions
+	template<int64_t D>
+	struct TCNResBlockOptions : public TCNOptions<D>
 	{
-		TCNResBlockOptions(const TCNOptions& _options, int64_t _dilation)
-			: TCNOptions(_options), dilation_(_dilation)
+		TCNResBlockOptions(const TCNOptions<D>& _options, int64_t _dilation)
+			: TCNOptions<D>(_options), dilation_(_dilation)
 		{}
 
 		TORCH_ARG(int64_t, dilation);
 	};
 
-	struct ResLayerImpl : public torch::nn::Cloneable<ResLayerImpl>
+	template<int64_t D>
+	struct ResLayerImpl : public torch::nn::Cloneable<ResLayerImpl<D>>
 	{
-		ResLayerImpl(const TCNResBlockOptions& _options)
+		static torch::ExpandingArray<D, int64_t> makeExpandingArray(const int64_t& val)
+		{
+			torch::ExpandingArray<D, int64_t> arr(1);
+			arr->front() = val;
+			return arr;
+		}
+
+		// todo also make AvgPool and Dropout depended on D
+		using Conv = std::conditional_t<D == 1, torch::nn::Conv1d, torch::nn::Conv2d>;
+
+		ResLayerImpl(const TCNResBlockOptions<D>& _options)
 			: residual(nullptr), 
 			dropout_layer(nullptr),
 			avg_residual(nullptr),
@@ -24,6 +36,10 @@ namespace nn {
 
 		void reset() override
 		{
+			// currently not supported
+			assert(D == 1 || !options.average());
+			assert(D == 1 || !options.dropout());
+
 			// reset to no layer instead of default constructed
 			residual = nullptr;
 			dropout_layer = nullptr;
@@ -32,7 +48,7 @@ namespace nn {
 
 			const int64_t stack_size = options.block_size();
 			const int64_t dilation = options.dilation();
-			const int64_t kernel_size = options.kernel_size();
+			const auto kernel_size = options.kernel_size();
 			const int64_t in_channels = options.in_channels();
 			const int64_t out_channels = options.out_channels();
 
@@ -40,24 +56,24 @@ namespace nn {
 			{
 				const int in = in_channels + (out_channels - in_channels) * i / stack_size;
 				const int out = in_channels + (out_channels - in_channels) * (i + 1) / stack_size;
-				auto convOptions = torch::nn::Conv1dOptions(in, out, kernel_size)
+				auto convOptions = torch::nn::ConvOptions<D>(in, out, kernel_size)
 					.bias(options.bias())
-					.padding(kernel_size / 2 * dilation)
-					.dilation(dilation)
+					.padding(makeExpandingArray(kernel_size->front() / 2 * dilation))
+					.dilation(makeExpandingArray(dilation))
 					.padding_mode(torch::kZeros)
-					.stride(options.average() && i == stack_size - 1 ? 2 : 1);
+					.stride(makeExpandingArray(options.average() && i == stack_size - 1 ? 2 : 1));
 
-				layers.emplace_back(torch::nn::Conv1d(convOptions));
-				register_module("layer" + std::to_string(i), layers.back());
+				layers.emplace_back(Conv(convOptions));
+				this->register_module("layer" + std::to_string(i), layers.back());
 			}
 
 			if (options.residual())
 			{
 				if (in_channels != out_channels)
 				{
-					auto convOptions = torch::nn::Conv1dOptions(in_channels, out_channels, 1).bias(false);
-					residual = torch::nn::Conv1d(convOptions);
-					register_module("residual", residual);
+					auto convOptions = torch::nn::ConvOptions<D>(in_channels, out_channels, 1).bias(false);
+					residual = Conv(convOptions);
+					this->register_module("residual", residual);
 				}
 
 				if (options.average())
@@ -67,7 +83,7 @@ namespace nn {
 						.padding(0)
 						.count_include_pad(false);
 
-					avg_residual = register_module("avg_residual", torch::nn::AvgPool1d(avgOptions));
+					avg_residual = this->register_module("avg_residual", torch::nn::AvgPool1d(avgOptions));
 				}
 			}
 
@@ -75,7 +91,7 @@ namespace nn {
 			if (options.dropout() > 0.0) 
 			{
 				dropout_layer = torch::nn::Dropout(options.dropout());
-				register_module("dropout", dropout_layer);
+				this->register_module("dropout", dropout_layer);
 			}
 		}
 
@@ -99,42 +115,35 @@ namespace nn {
 			return options.residual() ? x + in : x;
 		}
 
-		std::vector<torch::nn::Conv1d> layers;
-		torch::nn::Conv1d residual;
+		std::vector<Conv> layers;
+		Conv residual;
 		torch::nn::AvgPool1d avg_residual;
 		torch::nn::Dropout dropout_layer;
-		TCNResBlockOptions options;
+		TCNResBlockOptions<D> options;
 	};
 
-	TORCH_MODULE(ResLayer);
 
-	TCNOptions::TCNOptions(int64_t in_channels, int64_t out_channels, int64_t window_size)
-		: in_channels_(in_channels), 
-		hidden_channels_(std::max(in_channels / 2, out_channels)),
-		out_channels_(out_channels), 
-		window_size_(window_size)
-	{
-	}
-
-	TCNImpl::TCNImpl(const TCNOptions& _options) : options(_options)
+	template<size_t D, typename Derived>
+	TCNImpl<D, Derived>::TCNImpl(const TCNOptions<D>& _options) : options(_options)
 	{
 		reset();
 	}
 
-	void TCNImpl::reset()
+	template<size_t D, typename Derived>
+	void TCNImpl<D, Derived>::reset()
 	{
 		layers = torch::nn::Sequential();
 		// change number of channels in first block
-		auto resOptions = TCNResBlockOptions(options, 1);
+		auto resOptions = TCNResBlockOptions<D>(options, 1);
 		resOptions.out_channels(options.hidden_channels());
-		layers->push_back(ResLayer(resOptions));
+		layers->push_back(ResLayerImpl<D>(resOptions));
 
 		resOptions.in_channels(options.hidden_channels());
 		for (int i = 1; i < options.residual_blocks(); ++i)
 		{
 			if (!options.average())
 				resOptions.dilation() <<= 1;
-			layers->push_back(ResLayer(resOptions));
+			layers->push_back(ResLayerImpl<D>(resOptions));
 		}
 
 		// fully connected linear layer to reach output size
@@ -146,10 +155,11 @@ namespace nn {
 			torch::nn::LinearOptions(internal_size, options.out_channels())
 			.bias(options.bias())));
 
-		register_module("layers", layers);
+		this->register_module("layers", layers);
 	}
 
-	torch::Tensor TCNImpl::forward(torch::Tensor x) 
+	template<size_t D, typename Derived>
+	torch::Tensor TCNImpl<D, Derived>::forward(torch::Tensor x)
 	{
 		using namespace torch::indexing;
 		auto residual = x.index({ "...", options.window_size() - 1 });
@@ -158,4 +168,6 @@ namespace nn {
 		return x.squeeze().unsqueeze(0);
 	}
 
+	// explicit instantiations
+	template class TCNImpl<1, TCN1DImpl>;
 } 

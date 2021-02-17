@@ -143,7 +143,7 @@ namespace nn {
 						.momentum(_params.get<double>("momentum", 0.9)));
 			};
 			auto optimizer = makeOptimizer();
-			auto lrScheduler = LearningRateScheduler(optimizer, _params.get<double>("lr_decay", 1.0));
+			auto lrScheduler = LearningRateScheduler(optimizer, _params.get<double>("lr_decay", 1.0), _params.get<int64_t>("lr_epoch_update", 1));
 
 			std::ofstream learnLossLog = LOG_LEARNING_LOSS ? std::ofstream(_params.get<std::string>("name", "") + "_loss.txt") : std::ofstream();
 			double bestValidLoss = std::numeric_limits<double>::max();
@@ -178,7 +178,7 @@ namespace nn {
 
 					optimizer.step(closure);
 				}
-				lrScheduler.step();
+				lrScheduler.step(epoch);
 
 				// validation
 				net->eval();
