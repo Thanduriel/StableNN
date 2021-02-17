@@ -145,9 +145,8 @@ namespace nn {
 			auto optimizer = makeOptimizer();
 			auto lrScheduler = LearningRateScheduler(optimizer, _params.get<double>("lr_decay", 1.0));
 
+			std::ofstream learnLossLog = LOG_LEARNING_LOSS ? std::ofstream(_params.get<std::string>("name", "") + "_loss.txt") : std::ofstream();
 			double bestValidLoss = std::numeric_limits<double>::max();
-
-			//std::ofstream lossFile("loss.txt");
 
 			start = std::chrono::high_resolution_clock::now();
 			const int64_t numEpochs = _params.get<int>("num_epochs", 2048);
@@ -197,6 +196,10 @@ namespace nn {
 					validLoss += loss;
 				}
 
+				if constexpr (LOG_LEARNING_LOSS)
+				{
+					learnLossLog << totalLoss.item<double>() << ", " << validLoss.item<double>() << "\n";
+				}
 
 				const double totalValidLossD = validLoss.item<double>();
 				if (totalValidLossD < bestValidLoss)
@@ -230,7 +233,6 @@ namespace nn {
 			}
 			if constexpr(SAVE_NET)
 			{
-				//torch::save(bestNet, _params.get<std::string>("name", "net") + ".pt");
 				nn::save(bestNet, _params);
 			}
 			end = std::chrono::high_resolution_clock::now();

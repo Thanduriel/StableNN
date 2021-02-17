@@ -36,27 +36,8 @@ namespace nn {
 			const int64_t in_channels = options.in_channels();
 			const int64_t out_channels = options.out_channels();
 
-		/*	if (options.average() && dilation > 1) 
-			{
-				const int64_t kernel = dilation * kernel_size - 1;
-				auto avgOptions = torch::nn::AvgPool1dOptions(kernel)
-					.padding(kernel / 2)
-					.stride(1)
-					.count_include_pad(false);
-			
-				auto convOptions = torch::nn::Conv1dOptions(in_channels, in_channels, kernel)
-					.bias(false)
-					.padding(kernel / 2)
-					.padding_mode(torch::kZeros);
-
-				layers.emplace_back(torch::nn::Conv1d(convOptions));
-
-				avg_residual = register_module("average", torch::nn::AvgPool1d(avgOptions));
-			}*/
-
 			for (int i = 0; i < stack_size; ++i) 
 			{
-				//	const int dilation = 1 << i;
 				const int in = in_channels + (out_channels - in_channels) * i / stack_size;
 				const int out = in_channels + (out_channels - in_channels) * (i + 1) / stack_size;
 				auto convOptions = torch::nn::Conv1dOptions(in, out, kernel_size)
@@ -81,9 +62,10 @@ namespace nn {
 
 				if (options.average())
 				{
-					auto avgOptions = torch::nn::AvgPool1dOptions(kernel_size)
+					auto avgOptions = torch::nn::AvgPool1dOptions(2)
 						.stride(2)
-						.padding(kernel_size / 2);
+						.padding(0)
+						.count_include_pad(false);
 
 					avg_residual = register_module("avg_residual", torch::nn::AvgPool1d(avgOptions));
 				}
@@ -142,16 +124,16 @@ namespace nn {
 	void TCNImpl::reset()
 	{
 		layers = torch::nn::Sequential();
-		// reduce number of channels in first block
+		// change number of channels in first block
 		auto resOptions = TCNResBlockOptions(options, 1);
 		resOptions.out_channels(options.hidden_channels());
 		layers->push_back(ResLayer(resOptions));
 
 		resOptions.in_channels(options.hidden_channels());
-		for (int i = 0; i < options.residual_blocks() - 1; ++i)
+		for (int i = 1; i < options.residual_blocks(); ++i)
 		{
 			if (!options.average())
-				resOptions.dilation() = 2 << i;
+				resOptions.dilation() <<= 1;
 			layers->push_back(ResLayer(resOptions));
 		}
 
@@ -164,7 +146,7 @@ namespace nn {
 			torch::nn::LinearOptions(internal_size, options.out_channels())
 			.bias(options.bias())));
 
-		register_module("conv_layers", layers);
+		register_module("layers", layers);
 	}
 
 	torch::Tensor TCNImpl::forward(torch::Tensor x) 

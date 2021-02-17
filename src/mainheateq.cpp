@@ -12,7 +12,7 @@
 
 constexpr bool USE_WRAPPER = false;
 constexpr bool USE_LOCAL_DIFFUSIFITY = true;
-constexpr size_t N = 64;
+constexpr size_t N = 32;
 using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
 using T = System::ValueT;
@@ -46,7 +46,7 @@ std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed)
 
 	std::default_random_engine rng(_seed);
 	constexpr T maxChange = 0.05;
-	std::uniform_real_distribution<T> base(0.5, 2.0);
+	std::uniform_real_distribution<T> base(0.1, 2.0);
 	for (size_t i = 0; i < _numSystems; ++i)
 	{
 		const T avg = base(rng);
@@ -100,30 +100,28 @@ int main()
 	params["time_step"] = 0.0001;
 	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 1;
 	params["train_samples"] = 256;
-	params["valid_samples"] = 512;
-	params["batch_size"] = 256;
-	params["num_epochs"] = USE_LBFGS ? 256 : 5;
+	params["valid_samples"] = 256;
+	params["batch_size"] = 512;
+	params["num_epochs"] = USE_LBFGS ? 256 : 1024;
 	params["loss_p"] = 3;
 
-	params["lr"] = USE_LBFGS ? 0.02 : 0.01;
-	params["lr_decay"] = USE_LBFGS ? 0.994 : 0.993;
+	params["lr"] = USE_LBFGS ? 0.05 : 0.001;
+	params["lr_decay"] = USE_LBFGS ? 1.0 : 1.0;
 	params["weight_decay"] = 0.0;
 
 	params["depth"] = 3;
-	params["diffusion"] = 0.1;
 	params["bias"] = false;
-	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["augment"] = 2;
 	params["hidden_size"] = N;
 	params["hidden_channels"] = 4;
-	params["kernel_size"] = 5;
+	params["kernel_size"] = 3;
 	params["residual"] = true;
 	params["train_in"] = false;
 	params["train_out"] = false;
-	params["activation"] = nn::ActivationFn(nn::identity);
+	params["activation"] = nn::ActivationFn(torch::tanh);
 	params["name"] = std::string("heateq64_conv")
 		+ std::to_string(NUM_INPUTS) + "_"
 		+ std::to_string(*params.get<int>("depth")) + "_"
@@ -131,9 +129,9 @@ int main()
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{
-		auto trainingStates = generateStates(heatEq, 32, 0x612FF6AEu);
-		auto validStates = generateStates(heatEq, 4, 0x195A4Cu);
-		auto warmupSteps = std::vector<size_t>{ 0, 0, 0, 256 };
+		auto trainingStates = generateStates(heatEq, 64, 0x612FF6AEu);
+		auto validStates = generateStates(heatEq, 8, 0x195A4Cu);
+		auto warmupSteps = std::vector<size_t>{ 0, 64, 0, 256, 16, 4, 128, 2 };
 
 		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
 			systems::discretization::SuperSampleIntegrator<T, N, N * 32>,
@@ -150,10 +148,10 @@ int main()
 			params["name"] = std::string("diffusivity2");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {5}},
-					{"hidden_channels", {4,8}},
+				//	{"hidden_channels", {4,8}},
 				//	{"residual", {false, true}},
 					{"bias", {false, true}},
-					{"depth", {3,4,5}},
+				//	{"depth", {2,4}},
 				//	{"lr", {0.02, 0.025, 0.03}},
 				//	{"lr", {0.015, 0.01, 0.005}},
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
@@ -161,10 +159,10 @@ int main()
 				//	{"num_epochs", {2048}},
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
-					{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(torch::sigmoid)}}
+					{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
 				}, params);
 
-			hyperOptimizer.run(4);
+			hyperOptimizer.run(2);
 		}
 		if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 			std::cout << trainNetwork(params) << "\n";
@@ -176,7 +174,7 @@ int main()
 		auto& state = validStates[0];
 		auto trainingStates = generateStates(heatEq, 32, 0x612FF6AEu);
 
-		auto system = USE_LOCAL_DIFFUSIFITY ? generateSystems(1, 0x6341241)[0]
+		auto system = USE_LOCAL_DIFFUSIFITY ? generateSystems(1, 0xE312A41)[0]
 			: heatEq;
 
 		const double timeStep = *params.get<double>("time_step");
@@ -185,8 +183,7 @@ int main()
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
 		disc::SuperSampleIntegrator<T, N, N * 32> superSampleFiniteDifs(system, timeStep, state, 64);
 
-		auto net = nn::makeNetwork<NetType, USE_WRAPPER>(params);
-		torch::load(net, *params.get<std::string>("name") + ".pt");
+		auto net = nn::load<NetType, USE_WRAPPER>(params);
 	//	torch::load(net, "0_1_0_1_diffusivity2.pt");
 		nn::Integrator<System, decltype(net), NUM_INPUTS, InputMaker> nn(system, net);
 
@@ -198,21 +195,20 @@ int main()
 		if constexpr (SHOW_VISUAL)
 		{
 			auto systems = generateSystems(36, 0x6341241);
-			for (int i = 29; i < 32; ++i) {
-			//	systems::discretization::FiniteDifferencesExplicit finiteDiffs2(systems[i], timeStep);
+			for (int i = 0; i < 4; ++i) {
+			//	disc::FiniteDifferencesExplicit finiteDiffs2(systems[i], timeStep);
 				disc::SuperSampleIntegrator<T, N, N * 32> finiteDiffs2(systems[i], timeStep, trainingStates[i], 64);
 				eval::HeatRenderer renderer(timeStep, N, systems[i].heatCoefficients().data(), [&, state = trainingStates[i]]() mutable
 				{
 					state = finiteDiffs2(state);
-					std::vector<double> exState(state.begin(), state.end());
-					return exState;
+					return std::vector<double>(state.begin(), state.end());
 				});
 				renderer.run();
 			}
 		}
 
 		eval::EvalOptions options;
-		options.numShortTermSteps = 256;
+		options.numShortTermSteps = 128;
 	/*	for(auto& state : trainingStates)
 		{
 			disc::AnalyticHeatEq analytic(system, timeStep, state);
@@ -231,8 +227,8 @@ int main()
 			break;
 		}*/
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
-			eval::evaluate(heatEq, state, options, superSampleFiniteDifs, finiteDiffs, analytic, nn);
+			eval::evaluate(system, state, options, superSampleFiniteDifs, finiteDiffs, analytic, nn);
 		else
-			eval::evaluate(heatEq, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl, nn);
+			eval::evaluate(system, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl, nn);
 	}
 }

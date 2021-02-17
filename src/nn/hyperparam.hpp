@@ -14,6 +14,7 @@
 namespace nn {
 
 	namespace details {
+		// type trait that checks for the operator<<(S&, T)
 		template<typename S, typename T, typename = void>
 		struct is_stream_writable : std::false_type {};
 
@@ -22,6 +23,7 @@ namespace nn {
 			std::void_t<  decltype(std::declval<S&>() << std::declval<T>())  > >
 			: std::true_type {};
 
+		// type trait that checks for the operator>>(S&, T&)
 		template<typename S, typename T, typename = void>
 		struct is_stream_readable : std::false_type {};
 
@@ -57,6 +59,7 @@ namespace nn {
 		}
 	}
 
+	// Extended std::any which also stores type erased stream operators for serialization and deserialization.
 	class ExtAny
 	{
 	public:
@@ -86,8 +89,8 @@ namespace nn {
 			return *this;
 		}
 
-		friend std::ostream& operator<<(std::ostream& _out, const ExtAny& _any);
 		// works only when already initialized with a type
+		friend std::ostream& operator<<(std::ostream& _out, const ExtAny& _any);
 		friend std::istream& operator>>(std::istream& _out, ExtAny& _any);
 
 	private:
@@ -98,17 +101,21 @@ namespace nn {
 		ReadFn* m_read = nullptr;
 	};
 
+	// Container which holds key value pairs with type erased values.
 	class HyperParams
 	{
 	public:
+		// Provides direct access to the underlying any. 
+		// A new object is created if the key does not exist yet.
+		ExtAny& operator[](const std::string& key) { return m_data[key]; }
 
-		ExtAny& operator[](const std::string& key) { return data[key]; }
-
+		// Read a value of type T.
+		// @Return The associated value or _defaultValue if the key does not exist or its type is not compatible.
 		template<typename T>
 		T get(const std::string& _key, const T& _defaultValue) const
 		{
-			const auto it = data.find(_key);
-			if (std::optional<T> opt; it != data.end() && (opt = cast<T>(it->second.any)).has_value())
+			const auto it = m_data.find(_key);
+			if (std::optional<T> opt; it != m_data.end() && (opt = cast<T>(it->second.any)).has_value())
 			{
 				return *opt;
 			}
@@ -118,23 +125,24 @@ namespace nn {
 		template<typename T>
 		std::optional<T> get(const std::string& _key) const
 		{
-			const auto it = data.find(_key);
-			if (it != data.end())
+			const auto it = m_data.find(_key);
+			if (it != m_data.end())
 				return cast<T>(it->second.any);
-			else return {};
+			else return std::nullopt;
 		}
 
 		friend std::ostream& operator<<(std::ostream& _out, const HyperParams& _params);
 		friend std::istream& operator>>(std::istream& _in, HyperParams& _params);
 
 		// enable foreach loop
-		auto begin() { return data.begin(); }
-		auto end() { return data.end(); }
+		auto begin() { return m_data.begin(); }
+		auto end() { return m_data.end(); }
+		auto begin() const { return m_data.begin(); }
+		auto end() const { return m_data.end(); }
 	private:
 		// determine whether tuple contains a specific type
 		template <typename T, typename Tuple>
 		struct has_type;
-
 		template <typename T, typename... Us>
 		struct has_type<T, std::tuple<Us...>> : std::disjunction<std::is_same<T, Us>...> {};
 
@@ -182,18 +190,21 @@ namespace nn {
 				return std::nullopt;
 		}
 
-		std::unordered_map<std::string, ExtAny> data;
+		std::unordered_map<std::string, ExtAny> m_data;
 	};
 
 	using HyperParamGrid = std::vector<std::pair<std::string, std::vector<ExtAny>>>;
 	using TrainFn = std::function<double(const HyperParams&)>;
 
+	// Grid search optimizer for hyper parameters.
 	class GridSearchOptimizer
 	{
 	public:
 		GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid,
 			const HyperParams& _defaults = {});
 
+		// Run the grid search with training up to _numThreads networks in parallel.
+		// The number of used threads can be higher if the network execution itself is multi-threaded.
 		void run(unsigned _numThreads = 1) const;
 	private:
 		std::pair<size_t, size_t> decomposeFlatIndex(size_t _flatIndex, int _k) const;

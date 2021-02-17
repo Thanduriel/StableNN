@@ -18,16 +18,19 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN_EVALUATE;
+constexpr Mode MODE = Mode::TRAIN;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
 constexpr int64_t NUM_FORWARDS = 1;
-constexpr bool SAVE_NET = true;
-static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be saved in order to be evaluated");
+constexpr bool SAVE_NET = true || MODE == Mode::EVALUATE;
+static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be saved in order to be evaluated.");
 
 // Append final validation loss of a trained network to a persistent log.
 constexpr bool LOG_LOSS = false;
+
+// Write training and validation loss after each epoch into a file.
+constexpr bool LOG_LEARNING_LOSS = false;
 
 enum struct Optimizer {
 	ADAM,

@@ -26,8 +26,6 @@ namespace discretization {
 				{ static_cast<int64_t>(_initialState.size()) },
 				c10::TensorOptions(c10::CppTypeToScalarType<T>()));
 			m_initialStateF = torch::fft_rfft(s, _initialState.size());
-
-			m_t = 0.0;
 		}
 
 		AnalyticHeatEq(const AnalyticHeatEq& _oth, const HeatEquation<T, N>& _system, const State& _initialState)

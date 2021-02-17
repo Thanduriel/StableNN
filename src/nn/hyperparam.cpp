@@ -5,7 +5,7 @@
 #include <mutex>
 #include <algorithm>
 #include <chrono>
-#include "activation.hpp"
+#include <sstream>
 
 
 namespace nn {
@@ -24,7 +24,7 @@ namespace nn {
 	std::ostream& operator<<(std::ostream& _out, const HyperParams& _params)
 	{
 		_out << "{ ";
-		for (const auto& [name, value] : _params.data)
+		for (const auto& [name, value] : _params.m_data)
 		{
 			_out << name << " : " << value << ", ";
 		}
@@ -48,14 +48,11 @@ namespace nn {
 			entry >> key;
 			if (key == "}") break;
 			entry >> buf; // ":"
-			auto it = _params.data.find(key);
-			if (it == _params.data.end())
+			auto it = _params.m_data.find(key);
+			if (it == _params.m_data.end())
 				std::cerr << "Unknown key " << key << std::endl;
 			else
 				entry >> it->second;
-
-		//	if(_in.peek() == ',')
-		//		_in >> buf; // ","
 		}
 
 		return _in;

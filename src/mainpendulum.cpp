@@ -35,7 +35,7 @@ using NetType = nn::TCN;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
-constexpr bool USE_SIMPLE_SYSTEM = false;
+constexpr bool USE_SIMPLE_SYSTEM = true;
 
 
 template<size_t NumTimeSteps, typename... Networks>
@@ -108,12 +108,12 @@ void evaluate(const System& _system,
 }
 
 template<size_t NumTimeSteps, typename... Networks>
-void makeEnergyErrorData(const System& _system, double _timeStep, Networks&... _networks)
+void makeEnergyErrorData(const System& _system, double _timeStep, int _numSteps, Networks&... _networks)
 {
 	eval::EvalOptions options;
 	options.writeMSE = true;
 	options.numLongTermSteps = 0;
-	options.numShortTermSteps = 256;
+	options.numShortTermSteps = _numSteps;
 
 	constexpr int numStates = 128;
 	std::vector<State> states;
@@ -209,7 +209,7 @@ int main()
 	auto trainingStates = generateStates(system, 180, 0x612FF6AEu);
 	trainingStates.push_back({ 3.0,0 });
 	trainingStates.push_back({ -2.9,0 });
-	auto validStates = generateStates(system, 31, 0x195A4C);
+	auto validStates = generateStates(system, 63, 0x195A4C);
 	validStates.push_back({ 2.95,0 });
 /*	for (auto& state : trainingStates)
 	{
@@ -237,7 +237,7 @@ int main()
 	params["loss_p"] = 3;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 1.0; // 0.998 : 0.999
 	params["batch_size"] = 64;
-	params["num_epochs"] = USE_LBFGS ? 1024 : 4096;
+	params["num_epochs"] = USE_LBFGS ? 2048 : 4096;
 	params["momentum"] = 0.9;
 	params["dampening"] = 0.0;
 
@@ -261,12 +261,12 @@ int main()
 	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("TCN_stack_true");
+	params["name"] = std::string("mlpIO");
 	params["load_net"] = false;
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("TCN");
+		params["name"] = std::string("mlp");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
@@ -275,19 +275,20 @@ int main()
 			//	{"batch_size", {64, 256}},
 			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
-			//	{"time", { 1.0, 2.0}},nn::
+			//	{"time", { 1.0, 2.0, 4.0 }},
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
 			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
-			//	{"diffusion", {0.08, 0.09, 0.1, 0.11, 0.12}},
-				{"hidden_size", {4, 8}},
+			//	{"diffusion", {0.0, 0.05, 0.1, 0.2, 0.5}},
+			//	{"hidden_size", {4, 8}},
 			//	{"num_inputs", {8}},
 			//	{"kernel_size", {3, 5}},
 			//	{"residual_blocks", {1,2,3}},
-				{"average", {false, true}},
+				{"residual", {false, true}},
+			//	{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}}
 			}, params);
@@ -302,7 +303,7 @@ int main()
 
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
-		eval::EvalOptions options;
+	/*	eval::EvalOptions options;
 
 		auto othNet = nn::load<NetType, USE_WRAPPER>(params);
 	//	nn::exportTensor(othNet->layers->at<torch::nn::LinearImpl>(othNet->layers->size()-1).weight, "outlinear.txt");
@@ -314,7 +315,16 @@ int main()
 			*params.get<double>("time_step"),
 			options,
 			othNet);
-		return 0;
+		return 0;*/
+
+	//	Integrator integrator(system, *params.get<double>("time_step"));
+	//	std::cout << eval::computePeriodLength(State{ 0.01 * PI, 0.0 }, integrator, 16);
+
+		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp");
+		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlpIO");
+		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym");
+		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian");
+		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), 4096, mlpIO, antisym, hamiltonian);
 
 		//	std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
 		//	std::cout << eval::lipschitz(othNet) << "\n";
