@@ -6,7 +6,7 @@
 
 // number of time-steps given as inputs
 // This value only needs to be available at compile-time for evaluation.
-constexpr size_t NUM_INPUTS = 1;
+constexpr size_t NUM_INPUTS = 8;
 
 // expect only the next time-step
 constexpr bool USE_SINGLE_OUTPUT = true;

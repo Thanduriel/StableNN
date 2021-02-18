@@ -3,6 +3,7 @@
 #include "nn/train.hpp"
 #include "nn/mlp.hpp"
 #include "nn/convolutional.hpp"
+#include "nn/tcn.hpp"
 #include "nn/nnintegrator.hpp"
 #include "evaluation/renderer.hpp"
 #include "evaluation/evaluation.hpp"
@@ -90,42 +91,46 @@ int main()
 	}
 	System heatEq(heatCoefs, 1.0);
 
-	using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
-		systems::discretization::MakeInputHeatEq,
-		nn::StateToTensor>;
+	using NetType = nn::TCN2D;
 
-	using NetType = nn::Convolutional;
+	using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
+		systems::discretization::MakeInputHeatEq<std::is_same_v<NetType, nn::TCN2D>>,
+		nn::StateToTensor>;
 
 	nn::HyperParams params;
 	params["time_step"] = 0.0001;
 	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 1;
 	params["train_samples"] = 256;
 	params["valid_samples"] = 256;
-	params["batch_size"] = 512;
-	params["num_epochs"] = USE_LBFGS ? 256 : 2048;
+	params["batch_size"] = 256; // 512
+	params["num_epochs"] = USE_LBFGS ? 256 : 1024;
 	params["loss_p"] = 3;
 
-	params["lr"] = USE_LBFGS ? 0.05 : 0.001;
+	params["lr"] = USE_LBFGS ? 0.05 : 0.0002;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 1.0;
 	params["weight_decay"] = 0.0;
 
-	params["depth"] = 3;
+	params["depth"] = 4;
 	params["bias"] = true;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
+	// makeNetwork uses this but does not handle the spatial dimension correctly
+	params["state_size"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["augment"] = 2;
 	params["hidden_size"] = N;
 	params["hidden_channels"] = 4;
 	params["kernel_size"] = 3;
+	params["residual_blocks"] = 2;
+	params["block_size"] = 2;
+	params["average"] = false;
 	params["residual"] = true;
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
-	params["name"] = std::string("heateq64_conv")
-		+ std::to_string(NUM_INPUTS) + "_"
-		+ std::to_string(*params.get<int>("depth")) + "_"
-		+ std::to_string(*params.get<int>("hidden_size"));
+	params["name"] = std::string("heateq32_tcn");
+
+	params["load_net"] = false;
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{
@@ -183,7 +188,8 @@ int main()
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
 		disc::SuperSampleIntegrator<T, N, N * 32> superSampleFiniteDifs(system, timeStep, state, 64);
 
-		auto net = nn::load<NetType, USE_WRAPPER>(params);
+	//	auto net = nn::load<NetType, USE_WRAPPER>(params);
+		auto net = nn::load<NetType, USE_WRAPPER>(params, "1_0_single_output_kernel");
 	//	torch::load(net, "0_1_0_1_diffusivity2.pt");
 		nn::Integrator<System, decltype(net), NUM_INPUTS, InputMaker> nn(system, net);
 

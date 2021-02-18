@@ -17,7 +17,6 @@ namespace nn {
 		// type trait that checks for the operator<<(S&, T)
 		template<typename S, typename T, typename = void>
 		struct is_stream_writable : std::false_type {};
-
 		template<typename S, typename T>
 		struct is_stream_writable<S, T,
 			std::void_t<  decltype(std::declval<S&>() << std::declval<T>())  > >
@@ -26,7 +25,6 @@ namespace nn {
 		// type trait that checks for the operator>>(S&, T&)
 		template<typename S, typename T, typename = void>
 		struct is_stream_readable : std::false_type {};
-
 		template<typename S, typename T>
 		struct is_stream_readable<S, T,
 			std::void_t<  decltype(std::declval<S&>() >> std::declval<T&>())  > >
@@ -110,7 +108,7 @@ namespace nn {
 		ExtAny& operator[](const std::string& key) { return m_data[key]; }
 
 		// Read a value of type T.
-		// @Return The associated value or _defaultValue if the key does not exist or its type is not compatible.
+		// @return The associated value or _defaultValue if the key does not exist or its type is not compatible.
 		template<typename T>
 		T get(const std::string& _key, const T& _defaultValue) const
 		{
@@ -134,7 +132,7 @@ namespace nn {
 		friend std::ostream& operator<<(std::ostream& _out, const HyperParams& _params);
 		friend std::istream& operator>>(std::istream& _in, HyperParams& _params);
 
-		// enable foreach loop
+		// expose iterators to enable foreach-loop
 		auto begin() { return m_data.begin(); }
 		auto end() { return m_data.end(); }
 		auto begin() const { return m_data.begin(); }
@@ -146,6 +144,7 @@ namespace nn {
 		template <typename T, typename... Us>
 		struct has_type<T, std::tuple<Us...>> : std::disjunction<std::is_same<T, Us>...> {};
 
+		// common types for implicit casts
 		using INTEGRAL_TYPES = std::tuple<int, unsigned, int64_t, size_t, uint64_t>;
 		using FLOATING_POINT_TYPES = std::tuple<float, double>;
 
@@ -193,18 +192,21 @@ namespace nn {
 		std::unordered_map<std::string, ExtAny> m_data;
 	};
 
+	// List of parameters to check with possible values.
 	using HyperParamGrid = std::vector<std::pair<std::string, std::vector<ExtAny>>>;
+	// A function which trains a network and returns the validation loss.
 	using TrainFn = std::function<double(const HyperParams&)>;
 
 	// Grid search optimizer for hyper parameters.
 	class GridSearchOptimizer
 	{
 	public:
+		// @param _defaults Set of parameters to us which are not found in HyperParamGrid.
 		GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid,
 			const HyperParams& _defaults = {});
 
-		// Run the grid search with training up to _numThreads networks in parallel.
-		// The number of used threads can be higher if the network execution itself is multi-threaded.
+		// Run the grid search training up to _numThreads networks in parallel.
+		// The number of actual threads can be higher if the network execution/training itself is multi-threaded.
 		void run(unsigned _numThreads = 1) const;
 	private:
 		std::pair<size_t, size_t> decomposeFlatIndex(size_t _flatIndex, int _k) const;

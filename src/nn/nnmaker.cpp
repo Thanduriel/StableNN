@@ -54,10 +54,26 @@ namespace nn {
 	template<>
 	TCNOptions<1> makeOptions<TCNOptions<1>>(const HyperParams& _params)
 	{
-		const size_t channels = *_params.get<size_t>("num_channels");
-		const size_t inputs = *_params.get<size_t>("num_inputs");
-		return TCNOptions<1>(channels, channels, inputs / channels, *_params.get<int>("kernel_size"))
+		const int64_t channels = *_params.get<size_t>("num_channels");
+		const int64_t inputs = *_params.get<size_t>("num_inputs");
+		return TCNOptions<1>({ channels, inputs / channels }, { channels }, *_params.get<int>("kernel_size"))
 			.hidden_channels(_params.get<int>("hidden_size", channels))
+			.bias(*_params.get<bool>("bias"))
+			.residual_blocks(*_params.get<int>("residual_blocks"))
+			.residual(*_params.get<bool>("residual"))
+			.activation(*_params.get<nn::ActivationFn>("activation"))
+			.block_size(*_params.get<int>("block_size"))
+			.average(*_params.get<bool>("average"));
+	}
+
+	template<>
+	TCNOptions<2> makeOptions<TCNOptions<2>>(const HyperParams& _params)
+	{
+		const int64_t channels = *_params.get<size_t>("num_channels");
+		const int64_t inputs = *_params.get<size_t>("num_inputs");
+		// spatial in out size is currently ignored
+		return TCNOptions<2>({ channels, inputs / channels, 1 }, { 1, 1 }, *_params.get<int>("kernel_size"))
+			.hidden_channels(_params.get<int>("hidden_channels", channels))
 			.bias(*_params.get<bool>("bias"))
 			.residual_blocks(*_params.get<int>("residual_blocks"))
 			.residual(*_params.get<bool>("residual"))

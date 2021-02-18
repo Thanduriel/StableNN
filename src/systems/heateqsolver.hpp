@@ -180,7 +180,7 @@ namespace discretization {
 		c10::TensorOptions m_options;
 	};
 
-	// Wrapper which increases the internal spartial and temporal sampling to reduce the error.
+	// Wrapper which increases the internal spatial and temporal sampling to reduce the error.
 	// @param M internal spatial resolution
 	template<typename T, int N, int M>
 	class SuperSampleIntegrator
@@ -216,7 +216,7 @@ namespace discretization {
 			torch::Tensor large = torch::fft_irfft(small, M);
 			m_system = HeatEquation<T,M>(nn::tensorToArray<T, M>(large), _system.radius());*/
 
-			// upsale state with fft
+			// upscale state with fft
 			torch::Tensor stateSmall = nn::arrayToTensor(_state, m_options);
 			stateSmall = torch::fft_rfft(stateSmall);
 			torch::Tensor stateLarge = torch::fft_irfft(stateSmall, M);
@@ -257,6 +257,9 @@ namespace discretization {
 	};
 
 	// input maker for nn::Integrator
+	// Combines both state and system infos (heat coefficients).
+	// @param TimeDim Make the time dimension explicit.
+	template<bool TimeDim = false>
 	struct MakeInputHeatEq
 	{
 		template<typename T, int N>
@@ -267,25 +270,27 @@ namespace discretization {
 			const c10::TensorOptions& _options) const
 		{
 			assert(_numStates % _batchSize == 0);
-		//	static_assert(NumStates == 1, "Currently time series are not supported.");
 			constexpr int64_t stateSize = systems::sizeOfState<HeatEquation<T, N>>();
 			const int64_t statesPerBatch = _numStates / _batchSize;
 
 			torch::Tensor stateInp = torch::from_blob(const_cast<typename HeatEquation<T, N>::State*>(_states),
-				{ _batchSize, 1, stateSize * statesPerBatch },
+				{ _batchSize, 1, statesPerBatch , stateSize},
 				_options);
 			torch::Tensor sysInp = torch::from_blob(const_cast<T*>(_system.heatCoefficients().data()),
-				{ 1, 1, stateSize },
+				{ 1, 1, 1, stateSize },
 				_options);
 
 			// extend system infos to same size as states
 			if (statesPerBatch > 1 || _batchSize > 1)
 			{
-				sysInp = sysInp.repeat({ _batchSize, 1, statesPerBatch });
+				sysInp = sysInp.repeat({ _batchSize, 1, statesPerBatch, 1 });
 			}
 			
 			// combine system and state channel
-			return torch::cat({ stateInp, sysInp }, 1);
+			torch::Tensor fullData = torch::cat({ stateInp, sysInp }, 1);
+			if constexpr (!TimeDim)
+				fullData = fullData.reshape({ _batchSize, 2, statesPerBatch * stateSize });
+			return fullData;
 		}
 	};
 

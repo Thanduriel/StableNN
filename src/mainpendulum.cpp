@@ -31,7 +31,7 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
-using NetType = nn::MultiLayerPerceptron;
+using NetType = nn::TCN;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
