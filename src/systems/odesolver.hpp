@@ -10,7 +10,7 @@ namespace discretization {
 
 		ODEIntegrator(const System& _system, T _dt) : m_system(_system), m_dt(_dt) {}
 
-		State operator()(const State& _state)
+		State operator()(const State& _state) const
 		{
 			Method method;
 			return method(m_system, _state, m_dt);
