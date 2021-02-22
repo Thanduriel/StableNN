@@ -64,6 +64,7 @@ namespace nn {
 		TORCH_ARG(bool, residual) = true;
 	};
 
+	// Temporal convolution network with residual blocks and exponential dilation.
 	template<size_t D, typename Derived>
 	class TCNImpl : public torch::nn::Cloneable<Derived>
 	{
@@ -94,7 +95,7 @@ namespace nn {
 	};
 	TORCH_MODULE(TCN2D);
 
-
+	// variant with an extra residual connection that adds the most recent time-step to the result
 	class SimpleTCNImpl : public TCNImpl<1, SimpleTCNImpl>
 	{
 	public:

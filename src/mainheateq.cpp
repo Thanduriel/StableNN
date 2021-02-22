@@ -100,15 +100,16 @@ int main()
 	nn::HyperParams params;
 	params["time_step"] = 0.0001;
 	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 1;
-	params["train_samples"] = 256;
+	params["train_samples"] = 256; // 256
 	params["valid_samples"] = 256;
 	params["batch_size"] = 256; // 512
-	params["num_epochs"] = USE_LBFGS ? 256 : 1024;
-	params["loss_p"] = 3;
+	params["num_epochs"] = USE_LBFGS ? 256 : 256;
+	params["loss_p"] = 2;
 
-	params["lr"] = USE_LBFGS ? 0.05 : 0.0002;
+	params["lr"] = USE_LBFGS ? 0.05 : 0.005;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 1.0;
 	params["weight_decay"] = 0.0;
+	params["history_size"] = 40;
 
 	params["depth"] = 4;
 	params["bias"] = true;
@@ -123,7 +124,7 @@ int main()
 	params["kernel_size"] = 3;
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
-	params["average"] = false;
+	params["average"] = true;
 	params["residual"] = true;
 	params["train_in"] = false;
 	params["train_out"] = false;

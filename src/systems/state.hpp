@@ -5,8 +5,34 @@
 
 namespace systems {
 
-	template<typename T, std::size_t Size>
-	using State = std::array<T, Size>;
+
+	// using std::array as a simple mathematical vector
+	template<typename T, std::size_t N>
+	using Vec = std::array<T,N>;
+
+	template<typename T, std::size_t N>
+	Vec<T, N> operator+(const Vec<T, N>& a, const Vec<T, N>& b)
+	{
+		Vec<T, N> result;
+		for (size_t i = 0; i < N; ++i)
+			result[i] = a[i] + b[i];
+		return result;
+	}
+
+	template<typename T, std::size_t N>
+	Vec<T, N> operator*(const T s, const Vec<T, N>& v)
+	{
+		Vec<T, N> result;
+		for (size_t i = 0; i < N; ++i)
+			result[i] = s * v[i];
+		return result;
+	}
+
+	template<typename T, std::size_t N>
+	Vec<T, N> operator*(const Vec<T, N>& v, const T s)
+	{
+		return s * v;
+	}
 
 	// Assuming the state only consists of floating point numbers
 	template<typename System>
@@ -20,7 +46,7 @@ namespace systems {
 }
 
 template<typename T, std::size_t Size>
-std::ostream& operator << (std::ostream& out, const systems::State<T, Size>& s)
+std::ostream& operator << (std::ostream& out, const systems::Vec<T, Size>& s)
 {
 	for (const T& el : s)
 		std::cout << el << " ";

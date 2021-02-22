@@ -20,6 +20,20 @@ namespace systems {
 			T position;
 			T velocity;
 
+			constexpr State() : position(0.0), velocity(0.0) {}
+			constexpr State(std::initializer_list<T> values) : position(*values.begin()), velocity(*(values.begin()+1)) {}
+			constexpr State(const Vec<T,2>& values) : position(values[0]), velocity(values[1]) {}
+			
+			constexpr operator Vec<T, 2>() const
+			{
+				return { position, velocity };
+			}
+
+			State operator+(const Vec<T, 2>& step) const
+			{
+				return { position + step[0], velocity + step[1] };
+			}
+
 			constexpr size_t size() const { return 2; }
 			constexpr T& operator[](size_t i) { assert(i < 2); return i == 0 ? position : velocity; }
 			constexpr T operator[](size_t i) const { assert(i < 2); return i == 0 ? position : velocity; }
@@ -35,9 +49,9 @@ namespace systems {
 			: m_mass(_mass), m_gravity(_gravity), m_length(_len)
 		{}
 
-		T rhs (const State& _state) const
+		Vec<T,2> rhs (const State& _state) const
 		{
-			return -m_gravity / m_length * std::sin(_state.position);
+			return { _state.velocity, -m_gravity / m_length * std::sin(_state.position) };
 		}
 
 		T energy(const State& _state) const

@@ -15,7 +15,8 @@ namespace nn {
 			.hidden_layers(*_params.get<int>("depth"))
 			.hidden_size(*_params.get<int>("hidden_size"))
 			.bias(*_params.get<bool>("bias"))
-			.activation(*_params.get<nn::ActivationFn>("activation"));
+			.activation(*_params.get<nn::ActivationFn>("activation"))
+			.total_time(*_params.get<double>("time"));
 	}
 
 	template<>
@@ -72,7 +73,7 @@ namespace nn {
 		const int64_t channels = *_params.get<size_t>("num_channels");
 		const int64_t inputs = *_params.get<size_t>("num_inputs");
 		// spatial in out size is currently ignored
-		return TCNOptions<2>({ channels, inputs / channels, 1 }, { 1, 1 }, *_params.get<int>("kernel_size"))
+		return TCNOptions<2>({ channels, inputs / channels, 1 }, { 1, 1 }, { *_params.get<int>("kernel_size"), *_params.get<int>("kernel_size") })
 			.hidden_channels(_params.get<int>("hidden_channels", channels))
 			.bias(*_params.get<bool>("bias"))
 			.residual_blocks(*_params.get<int>("residual_blocks"))

@@ -43,6 +43,10 @@ namespace nn {
 			const auto kernel_size = options.kernel_size();
 			const int64_t in_channels = options.in_channels();
 			const int64_t out_channels = options.out_channels();
+			auto padding = kernel_size;
+			padding->front() = kernel_size->front() / 2 * dilation;
+			for (size_t i = 1; i < D; ++i)
+				padding->at(i) = kernel_size->at(i) / 2;
 
 			for (int i = 0; i < stack_size; ++i) 
 			{
@@ -50,9 +54,9 @@ namespace nn {
 				const int out = in_channels + (out_channels - in_channels) * (i + 1) / stack_size;
 				auto convOptions = torch::nn::ConvOptions<D>(in, out, kernel_size)
 					.bias(options.bias())
-					.padding(makeExpandingArray<D>(kernel_size->front() / 2 * dilation))
+					.padding(padding)
 					.dilation(makeExpandingArray<D>(dilation))
-					.padding_mode(torch::kZeros)
+					.padding_mode(torch::kCircular)
 					.stride(makeExpandingArray<D>(options.average() && i == stack_size - 1 ? 2 : 1));
 
 				layers.emplace_back(Conv(convOptions));
@@ -158,13 +162,6 @@ namespace nn {
 			makeExpandingArray<D>(window_size))
 			.bias(options.bias());
 		layers->push_back(Conv(convOptions));
-	/*	layers->push_back(torch::nn::Linear(
-			torch::nn::LinearOptions(internal_size, options.out_channels())
-			.bias(options.bias())));*/
-	/*	if constexpr (D > 1)
-		{
-			layers->push_back(torch::nn::Unflatten(torch::nn::UnflattenOptions(1, {});
-		}*/
 
 		this->register_module("layers", layers);
 	}

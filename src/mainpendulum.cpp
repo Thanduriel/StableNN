@@ -1,5 +1,6 @@
 #include "systems/pendulum.hpp"
 #include "systems/odesolver.hpp"
+#include "systems/rungekutta.hpp"
 #include "systems/serialization.hpp"
 #include "constants.hpp"
 #include "defs.hpp"
@@ -31,12 +32,15 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
-using NetType = nn::TCN;
+using NetType = nn::HamiltonianAugmented;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
 constexpr bool USE_SIMPLE_SYSTEM = true;
 
+namespace discret = systems::discretization;
+using ForwardEuler = discret::ODEIntegrator<System, discret::ForwardEuler>;
+using LeapFrog = discret::ODEIntegrator<System, discret::LeapFrog>;
 
 template<size_t NumTimeSteps, typename... Networks>
 void evaluate(
@@ -46,13 +50,13 @@ void evaluate(
 	eval::EvalOptions _options, 
 	Networks&... _networks)
 {
-	namespace discret = systems::discretization;
-	discret::LeapFrog<System> leapFrog(system, _timeStep);
-	discret::ForwardEuler<System> forwardEuler(system, _timeStep);
+	LeapFrog leapFrog(system, _timeStep);
+	ForwardEuler forwardEuler(system, _timeStep);
+	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK2_midpoint>> rk4(system, _timeStep);
 
 	auto referenceIntegrate = [&](const State& _state)
 	{
-		discret::LeapFrog<System> forward(system, _timeStep / HYPER_SAMPLE_RATE);
+		LeapFrog forward(system, _timeStep / HYPER_SAMPLE_RATE);
 		auto state = _state;
 		for (int i = 0; i < HYPER_SAMPLE_RATE; ++i)
 			state = forward(state);
@@ -93,6 +97,7 @@ void evaluate(
 		_options,
 		referenceIntegrate, 
 		leapFrog, 
+		rk4,
 		nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
 }
 
@@ -213,7 +218,7 @@ int main()
 	validStates.push_back({ 2.95,0 });
 /*	for (auto& state : trainingStates)
 	{
-		systems::discretization::LeapFrog integrator(system, USE_SIMPLE_SYSTEM ? 0.25 : 0.05);
+		LeapFrog integrator(system, USE_SIMPLE_SYSTEM ? 0.25 : 0.05);
 		eval::PendulumRenderer renderer(0.5);
 		renderer.addIntegrator([&integrator, s=state] () mutable
 			{
@@ -222,7 +227,7 @@ int main()
 			});
 		renderer.run();
 	}*/
-	using Integrator = systems::discretization::LeapFrog<System>;
+	using Integrator = LeapFrog;
 	using TrainNetwork = nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, USE_WRAPPER>;
 	TrainNetwork trainNetwork(system, trainingStates, validStates);
 
@@ -236,16 +241,17 @@ int main()
 	params["weight_decay"] = 0.0; //4
 	params["loss_p"] = 3;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.2; // 0.998 : 0.999
-	params["lr_epoch_update"] = 1024;
+	params["lr_epoch_update"] = 800;
 	params["batch_size"] = 64;
-	params["num_epochs"] = USE_LBFGS ? 256 : 3072;
+	params["num_epochs"] = USE_LBFGS ? 256 : 1024;
 	params["momentum"] = 0.9;
 	params["dampening"] = 0.0;
 
-	params["depth"] = 4;
-	params["diffusion"] = 0.1;
+	params["seed"] = 9378341130ull;
+	params["depth"] = 1;
+	params["diffusion"] = 0.05;
 	params["bias"] = false;
-	params["time"] = 2.0;
+	params["time"] = 0.25;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
@@ -255,19 +261,24 @@ int main()
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
-	params["augment"] = 2;
+	params["augment"] = 4;
 	params["kernel_size"] = 3;
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
 	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("antisymSmall");
+	params["name"] = std::string("antisym_2_8");
 	params["load_net"] = false;
+
+/*	std::uniform_int_distribution<uint64_t> dist(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint64_t>::max());
+	std::default_random_engine rng;
+	for (int i = 0; i < 8; ++i)
+		std::cout << dist(rng) << "ull,";*/
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("mlp");
+		params["name"] = std::string("HamiltonianAugmented_2_4l");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
@@ -276,14 +287,14 @@ int main()
 			//	{"batch_size", {64, 256}},
 			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
-				{"time", { 0.5, 1.0, 2.0, 4.0 }},
+			//	{"time", { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 }},
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
 			//	{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
-				{"diffusion", {0.0, 0.05, 0.1, 0.2, 0.5}},
+			//	{"diffusion", {0.0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0}},
 			//	{"hidden_size", {4, 8}},
 			//	{"num_inputs", {8}},
 			//	{"kernel_size", {3, 5}},
@@ -291,7 +302,8 @@ int main()
 			//	{"residual", {false, true}},
 			//	{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
-			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}}
+			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}},
+				{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
 			}, params);
 
 		hyperOptimizer.run(8);

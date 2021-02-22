@@ -5,6 +5,8 @@ namespace nn {
 	MultiLayerPerceptronImpl::MultiLayerPerceptronImpl(const MLPOptions& _options)
 		: options(_options)
 	{
+		if (options.total_time() == 0.0)
+			options.total_time(options.hidden_layers());
 		reset();
 	}
 
@@ -26,9 +28,10 @@ namespace nn {
 
 	torch::Tensor MultiLayerPerceptronImpl::forward(torch::Tensor x)
 	{
+		const double timeStep = options.total_time() / layers.size();
 		auto& activation = options.activation();
 		for (auto& layer : layers)
-			x = x + activation(layer(x));
+			x = x + timeStep * activation(layer(x));
 
 		return x;
 	}

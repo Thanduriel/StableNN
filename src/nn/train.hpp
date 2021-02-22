@@ -90,12 +90,12 @@ namespace nn {
 				validationSet,
 				dat::DataLoaderOptions().batch_size(std::numeric_limits< size_t>::max()));
 
+			// enforce that network initialization uses the given seed
 			if constexpr (THREAD_FIXED_SEED)
 			{
 				s_initMutex.lock();
-				torch::manual_seed(TORCH_SEED);
+				torch::manual_seed(_params.get<uint64_t>("seed", TORCH_SEED));
 			}
-
 			auto net = _params.get<bool>("load_net", false) ? nn::load<Network, UseWrapper>(_params) 
 				: nn::makeNetwork<Network, UseWrapper>(_params);
 			auto bestNet = nn::makeNetwork<Network, UseWrapper>(_params);
@@ -106,12 +106,14 @@ namespace nn {
 			if constexpr (MODE != Mode::TRAIN_MULTI)
 				std::cout << "Training network with " << nn::countParams(net) << " parameters.\n";
 
+			// construct loss function
 			const int loss_p = _params.get("loss_p", 2);
 			auto lossFn = [loss_p](const torch::Tensor& self, const torch::Tensor& target)
 			{
 				return nn::lp_loss(self, target, loss_p);
 			};
 
+			// input preprocessing for multi-step forward mode
 			auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
 			{
 				if constexpr (USE_SINGLE_OUTPUT && NUM_FORWARDS > 1)
@@ -120,12 +122,12 @@ namespace nn {
 					return output;
 			};
 
-
 			auto makeOptimizer = [&_params, &net]()
 			{
 				if constexpr (OPTIMIZER == Optimizer::LBFGS)
 					return torch::optim::LBFGS(net->parameters(),
-						torch::optim::LBFGSOptions(*_params.get<double>("lr")));
+						torch::optim::LBFGSOptions(*_params.get<double>("lr"))
+						.history_size(_params.get<int>("history_size", 100)));
 				else if constexpr (OPTIMIZER == Optimizer::ADAM)
 					return torch::optim::Adam(net->parameters(),
 						torch::optim::AdamOptions(_params.get<double>("lr", 3.e-4))

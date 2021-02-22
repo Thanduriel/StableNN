@@ -132,8 +132,13 @@ namespace nn {
 		
 		// print results
 		std::cout << "\n================== Evaluation ==================\n";
+		double avg = 0.0;
+		for (double d : results)
+			avg += d;
+		avg /= results.size();
+		std::cout << "\nAverage loss: " << avg << "\n";
 		// combined results over each parameter
-		std::cout << "\nAverage loss over parameters:\n";
+		std::cout << "Average loss over parameters:\n";
 		for (size_t k = 0; k < m_hyperGrid.size(); ++k)
 		{
 			const auto& [name, values] = m_hyperGrid[k];
@@ -146,6 +151,11 @@ namespace nn {
 				losses[indK] += results[i];
 				sizes[indK]++;
 			}
+
+			double variance = 0.0;
+			for (double d : losses)
+				variance += (avg - d) * (avg - d);
+			variance /= losses.size();
 			
 			std::cout << name << ": ";
 			for (size_t i = 0; i < values.size(); ++i)
@@ -153,47 +163,50 @@ namespace nn {
 			std::cout << "\n    ";
 			for (size_t i = 0; i < losses.size(); ++i)
 				std::cout << losses[i] / sizes[i] << ", ";
-			std::cout << "\n";
+			std::cout << "[std deviation: " << std::sqrt(variance) << "]\n";
 		}
 
 		// result matrices for parameter pairs
-		std::cout << "\nAverage loss over parameter pairs:";
-		for (size_t k1 = 0; k1 < m_hyperGrid.size(); ++k1)
+		if (m_hyperGrid.size() > 1)
 		{
-			for (size_t k2 = k1 + 1; k2 < m_hyperGrid.size(); ++k2)
+			std::cout << "\nAverage loss over parameter pairs:";
+			for (size_t k1 = 0; k1 < m_hyperGrid.size(); ++k1)
 			{
-				const auto& [name1, values1] = m_hyperGrid[k1];
-				const auto& [name2, values2] = m_hyperGrid[k2];
-				const size_t size1 = values1.size();
-				const size_t size2 = values2.size();
-				const size_t size = size1 * size2;
-				std::vector<double> losses(size, 0.0);
-				std::vector<int> sizes(size, 0);
-
-				for (size_t i = 0; i < numOptions; ++i)
+				for (size_t k2 = k1 + 1; k2 < m_hyperGrid.size(); ++k2)
 				{
-					const auto& [indK1, _] = decomposeFlatIndex(i, k1);
-					const auto& [indK2, __] = decomposeFlatIndex(i, k2);
-					const size_t idx = indK1 * size2 + indK2;
-					losses[idx] += results[i];
-					sizes[idx]++;
-				}
+					const auto& [name1, values1] = m_hyperGrid[k1];
+					const auto& [name2, values2] = m_hyperGrid[k2];
+					const size_t size1 = values1.size();
+					const size_t size2 = values2.size();
+					const size_t size = size1 * size2;
+					std::vector<double> losses(size, 0.0);
+					std::vector<int> sizes(size, 0);
 
-				std::cout << "\n" << name1 << " \\ " << name2 << "\n";
-				printf("%4.d", 0);
-				for (int j = 0; j < static_cast<int>(size2); ++j)
-					printf("%11d ", j);
-				printf("\n");
-				for (size_t i = 0; i < size1; ++i)
-				{
-					printf("%3d ", static_cast<int>(i));
-					const size_t indPart = i * size2;
-					for (size_t j = 0; j < size2; ++j)
+					for (size_t i = 0; i < numOptions; ++i)
 					{
-						const size_t idx = indPart + j;
-						printf("%.5e ", losses[idx] / sizes[idx]);
+						const auto& [indK1, _] = decomposeFlatIndex(i, k1);
+						const auto& [indK2, __] = decomposeFlatIndex(i, k2);
+						const size_t idx = indK1 * size2 + indK2;
+						losses[idx] += results[i];
+						sizes[idx]++;
 					}
+
+					std::cout << "\n" << name1 << " \\ " << name2 << "\n";
+					printf("%4.d", 0);
+					for (int j = 0; j < static_cast<int>(size2); ++j)
+						printf("%11d ", j);
 					printf("\n");
+					for (size_t i = 0; i < size1; ++i)
+					{
+						printf("%3d ", static_cast<int>(i));
+						const size_t indPart = i * size2;
+						for (size_t j = 0; j < size2; ++j)
+						{
+							const size_t idx = indPart + j;
+							printf("%.5e ", losses[idx] / sizes[idx]);
+						}
+						printf("\n");
+					}
 				}
 			}
 		}
