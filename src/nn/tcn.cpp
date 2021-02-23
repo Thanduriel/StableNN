@@ -29,7 +29,6 @@ namespace nn {
 		void reset() override
 		{
 			// currently not supported
-			assert(D == 1 || !options.average());
 			assert(D == 1 || !options.dropout());
 
 			// reset to no layer instead of default constructed
@@ -149,8 +148,7 @@ namespace nn {
 			layers->push_back(ResLayerImpl<D>(resOptions));
 		}
 
-		// fully connected linear layer to reach output size
-	//	layers->push_back(torch::nn::Flatten());
+		// convolution over the complete remaining time dimension
 		int64_t window_size = options.in_size()->at(1);
 		if (options.average()) // divide by 2 for each block
 			window_size >>= options.residual_blocks();
@@ -169,7 +167,8 @@ namespace nn {
 	template<size_t D, typename Derived>
 	torch::Tensor TCNImpl<D, Derived>::forward(torch::Tensor x)
 	{
-		return layers->forward(x).squeeze(2);
+		// remove time and channel dimension if 1
+		return layers->forward(x).squeeze(2).squeeze(1);
 	}
 
 	// explicit instantiations

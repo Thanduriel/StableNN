@@ -6,7 +6,7 @@
 
 // number of time-steps given as inputs
 // This value only needs to be available at compile-time for evaluation.
-constexpr size_t NUM_INPUTS = 1;
+constexpr size_t NUM_INPUTS = 8;
 
 // expect only the next time-step
 constexpr bool USE_SINGLE_OUTPUT = true;
@@ -30,7 +30,7 @@ static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be sav
 constexpr bool LOG_LOSS = false;
 
 // Write training and validation loss after each epoch into a file.
-constexpr bool LOG_LEARNING_LOSS = true;
+constexpr bool LOG_LEARNING_LOSS = false;
 
 enum struct Optimizer {
 	ADAM,

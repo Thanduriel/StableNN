@@ -18,8 +18,8 @@ namespace nn {
 		// convert params from states to values
 		HyperParams params;
 		params = _params;
-		params["num_inputs"] = numInputsNet;
-		params["num_outputs"] = numOutputsNet;
+		params["num_inputs_net"] = numInputsNet;
+		params["num_outputs_net"] = numOutputsNet;
 
 		auto options = makeOptions< typename Net::Impl::Options >(params);
 		if constexpr (UseWrapper)

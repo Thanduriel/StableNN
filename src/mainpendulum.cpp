@@ -32,14 +32,13 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
-using NetType = nn::HamiltonianAugmented;
+using NetType = nn::HamiltonianInterleafed;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
 constexpr bool USE_SIMPLE_SYSTEM = true;
 
 namespace discret = systems::discretization;
-using ForwardEuler = discret::ODEIntegrator<System, discret::ForwardEuler>;
 using LeapFrog = discret::ODEIntegrator<System, discret::LeapFrog>;
 
 template<size_t NumTimeSteps, typename... Networks>
@@ -51,7 +50,7 @@ void evaluate(
 	Networks&... _networks)
 {
 	LeapFrog leapFrog(system, _timeStep);
-	ForwardEuler forwardEuler(system, _timeStep);
+	discret::ODEIntegrator<System, discret::ForwardEuler> forwardEuler(system, _timeStep);
 	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK2_midpoint>> rk4(system, _timeStep);
 
 	auto referenceIntegrate = [&](const State& _state)
@@ -96,8 +95,7 @@ void evaluate(
 		initialState, 
 		_options,
 		referenceIntegrate, 
-		leapFrog, 
-		rk4,
+		leapFrog,
 		nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
 }
 
@@ -228,7 +226,7 @@ int main()
 		renderer.run();
 	}*/
 	using Integrator = LeapFrog;
-	using TrainNetwork = nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, USE_WRAPPER>;
+	using TrainNetwork = nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, nn::StateToTensor, USE_WRAPPER>;
 	TrainNetwork trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
@@ -248,16 +246,16 @@ int main()
 	params["dampening"] = 0.0;
 
 	params["seed"] = 9378341130ull;
-	params["depth"] = 1;
+	params["depth"] = 2;
 	params["diffusion"] = 0.05;
 	params["bias"] = false;
 	params["time"] = 0.25;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
-	params["hidden_size"] = 4;
-	params["train_in"] = true;
-	params["train_out"] = true;
+	params["hidden_size"] = 8;
+	params["train_in"] = false;
+	params["train_out"] = false;
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
@@ -287,7 +285,7 @@ int main()
 			//	{"batch_size", {64, 256}},
 			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
-			//	{"time", { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 }},
+				{"time", { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 }},
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
@@ -303,7 +301,7 @@ int main()
 			//	{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}},
-				{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
+			//	{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
 			}, params);
 
 		hyperOptimizer.run(8);
@@ -333,11 +331,14 @@ int main()
 	//	Integrator integrator(system, *params.get<double>("time_step"));
 	//	std::cout << eval::computePeriodLength(State{ 0.01 * PI, 0.0 }, integrator, 16);
 
-		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp");
-		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlpIO");
+	/*	auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlpIO");
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym");
-		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian");
-		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), 4096, mlpIO, antisym, hamiltonian);
+		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian");*/
+		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
+		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4l");
+		auto antisym2 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4");
+		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "HamiltonianInterleafed_2_4l");
+		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), 8, mlpIO, antisym, hamiltonian);
 
 		//	std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
 		//	std::cout << eval::lipschitz(othNet) << "\n";

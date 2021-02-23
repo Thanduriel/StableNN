@@ -5,7 +5,7 @@
 #include "nn/utils.hpp"
 #include "systems/state.hpp"
 
-template<typename System, typename Integrator, typename InputMaker = nn::StateToTensor>
+template<typename System, typename Integrator, typename InputMaker = nn::StateToTensor, typename OutputMaker = nn::StateToTensor>
 class DataGenerator
 {
 	using SysState = typename System::State;
@@ -65,12 +65,17 @@ public:
 				}
 
 			InputMaker stateToTensor;
-			const int64_t size = _numSamples;
-			torch::Tensor in = stateToTensor(system, timeSeries.data(), timeSeries.size(), size, m_tensorOptions);
-			torch::Tensor out = torch::from_blob(
+			const int64_t batchSize = _numSamples;
+			torch::Tensor in = stateToTensor(system, timeSeries.data(), timeSeries.size(), batchSize, m_tensorOptions);
+			
+			OutputMaker outputMaker;
+			SysState* outData = _useSingleOutput ? (results.data() + _numInputSteps + _inOutShift - 1) 
+				: (timeSeries.data() + _numInputSteps * _inOutShift);
+			torch::Tensor out = outputMaker(system, outData, _useSingleOutput ? batchSize : batchSize * _numInputSteps, batchSize, m_tensorOptions);
+		/*	torch::from_blob(
 				_useSingleOutput ? (results.data() + _numInputSteps + _inOutShift - 1) : (timeSeries.data() + _numInputSteps * _inOutShift),
-				{ size, outputSize }, 
-				m_tensorOptions);
+				{ numSamples, outputSize },
+				m_tensorOptions);*/
 
 			if (!inputs.defined())
 			{
