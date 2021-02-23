@@ -18,7 +18,7 @@ using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
 using T = System::ValueT;
 
-using NetType = nn::TCN2D;
+using NetType = nn::Convolutional;
 using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
 	systems::discretization::MakeInputHeatEq<std::is_same_v<NetType, nn::TCN2D>>,
 	nn::StateToTensor>;
@@ -26,13 +26,52 @@ using OutputMaker = nn::StateToTensor;
 
 namespace disc = systems::discretization;
 
+
+// convoluted way to store to allow comparison of networks with different NumInputs
+template<size_t NumSteps, typename Network>
+struct NetWrapper
+{
+	NetWrapper(Network& _network) : network(_network) {}
+	Network& network;
+};
+
+template<size_t NumSteps,  typename Network>
+NetWrapper<NumSteps, Network> wrapNetwork(Network& _network)
+{
+	return NetWrapper<NumSteps,Network>(_network);
+}
+
+template<size_t NumSteps, size_t MaxSteps>
+std::array<State, NumSteps> arrayView(const std::array<State, MaxSteps>& _array)
+{
+	std::array<State, NumSteps> arr{};
+	constexpr size_t off = MaxSteps - NumSteps;
+	for (size_t i = NumSteps; i < NumSteps; ++i)
+		arr[i] = _array[i + off];
+
+	return arr;
+}
+
+template<size_t NumSteps, typename Network, typename System, size_t MaxSteps>
+auto makeNNIntegrator(const System& _system,
+	const NetWrapper<NumSteps, Network>& _wrapper, 
+	const std::array<State, MaxSteps>& _initialStates)
+{
+
+	return nn::Integrator<System, Network, NumSteps, InputMaker>(
+		_system, 
+		_wrapper.network, 
+		arrayView<NumSteps-1>(_initialStates));
+}
+
+
 template<size_t NumTimeSteps, typename... Networks>
 void evaluate(
 	const System& system,
 	const State& _initialState,
 	double _timeStep,
 	eval::EvalOptions _options,
-	Networks&... _networks)
+	const Networks&... _networks)
 {
 	disc::AnalyticHeatEq analytic(system, _timeStep, _initialState);
 	disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, _timeStep);
@@ -58,7 +97,7 @@ void evaluate(
 		*referenceIntegrator,
 		*otherIntegrator,
 		finiteDiffs,
-		nn::Integrator<System, Networks, NumTimeSteps, InputMaker>(system, _networks, initialStates)...);
+		makeNNIntegrator(system, _networks, initialStates)...);
 }
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
@@ -143,7 +182,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 256; // 512
-	params["num_epochs"] = USE_LBFGS ? 128 : 256;
+	params["num_epochs"] = USE_LBFGS ? 128 : 512;
 	params["loss_p"] = 2;
 
 	params["lr"] = USE_LBFGS ? 0.05 : 0.005;
@@ -151,7 +190,7 @@ int main()
 	params["weight_decay"] = 0.0;
 	params["history_size"] = 100;
 
-	params["depth"] = 4;
+	params["depth"] = 5;
 	params["bias"] = true;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
@@ -160,9 +199,9 @@ int main()
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["augment"] = 2;
 	params["hidden_size"] = N;
-	params["hidden_channels"] = 4;
+	params["hidden_channels"] = 6;
 	params["kernel_size"] = 5;
-	params["kernel_size_temp"] = 3;
+	params["kernel_size_temp"] = 3; // temporal dim
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
 	params["average"] = true;
@@ -170,9 +209,9 @@ int main()
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
-	params["name"] = std::string("heateq32_tcn_5_3");
+	params["name"] = std::string("heateq32_conv_5");
 
-	params["load_net"] = true;
+	params["load_net"] = false;
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{
@@ -275,7 +314,7 @@ int main()
 			break;
 		}*/
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
-			evaluate<NUM_INPUTS>(system, state, timeStep, options, net);
+			evaluate<NUM_INPUTS>(system, state, timeStep, options, wrapNetwork<NUM_INPUTS>(net));
 		else
 			eval::evaluate(system, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl, nn);
 	}
