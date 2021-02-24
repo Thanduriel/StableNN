@@ -11,112 +11,107 @@ namespace nn {
 		return arr;
 	}
 
-	template<int64_t D>
-	struct ResLayerImpl : public torch::nn::Cloneable<ResLayerImpl<D>>
+	template<int64_t D, typename Derived>
+	TemporalConvBlockImpl<D, Derived>::TemporalConvBlockImpl(const TemporalConvBlockOptions<D>& _options)
+		: residual(nullptr),
+		dropout_layer(nullptr),
+		avg_residual(nullptr),
+		options(_options)
 	{
-		using Conv = std::conditional_t<D == 1, torch::nn::Conv1d, torch::nn::Conv2d>;
-		using AvgPool = std::conditional_t<D == 1, torch::nn::AvgPool1d, torch::nn::AvgPool2d>;
+		reset();
+	}
 
-		ResLayerImpl(const TemporalConvBlockOptions<D>& _options)
-			: residual(nullptr), 
-			dropout_layer(nullptr),
-			avg_residual(nullptr),
-			options(_options)
+	template<int64_t D, typename Derived>
+	void TemporalConvBlockImpl<D, Derived>::reset()
+	{
+		// currently not supported
+		assert(D == 1 || !options.dropout());
+
+		// reset to no layer instead of default constructed
+		residual = nullptr;
+		dropout_layer = nullptr;
+		avg_residual = nullptr;
+		layers.clear();
+
+		const int64_t stack_size = options.block_size();
+		const int64_t dilation = options.dilation();
+		const auto kernel_size = options.kernel_size();
+		const int64_t in_channels = options.in_channels();
+		const int64_t out_channels = options.out_channels();
+		auto padding = kernel_size;
+		padding->front() = kernel_size->front() / 2 * dilation;
+		for (size_t i = 1; i < D; ++i)
+			padding->at(i) = kernel_size->at(i) / 2;
+
+		for (int i = 0; i < stack_size; ++i)
 		{
-			reset();
+			const int in = in_channels + (out_channels - in_channels) * i / stack_size;
+			const int out = in_channels + (out_channels - in_channels) * (i + 1) / stack_size;
+			auto convOptions = torch::nn::ConvOptions<D>(in, out, kernel_size)
+				.bias(options.bias())
+				.padding(padding)
+				.dilation(makeExpandingArray<D>(dilation))
+				.padding_mode(torch::kCircular)
+				.stride(makeExpandingArray<D>(options.average() && i == stack_size - 1 ? 2 : 1));
+
+			layers.emplace_back(Conv(convOptions));
+			this->register_module("layer" + std::to_string(i), layers.back());
 		}
 
-		void reset() override
+		if (options.residual())
 		{
-			// currently not supported
-			assert(D == 1 || !options.dropout());
-
-			// reset to no layer instead of default constructed
-			residual = nullptr;
-			dropout_layer = nullptr;
-			avg_residual = nullptr;
-			layers.clear();
-
-			const int64_t stack_size = options.block_size();
-			const int64_t dilation = options.dilation();
-			const auto kernel_size = options.kernel_size();
-			const int64_t in_channels = options.in_channels();
-			const int64_t out_channels = options.out_channels();
-			auto padding = kernel_size;
-			padding->front() = kernel_size->front() / 2 * dilation;
-			for (size_t i = 1; i < D; ++i)
-				padding->at(i) = kernel_size->at(i) / 2;
-
-			for (int i = 0; i < stack_size; ++i) 
+			if (in_channels != out_channels)
 			{
-				const int in = in_channels + (out_channels - in_channels) * i / stack_size;
-				const int out = in_channels + (out_channels - in_channels) * (i + 1) / stack_size;
-				auto convOptions = torch::nn::ConvOptions<D>(in, out, kernel_size)
-					.bias(options.bias())
-					.padding(padding)
-					.dilation(makeExpandingArray<D>(dilation))
-					.padding_mode(torch::kCircular)
-					.stride(makeExpandingArray<D>(options.average() && i == stack_size - 1 ? 2 : 1));
-
-				layers.emplace_back(Conv(convOptions));
-				this->register_module("layer" + std::to_string(i), layers.back());
+				auto convOptions = torch::nn::ConvOptions<D>(in_channels, out_channels, 1).bias(false);
+				residual = Conv(convOptions);
+				this->register_module("residual", residual);
 			}
 
-			if (options.residual())
+			if (options.average())
 			{
-				if (in_channels != out_channels)
-				{
-					auto convOptions = torch::nn::ConvOptions<D>(in_channels, out_channels, 1).bias(false);
-					residual = Conv(convOptions);
-					this->register_module("residual", residual);
-				}
+				auto avgOptions = torch::nn::AvgPoolOptions<D>(makeExpandingArray<D>(2))
+					.stride(makeExpandingArray<D>(2))
+					.padding(0)
+					.count_include_pad(false);
 
-				if (options.average())
-				{
-					auto avgOptions = torch::nn::AvgPoolOptions<D>(makeExpandingArray<D>(2))
-						.stride(makeExpandingArray<D>(2))
-						.padding(0)
-						.count_include_pad(false);
-
-					avg_residual = this->register_module("avg_residual", AvgPool(avgOptions));
-				}
-			}
-
-			// dropout layer does not have weights and can be reused
-			if (options.dropout() > 0.0) 
-			{
-				dropout_layer = torch::nn::Dropout(options.dropout());
-				this->register_module("dropout", dropout_layer);
+				avg_residual = this->register_module("avg_residual", AvgPool(avgOptions));
 			}
 		}
 
-		torch::Tensor forward(torch::Tensor x) 
+		// dropout layer does not have weights and can be reused
+		if (options.dropout() > 0.0)
 		{
-			auto in = x.clone();
+			dropout_layer = torch::nn::Dropout(options.dropout());
+			this->register_module("dropout", dropout_layer);
+		}
+	}
 
-			auto activation = options.activation();
-			for (auto& layer : layers)
-			{
-				x = activation(layer->forward(x));
-				if (dropout_layer)
-					x = dropout_layer(x);
-			}
+	template<int64_t D, typename Derived>
+	torch::Tensor TemporalConvBlockImpl<D, Derived>::forward(torch::Tensor x)
+	{
+		auto in = x.clone();
 
-			if (avg_residual)
-				in = avg_residual(in);
-			if (residual)
-				in = residual(in);
-
-			return options.residual() ? x + in : x;
+		auto activation = options.activation();
+		for (auto& layer : layers)
+		{
+			x = activation(layer->forward(x));
+			if (dropout_layer)
+				x = dropout_layer(x);
 		}
 
-		std::vector<Conv> layers;
-		Conv residual;
-		AvgPool avg_residual;
-		torch::nn::Dropout dropout_layer; // todo: also consider Dropout2D ?
-		TemporalConvBlockOptions<D> options;
-	};
+		if (avg_residual)
+			in = avg_residual(in);
+		if (residual)
+			in = residual(in);
 
+		return options.residual() ? x + in : x;
+	}
+
+	// explicit instantiations
+	template class TemporalConvBlockImpl<1>;
+	template class TemporalConvBlockImpl<2>;
+	template class TemporalConvBlockImpl<1, TemporalConvBlock1DImpl>;
+	template class TemporalConvBlockImpl<2, TemporalConvBlock2DImpl>;
 
 	template<size_t D, typename Derived>
 	TCNImpl<D, Derived>::TCNImpl(const TCNOptions<D>& _options) : options(_options)
@@ -138,14 +133,14 @@ namespace nn {
 			.dropout(options.dropout())
 			.average(options.average())
 			.residual(options.residual());
-		layers->push_back(ResLayerImpl<D>(resOptions));
+		layers->push_back(TCNBlock(resOptions));
 
 		resOptions.in_channels(options.hidden_channels());
 		for (int i = 1; i < options.residual_blocks(); ++i)
 		{
 			if (!options.average())
 				resOptions.dilation() <<= 1;
-			layers->push_back(ResLayerImpl<D>(resOptions));
+			layers->push_back(TCNBlock(resOptions));
 		}
 
 		// convolution over the complete remaining time dimension

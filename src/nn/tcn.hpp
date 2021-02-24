@@ -34,6 +34,40 @@ namespace nn {
 		TORCH_ARG(bool, residual) = true;
 	};
 
+	template<int64_t D, typename Derived = void>
+	class TemporalConvBlockImpl : public torch::nn::Cloneable< 
+		std::conditional_t<std::is_same_v<Derived, void>, TemporalConvBlockImpl<D>, Derived>>
+	{
+	public:
+		using Options = TemporalConvBlockOptions<D>;
+		explicit TemporalConvBlockImpl(const Options& _options);
+		void reset() override;
+		torch::Tensor forward(torch::Tensor x);
+
+		using Conv = std::conditional_t<D == 1, torch::nn::Conv1d, torch::nn::Conv2d>;
+		using AvgPool = std::conditional_t<D == 1, torch::nn::AvgPool1d, torch::nn::AvgPool2d>;
+
+		std::vector<Conv> layers;
+		Conv residual;
+		AvgPool avg_residual;
+		torch::nn::Dropout dropout_layer; // todo: also consider Dropout2D ?
+		TemporalConvBlockOptions<D> options;
+	};
+
+	class TemporalConvBlock1DImpl : public TemporalConvBlockImpl<1, TemporalConvBlock1DImpl>
+	{
+	public:
+		using TemporalConvBlockImpl<1, TemporalConvBlock1DImpl>::TemporalConvBlockImpl;
+	};
+	TORCH_MODULE(TemporalConvBlock1D);
+
+	class TemporalConvBlock2DImpl : public TemporalConvBlockImpl<2, TemporalConvBlock2DImpl>
+	{
+	public:
+		using TemporalConvBlockImpl<2, TemporalConvBlock2DImpl>::TemporalConvBlockImpl;
+	};
+	TORCH_MODULE(TemporalConvBlock2D);
+
 	template<size_t D>
 	struct TCNOptions
 	{
@@ -76,6 +110,8 @@ namespace nn {
 		void reset() override;
 
 		torch::Tensor forward(torch::Tensor x);
+
+		using TCNBlock = TemporalConvBlockImpl<D>;
 
 		torch::nn::Sequential layers;
 		TCNOptions<D> options;

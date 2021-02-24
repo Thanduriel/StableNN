@@ -38,7 +38,7 @@ enum struct Optimizer {
 	RMSPROP,
 	LBFGS
 };
-constexpr Optimizer OPTIMIZER = Optimizer::ADAM;
+constexpr Optimizer OPTIMIZER = Optimizer::LBFGS;
 constexpr bool USE_LBFGS = OPTIMIZER == Optimizer::LBFGS;
 
 // only relevant in TRAIN_MULTI to enforce consistent rng state for all networks during initialization

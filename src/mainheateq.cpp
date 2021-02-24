@@ -19,10 +19,26 @@ using State = typename System::State;
 using T = System::ValueT;
 
 using NetType = nn::Convolutional;
-using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
+/*using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
 	systems::discretization::MakeInputHeatEq<std::is_same_v<NetType, nn::TCN2D>>,
-	nn::StateToTensor>;
+	nn::StateToTensor>;*/
 using OutputMaker = nn::StateToTensor;
+
+namespace nn {
+	template<>
+	struct InputMakerSelector<nn::TCN2D>
+	{
+		using type = systems::discretization::MakeInputHeatEq<true>;
+	};
+
+	template<>
+	struct InputMakerSelector<nn::Convolutional>
+	{
+		using type = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
+			systems::discretization::MakeInputHeatEq<false>,
+			nn::StateToTensor>;
+	};
+}
 
 namespace disc = systems::discretization;
 
@@ -44,9 +60,11 @@ NetWrapper<NumSteps, Network> wrapNetwork(Network& _network)
 template<size_t NumSteps, size_t MaxSteps>
 std::array<State, NumSteps> arrayView(const std::array<State, MaxSteps>& _array)
 {
+	static_assert(NumSteps <= MaxSteps);
+
 	std::array<State, NumSteps> arr{};
 	constexpr size_t off = MaxSteps - NumSteps;
-	for (size_t i = NumSteps; i < NumSteps; ++i)
+	for (size_t i = 0; i < NumSteps; ++i)
 		arr[i] = _array[i + off];
 
 	return arr;
@@ -58,7 +76,7 @@ auto makeNNIntegrator(const System& _system,
 	const std::array<State, MaxSteps>& _initialStates)
 {
 
-	return nn::Integrator<System, Network, NumSteps, InputMaker>(
+	return nn::Integrator<System, Network, NumSteps>(
 		_system, 
 		_wrapper.network, 
 		arrayView<NumSteps-1>(_initialStates));
@@ -199,7 +217,7 @@ int main()
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["augment"] = 2;
 	params["hidden_size"] = N;
-	params["hidden_channels"] = 6;
+	params["hidden_channels"] = 8;
 	params["kernel_size"] = 5;
 	params["kernel_size_temp"] = 3; // temporal dim
 	params["residual_blocks"] = 2;
@@ -208,10 +226,10 @@ int main()
 	params["residual"] = true;
 	params["train_in"] = false;
 	params["train_out"] = false;
-	params["activation"] = nn::ActivationFn(torch::tanh);
+	params["activation"] = nn::ActivationFn(torch::sigmoid);
 	params["name"] = std::string("heateq32_conv_5");
 
-	params["load_net"] = false;
+	params["load_net"] = true;
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{
@@ -226,7 +244,7 @@ int main()
 		auto systems = USE_LOCAL_DIFFUSIFITY ? generateSystems(trainingStates.size() + validStates.size(), 0x6341241)
 			: std::vector<System>{ heatEq };
 		
-		nn::TrainNetwork<NetType, System, Integrator, InputMaker, OutputMaker, USE_WRAPPER> trainNetwork(
+		nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, OutputMaker, USE_WRAPPER> trainNetwork(
 			systems, trainingStates, validStates, warmupSteps);
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
@@ -272,7 +290,7 @@ int main()
 		auto net = nn::load<NetType, USE_WRAPPER>(params);
 	//	auto net = nn::load<NetType, USE_WRAPPER>(params, "1_0_single_output_kernel");
 	//	torch::load(net, "0_1_0_1_diffusivity2.pt");
-		nn::Integrator<System, decltype(net), NUM_INPUTS, InputMaker> nn(system, net);
+		nn::Integrator<System, decltype(net), NUM_INPUTS> nn(system, net);
 
 	//	nn::exportTensor(analytic.getGreenFn(timeStep, 63), "green.txt");
 	//	eval::checkEnergy(net->layers.front(), 64);
@@ -313,8 +331,9 @@ int main()
 			eval::evaluate(heatEq, state, options, analytic, finiteDiffs, superSampleFiniteDifs, superSampleFiniteDifs1, superSampleFiniteDifs2);
 			break;
 		}*/
+		auto tcn = nn::load<nn::TCN2D, USE_WRAPPER>(params, "heateq32_tcn_5_3");
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
-			evaluate<NUM_INPUTS>(system, state, timeStep, options, wrapNetwork<NUM_INPUTS>(net));
+			evaluate<8>(system, state, timeStep, options, wrapNetwork<NUM_INPUTS>(net), wrapNetwork<8>(tcn));
 		else
 			eval::evaluate(system, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl, nn);
 	}
