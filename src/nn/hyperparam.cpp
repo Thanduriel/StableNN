@@ -9,16 +9,14 @@
 
 
 namespace nn {
-	std::ostream& operator<<(std::ostream& _out, const ExtAny& _any)
+	void ExtAny::print(std::ostream& _out) const
 	{
-		_any.m_print(_out, _any.any);
-		return _out;
+		m_print(_out, any);
 	}
 
-	std::istream& operator>>(std::istream& _stream, ExtAny& _any)
+	void ExtAny::read(std::istream& _stream)
 	{
-		_any.m_read(_stream, _any.any);
-		return _stream;
+		m_read(_stream, any);
 	}
 
 	std::ostream& operator<<(std::ostream& _out, const HyperParams& _params)
@@ -26,7 +24,9 @@ namespace nn {
 		_out << "{ ";
 		for (const auto& [name, value] : _params.m_data)
 		{
-			_out << name << " : " << value << ", ";
+			_out << name << " : ";
+			value.print(_out);
+			_out << ", ";
 		}
 		_out << "}";
 
@@ -52,7 +52,7 @@ namespace nn {
 			if (it == _params.m_data.end())
 				std::cerr << "Unknown key " << key << std::endl;
 			else
-				entry >> it->second;
+				it->second.read(entry);
 		}
 
 		return _in;
@@ -159,7 +159,10 @@ namespace nn {
 			
 			std::cout << name << ": ";
 			for (size_t i = 0; i < values.size(); ++i)
-				std::cout << values[i] << ", ";
+			{
+				values[i].print(std::cout); 
+				std::cout << ", ";
+			}
 			std::cout << "\n    ";
 			for (size_t i = 0; i < losses.size(); ++i)
 				std::cout << losses[i] / sizes[i] << ", ";

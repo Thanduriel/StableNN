@@ -17,11 +17,17 @@ namespace nn {
 
 		TORCH_ARG(int64_t, in_channels);
 		TORCH_ARG(int64_t, out_channels);
-		TORCH_ARG(int64_t, block_size) = 2;
-		TORCH_ARG(torch::ExpandingArray<D>, kernel_size);
 		TORCH_ARG(int64_t, dilation) = 1;
+
+		TORCH_ARG(torch::ExpandingArray<D>, kernel_size);
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
+
+		// number of serial layers in this block
+		TORCH_ARG(int64_t, block_size) = 2;
+
+		using padding_mode_t = torch::nn::detail::conv_padding_mode_t;
+		TORCH_ARG(padding_mode_t, padding_mode) = torch::kZeros;
 
 		// amount of dropout after convolution layers
 		TORCH_ARG(double, dropout) = 0.0;
@@ -30,7 +36,7 @@ namespace nn {
 		// adds AvgPool to residual connections to resize the output
 		TORCH_ARG(bool, average) = false;
 
-		// have residual connections between blocks
+		// have a residual connection from input to output
 		TORCH_ARG(bool, residual) = true;
 	};
 
@@ -68,6 +74,8 @@ namespace nn {
 	};
 	TORCH_MODULE(TemporalConvBlock2D);
 
+	// ============================================================================
+
 	template<size_t D>
 	struct TCNOptions
 	{
@@ -88,7 +96,7 @@ namespace nn {
 		TORCH_ARG(int64_t, hidden_channels);
 		TORCH_ARG(int64_t, residual_blocks) = 1;
 
-		// forwarded to TemporalConvBlockOptions
+		// see TemporalConvBlockOptions
 		TORCH_ARG(torch::ExpandingArray<D>, kernel_size);
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
@@ -96,9 +104,11 @@ namespace nn {
 		TORCH_ARG(double, dropout) = 0.0;
 		TORCH_ARG(bool, average) = false;
 		TORCH_ARG(bool, residual) = true;
+		using padding_mode_t = torch::nn::detail::conv_padding_mode_t;
+		TORCH_ARG(padding_mode_t, padding_mode) = torch::kZeros;
 	};
 
-	// Temporal convolution network with residual blocks and exponential dilation.
+	// Generic temporal convolution network with residual blocks and exponential dilation.
 	template<size_t D, typename Derived>
 	class TCNImpl : public torch::nn::Cloneable<Derived>
 	{
@@ -143,8 +153,25 @@ namespace nn {
 	using TCN = SimpleTCN;
 
 	template<>
-	struct InputMakerSelector<TCN>
+	struct InputMakerSelector<SimpleTCN>
 	{
 		using type = StateToTensorTimeseries<true>;
+	};
+
+	// ============================================================================
+
+	// 2d TCN which preforms 1D convolutions alternating between dimensions
+	class TCNInterleafed : public torch::nn::Cloneable<TCNInterleafed>
+	{
+	public:
+		using Options = TCNOptions<2>;
+		explicit TCNInterleafed(const Options& options);
+
+		void reset() override;
+
+		torch::Tensor forward(torch::Tensor x);
+
+		torch::nn::Sequential layers;
+		Options options;
 	};
 }

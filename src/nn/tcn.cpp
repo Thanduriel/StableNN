@@ -38,6 +38,7 @@ namespace nn {
 		const auto kernel_size = options.kernel_size();
 		const int64_t in_channels = options.in_channels();
 		const int64_t out_channels = options.out_channels();
+		// set padding so that the size is not changed by the convolutions
 		auto padding = kernel_size;
 		padding->front() = kernel_size->front() / 2 * dilation;
 		for (size_t i = 1; i < D; ++i)
@@ -51,7 +52,7 @@ namespace nn {
 				.bias(options.bias())
 				.padding(padding)
 				.dilation(makeExpandingArray<D>(dilation))
-				.padding_mode(torch::kCircular)
+				.padding_mode(options.padding_mode())
 				.stride(makeExpandingArray<D>(options.average() && i == stack_size - 1 ? 2 : 1));
 
 			layers.emplace_back(Conv(convOptions));
@@ -113,6 +114,22 @@ namespace nn {
 	template class TemporalConvBlockImpl<1, TemporalConvBlock1DImpl>;
 	template class TemporalConvBlockImpl<2, TemporalConvBlock2DImpl>;
 
+	// ============================================================================
+
+	template<size_t D>
+	TemporalConvBlockOptions<D> makeBlockOptions(int64_t in_channels, int64_t out_channels, const TCNOptions<D>& options)
+	{
+		return TemporalConvBlockOptions<D>(in_channels,
+			out_channels,
+			options.kernel_size())
+			.block_size(options.block_size())
+			.bias(options.bias())
+			.activation(options.activation())
+			.dropout(options.dropout())
+			.average(options.average())
+			.residual(options.residual());
+	}
+
 	template<size_t D, typename Derived>
 	TCNImpl<D, Derived>::TCNImpl(const TCNOptions<D>& _options) : options(_options)
 	{
@@ -124,15 +141,9 @@ namespace nn {
 	{
 		layers = torch::nn::Sequential();
 		// change number of channels in first block
-		auto resOptions = TemporalConvBlockOptions<D>(options.in_size()->front(), 
+		auto resOptions = makeBlockOptions<D>(options.in_size()->front(),
 			options.hidden_channels(),
-			options.kernel_size())
-			.block_size(options.block_size())
-			.bias(options.bias())
-			.activation(options.activation())
-			.dropout(options.dropout())
-			.average(options.average())
-			.residual(options.residual());
+			options);
 		layers->push_back(TCNBlock(resOptions));
 
 		resOptions.in_channels(options.hidden_channels());
@@ -180,4 +191,23 @@ namespace nn {
 	//	return x.squeeze().unsqueeze(0);
 	}
 	template class TCNImpl<1, SimpleTCNImpl>;
+
+	// ============================================================================
+
+	TCNInterleafed::TCNInterleafed(const Options& _options)
+		: options(_options)
+	{
+		reset();
+	}
+
+	void TCNInterleafed::reset()
+	{
+		layers = torch::nn::Sequential();
+	}
+
+	torch::Tensor TCNInterleafed::forward(torch::Tensor x)
+	{
+		// remove time and channel dimension if 1
+		return layers->forward(x).squeeze(2).squeeze(1);
+	}
 } 

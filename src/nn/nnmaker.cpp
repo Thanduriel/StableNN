@@ -57,14 +57,16 @@ namespace nn {
 	{
 		const int64_t channels = *_params.get<size_t>("num_channels");
 		const int64_t inputs = *_params.get<size_t>("num_inputs_net");
+
 		return TCNOptions<1>({ channels, inputs / channels }, { channels }, *_params.get<int>("kernel_size"))
 			.hidden_channels(_params.get<int>("hidden_size", channels))
-			.bias(*_params.get<bool>("bias"))
 			.residual_blocks(*_params.get<int>("residual_blocks"))
 			.residual(*_params.get<bool>("residual"))
 			.activation(*_params.get<nn::ActivationFn>("activation"))
 			.block_size(*_params.get<int>("block_size"))
-			.average(*_params.get<bool>("average"));
+			.average(*_params.get<bool>("average"))
+			.bias(*_params.get<bool>("bias"))
+			.padding_mode(*_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode"));
 	}
 
 	template<>
@@ -75,11 +77,12 @@ namespace nn {
 		// spatial in out size is currently ignored
 		return TCNOptions<2>({ channels, inputs / channels, 1 }, { 1, 1 }, { *_params.get<int>("kernel_size"), *_params.get<int>("kernel_size_temp") })
 			.hidden_channels(_params.get<int>("hidden_channels", channels))
-			.bias(*_params.get<bool>("bias"))
 			.residual_blocks(*_params.get<int>("residual_blocks"))
 			.residual(*_params.get<bool>("residual"))
 			.activation(*_params.get<nn::ActivationFn>("activation"))
 			.block_size(*_params.get<int>("block_size"))
-			.average(*_params.get<bool>("average"));
+			.average(*_params.get<bool>("average"))
+			.bias(*_params.get<bool>("bias"))
+			.padding_mode(*_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode"));
 	}
 }

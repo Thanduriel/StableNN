@@ -87,9 +87,10 @@ namespace nn {
 			return *this;
 		}
 
-		// works only when already initialized with a type
-		friend std::ostream& operator<<(std::ostream& _out, const ExtAny& _any);
-		friend std::istream& operator>>(std::istream& _out, ExtAny& _any);
+		// Works only when already initialized with a type
+		// No stream operators are provided since implicit conversion to ExtAny would enable this for all types.
+		void print(std::ostream& _out) const;
+		void read(std::istream& _out);
 
 	private:
 		using PrintFn = void(std::ostream&, const std::any&);
