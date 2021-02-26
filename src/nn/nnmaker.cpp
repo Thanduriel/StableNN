@@ -75,7 +75,7 @@ namespace nn {
 		const int64_t channels = *_params.get<size_t>("num_channels");
 		const int64_t inputs = *_params.get<size_t>("num_inputs_net");
 		// spatial in out size is currently ignored
-		return TCNOptions<2>({ channels, inputs / channels, 1 }, { 1, 1 }, { *_params.get<int>("kernel_size"), *_params.get<int>("kernel_size_temp") })
+		return TCNOptions<2>({ channels, inputs / channels, 1 }, { 1, 1 }, { *_params.get<int>("kernel_size_temp"), *_params.get<int>("kernel_size") })
 			.hidden_channels(_params.get<int>("hidden_channels", channels))
 			.residual_blocks(*_params.get<int>("residual_blocks"))
 			.residual(*_params.get<bool>("residual"))
@@ -83,6 +83,7 @@ namespace nn {
 			.block_size(*_params.get<int>("block_size"))
 			.average(*_params.get<bool>("average"))
 			.bias(*_params.get<bool>("bias"))
-			.padding_mode(*_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode"));
+			.padding_mode(*_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode"))
+			.interleaved(*_params.get<bool>("interleaved"));
 	}
 }

@@ -2,12 +2,12 @@
 
 namespace nn {
 
-	// expanding array with val as first element, 1 otherwise
+	// expanding array with val at position ind element, oth otherwise
 	template<int64_t D>
-	static torch::ExpandingArray<D, int64_t> makeExpandingArray(int64_t val)
+	static torch::ExpandingArray<D, int64_t> makeExpandingArray(int64_t val, int64_t oth = 1, int64_t ind = 0)
 	{
-		torch::ExpandingArray<D, int64_t> arr(1);
-		arr->front() = val;
+		torch::ExpandingArray<D, int64_t> arr(oth);
+		arr->at(ind) = val;
 		return arr;
 	}
 
@@ -52,8 +52,17 @@ namespace nn {
 				.bias(options.bias())
 				.padding(padding)
 				.dilation(makeExpandingArray<D>(dilation))
-				.padding_mode(options.padding_mode())
+				.padding_mode(options.padding_mode()->front())
 				.stride(makeExpandingArray<D>(options.average() && i == stack_size - 1 ? 2 : 1));
+
+			if (options.interleaved())
+			{
+				// +1 to start with spatial dim
+				const int dim = (i+1) % D;
+				convOptions.kernel_size(makeExpandingArray<D>(kernel_size->at(dim), 1, dim));
+				convOptions.padding(makeExpandingArray<D>(padding->at(dim), 0, dim));
+				convOptions.padding_mode(options.padding_mode()->at(dim));
+			}
 
 			layers.emplace_back(Conv(convOptions));
 			this->register_module("layer" + std::to_string(i), layers.back());
@@ -127,7 +136,8 @@ namespace nn {
 			.activation(options.activation())
 			.dropout(options.dropout())
 			.average(options.average())
-			.residual(options.residual());
+			.residual(options.residual())
+			.interleaved(options.interleaved());
 	}
 
 	template<size_t D, typename Derived>
@@ -194,7 +204,7 @@ namespace nn {
 
 	// ============================================================================
 
-	TCNInterleafed::TCNInterleafed(const Options& _options)
+/*	TCNInterleafed::TCNInterleafed(const Options& _options)
 		: options(_options)
 	{
 		reset();
@@ -202,12 +212,50 @@ namespace nn {
 
 	void TCNInterleafed::reset()
 	{
+		using TCNBlock = TemporalConvBlockImpl<2>;
+
 		layers = torch::nn::Sequential();
+
+		auto spatialConvOpts = torch::nn::ConvOptions<2>(
+			options.in_size()->front(),
+			options.hidden_channels(),
+			options.kernel_size())
+			.bias(options.bias())
+			.padding(options.kernel_size()->at(1) / 2)
+			.padding_mode(torch::kCircular);
+		spatialConvOpts.kernel_size()->front() = 1;
+
+		auto resOptions = makeBlockOptions<2>(options.hidden_channels(),
+			options.hidden_channels(),
+			options);
+		resOptions.kernel_size()->at(1) = 1;
+
+		for (int i = 0; i < options.residual_blocks(); ++i)
+		{
+			layers->push_back(TCNBlock(resOptions));
+			layers->push_back(torch::nn:Conv2d(spatialConvOpts));
+			if (!options.average())
+				resOptions.dilation() <<= 1;
+		}
+
+		// convolution over the complete remaining time dimension
+		int64_t window_size = options.in_size()->at(1);
+		if (options.average()) // divide by 2 for each block
+			window_size >>= options.residual_blocks();
+
+		auto convOptions = torch::nn::ConvOptions<2>(
+			options.hidden_channels(),
+			options.out_size()->front(),
+			makeExpandingArray<D>(window_size))
+			.bias(options.bias());
+		layers->push_back(torch::nn::Conv2d(convOptions));
+
+		this->register_module("layers", layers);
 	}
 
 	torch::Tensor TCNInterleafed::forward(torch::Tensor x)
 	{
 		// remove time and channel dimension if 1
 		return layers->forward(x).squeeze(2).squeeze(1);
-	}
+	}*/
 } 

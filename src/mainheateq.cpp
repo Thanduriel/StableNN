@@ -18,7 +18,7 @@ using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
 using T = System::ValueT;
 
-using NetType = nn::Convolutional;
+using NetType = nn::TCN2D;
 /*using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
 	systems::discretization::MakeInputHeatEq<std::is_same_v<NetType, nn::TCN2D>>,
 	nn::StateToTensor>;*/
@@ -200,7 +200,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 256; // 512
-	params["num_epochs"] = USE_LBFGS ? 128 : 512;
+	params["num_epochs"] = USE_LBFGS ? 128 : 64;
 	params["loss_p"] = 2;
 
 	params["lr"] = USE_LBFGS ? 0.05 : 0.005;
@@ -208,7 +208,7 @@ int main()
 	params["weight_decay"] = 0.0;
 	params["history_size"] = 100;
 
-	params["depth"] = 5;
+	params["depth"] = 4;
 	params["bias"] = true;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
@@ -217,19 +217,21 @@ int main()
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["augment"] = 2;
 	params["hidden_size"] = N;
-	params["hidden_channels"] = 8;
+	params["hidden_channels"] = 4;
 	params["kernel_size"] = 5;
 	params["kernel_size_temp"] = 3; // temporal dim
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
-	params["average"] = true;
+	params["average"] = false;
 	params["residual"] = true;
+	params["interleaved"] = true;
+	params["padding_mode"] = torch::kCircular;
 	params["train_in"] = false;
 	params["train_out"] = false;
-	params["activation"] = nn::ActivationFn(torch::sigmoid);
-	params["name"] = std::string("heateq32_conv_5");
+	params["activation"] = nn::ActivationFn(torch::tanh);
 
-	params["load_net"] = true;
+	params["name"] = std::string("heateq32_tcn_5_3_interleaved");
+	params["load_net"] = false;
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{

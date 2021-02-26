@@ -26,8 +26,9 @@ namespace nn {
 		// number of serial layers in this block
 		TORCH_ARG(int64_t, block_size) = 2;
 
-		using padding_mode_t = torch::nn::detail::conv_padding_mode_t;
-		TORCH_ARG(padding_mode_t, padding_mode) = torch::kZeros;
+		// only the first value is used unless interleaved = =true
+		using padding_mode_t = torch::ExpandingArray<D,torch::nn::detail::conv_padding_mode_t>;
+		TORCH_ARG(padding_mode_t, padding_mode) = padding_mode_t(torch::kZeros);
 
 		// amount of dropout after convolution layers
 		TORCH_ARG(double, dropout) = 0.0;
@@ -38,6 +39,9 @@ namespace nn {
 
 		// have a residual connection from input to output
 		TORCH_ARG(bool, residual) = true;
+
+		// only for D == 2: use 1d kernels on alternating dimensions
+		TORCH_ARG(bool, interleaved) = false;
 	};
 
 	template<int64_t D, typename Derived = void>
@@ -104,8 +108,9 @@ namespace nn {
 		TORCH_ARG(double, dropout) = 0.0;
 		TORCH_ARG(bool, average) = false;
 		TORCH_ARG(bool, residual) = true;
-		using padding_mode_t = torch::nn::detail::conv_padding_mode_t;
-		TORCH_ARG(padding_mode_t, padding_mode) = torch::kZeros;
+		using padding_mode_t = torch::ExpandingArray<D, torch::nn::detail::conv_padding_mode_t>;
+		TORCH_ARG(padding_mode_t, padding_mode) = padding_mode_t(torch::kZeros);
+		TORCH_ARG(bool, interleaved) = false;
 	};
 
 	// Generic temporal convolution network with residual blocks and exponential dilation.
@@ -161,7 +166,7 @@ namespace nn {
 	// ============================================================================
 
 	// 2d TCN which preforms 1D convolutions alternating between dimensions
-	class TCNInterleafed : public torch::nn::Cloneable<TCNInterleafed>
+/*	class TCNInterleafed : public torch::nn::Cloneable<TCNInterleafed>
 	{
 	public:
 		using Options = TCNOptions<2>;
@@ -173,5 +178,5 @@ namespace nn {
 
 		torch::nn::Sequential layers;
 		Options options;
-	};
+	};*/
 }
