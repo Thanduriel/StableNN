@@ -181,6 +181,39 @@ void makeStableFrequencyData(const System& system, const nn::HyperParams& params
 	for (auto& t : threads) t.join();
 }
 
+template<typename Network>
+void makeJacobianData(
+	Network& _network, 
+	const State& _min,
+	const State& _max, 
+	const systems::Vec<double, 2>& _steps)
+{
+	using namespace torch;
+	std::ofstream file1("spectral_radius.txt");
+	std::ofstream file2("determinant.txt");
+	for (double v = _min.velocity; v <= _max.velocity; v += _steps[1])
+	{
+		for (double p = _min.position; p <= _max.position; p += _steps[0])
+		{
+			const Tensor z = tensor({ p, v }, c10::TensorOptions(c10::kDouble));
+			const Tensor J = eval::computeJacobian(_network, z);
+			const auto eigenvalues = eval::computeEigs(J);
+			double max = 0.0;
+			std::complex<double> det = 1.0;
+			for (auto eig : eigenvalues)
+			{
+				const double abs = std::abs(eig);
+				if (abs > max) max = abs;
+				det *= eig;
+			}
+			file1 << p << " " << v << " " << max << "\n";
+			file2 << p << " " << v << " " << det.real() << "\n";
+		}
+		file1 << "\n";
+		file2 << "\n";
+	}
+}
+
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
 {
 	std::vector<State> states;
@@ -331,14 +364,20 @@ int main()
 	//	Integrator integrator(system, *params.get<double>("time_step"));
 	//	std::cout << eval::computePeriodLength(State{ 0.01 * PI, 0.0 }, integrator, 16);
 
+		const double energy = system.energy({ 3.0,0 });
+		const auto state = system.energyToState(energy * 0.75, energy * 0.25);
+		std::cout << state;
+		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
+		makeJacobianData(mlp, { -2.0, -1.0 }, { 2.0, 1.01 }, { 0.05, 0.05 });
+
 	/*	auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlpIO");
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym");
 		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian");*/
-		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
+	/*	auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4l");
 		auto antisym2 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4");
 		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "HamiltonianInterleafed_2_4l");
-		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), 8, mlpIO, antisym, hamiltonian);
+		makeEnergyErrorData<NUM_INPUTS>(system, *params.get<double>("time_step"), 8, mlpIO, antisym, hamiltonian);*/
 
 		//	std::cout << eval::computeJacobian(othNet, torch::tensor({ 1.5, 0.0 }, c10::TensorOptions(c10::kDouble)));
 		//	std::cout << eval::lipschitz(othNet) << "\n";

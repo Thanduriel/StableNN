@@ -1,6 +1,7 @@
 #pragma once
 
 #include <torch/torch.h>
+#include <complex>
 
 namespace eval {
 
@@ -27,6 +28,8 @@ namespace eval {
 
 		return x.grad();
 	}
+
+	std::vector<std::complex<double>> computeEigs(const torch::Tensor& _tensor);
 
 	// Returns a matrix A such that A*x is equivalent to the application of _conv.
 	torch::Tensor toMatrix(const torch::nn::Conv1d& _conv, int64_t _size);

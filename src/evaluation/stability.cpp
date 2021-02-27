@@ -10,6 +10,21 @@ namespace eval {
 		std::cout << eigenvalues << "\n";
 	}
 
+	std::vector<std::complex<double>> computeEigs(const torch::Tensor& _tensor)
+	{
+		const auto& [eigenvalues, _] = torch::eig(_tensor);
+		std::vector<std::complex<double>> vals;
+		const int64_t n = eigenvalues.sizes()[0];
+		vals.reserve(n);
+
+		for (int64_t i = 0; i < n; ++i)
+		{
+			vals.emplace_back(eigenvalues.index({ i,0 }).item<double>(),
+				eigenvalues.index({ i,1 }).item<double>());
+		}
+		return vals;
+	}
+
 	torch::Tensor toMatrix(const torch::nn::Conv1d& _conv, int64_t _size)
 	{
 		using namespace torch::indexing;
