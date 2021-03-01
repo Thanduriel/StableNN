@@ -49,7 +49,7 @@ namespace nn {
 
 		torch::Tensor forwardY(const torch::Tensor& input);
 		torch::Tensor forwardZ(const torch::Tensor& input);
-		torch::Tensor system_matrix() const;
+		torch::Tensor system_matrix(bool y) const;
 
 		torch::Tensor weight;
 		torch::Tensor biasY;

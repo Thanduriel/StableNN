@@ -15,7 +15,7 @@ namespace nn {
 		TORCH_ARG(int64_t, hidden_layers) = 0;
 		TORCH_ARG(bool, bias) = true;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
-		TORCH_ARG(int64_t, total_time) = 0.0;
+		TORCH_ARG(double, total_time) = 0.0;
 	};
 
 	// Fully connected multi-layer perceptron with residual connections.
