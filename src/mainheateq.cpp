@@ -18,15 +18,12 @@ using System = systems::HeatEquation<double, N>;
 using State = typename System::State;
 using T = System::ValueT;
 
-using NetType = nn::TCN2D;
-/*using InputMaker = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
-	systems::discretization::MakeInputHeatEq<std::is_same_v<NetType, nn::TCN2D>>,
-	nn::StateToTensor>;*/
+using NetType = nn::Convolutional;
 using OutputMaker = nn::StateToTensor;
-
+static_assert(!std::is_same_v<NetType, nn::TCN2d> || USE_LOCAL_DIFFUSIFITY, "input tensor not implemented for this config");
 namespace nn {
 	template<>
-	struct InputMakerSelector<nn::TCN2D>
+	struct InputMakerSelector<nn::TCN2d>
 	{
 		using type = systems::discretization::MakeInputHeatEq<true>;
 	};
@@ -41,6 +38,7 @@ namespace nn {
 }
 
 namespace disc = systems::discretization;
+using SuperSampleIntegrator = disc::SuperSampleIntegrator<T, N, N * 32, N == 64 ? 1 : 2>;
 
 
 // convoluted way to store to allow comparison of networks with different NumInputs
@@ -94,7 +92,7 @@ void evaluate(
 	disc::AnalyticHeatEq analytic(system, _timeStep, _initialState);
 	disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, _timeStep);
 	disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImplicit(system, _timeStep);
-	disc::SuperSampleIntegrator<T, N, N * 32> superSampleFiniteDifs(system, _timeStep, _initialState, 64);
+	SuperSampleIntegrator superSampleFiniteDifs(system, _timeStep, _initialState, 64);
 
 	auto [referenceIntegrator, otherIntegrator] = [&]() 
 	{
@@ -118,6 +116,19 @@ void evaluate(
 		makeNNIntegrator(system, _networks, initialStates)...);
 }
 
+template<size_t NumTimeSteps, typename... Networks>
+void evaluate(const std::vector<System>& _systems,
+	const std::vector<State>& _initialStates,
+	double _timeStep,
+	const eval::EvalOptions& _options,
+	Networks&... _networks)
+{
+	for (size_t i = 0; i < _systems.size(); ++i)
+	{
+		evaluate<NumTimeSteps>(_systems[i], _initialStates[i], _timeStep, _options, _networks...);
+	}
+}
+
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
 {
 	std::vector<State> states;
@@ -138,17 +149,17 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 	return states;
 }
 
-std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed)
+// @param _maxChangeRate maximum difference between neighboring cells
+std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed, T _maxChangeRate = 0.05, T _expectedAvg = 0.0)
 {
 	std::vector<System> systems;
 	systems.reserve(_numSystems);
 
 	std::default_random_engine rng(_seed);
-	constexpr T maxChange = 0.05;
-	std::uniform_real_distribution<T> base(0.1, 2.0);
+	std::uniform_real_distribution<T> base(0.1, 2.5);
 	for (size_t i = 0; i < _numSystems; ++i)
 	{
-		const T avg = base(rng);
+		const T avg = _expectedAvg == 0.0 ? base(rng) : _expectedAvg;
 		std::uniform_real_distribution<T> dist(-avg*0.9, +avg*0.9);
 
 		std::array<T, N> coefs;
@@ -163,7 +174,7 @@ std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed)
 			{
 				const T next = coefs[(j+1) % N];
 				const T da = coefs[j] - next;
-				if (std::abs(da) > maxChange)
+				if (std::abs(da) > _maxChangeRate)
 					isSmooth = false;
 				coefs[j] = 0.75 * coefs[j] + 0.125 * next + 0.125 * coefs[(j - 1 + N) % N];
 			}
@@ -173,6 +184,11 @@ std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed)
 	}
 
 	return systems;
+}
+
+void runComparison(const nn::HyperParams& _params)
+{
+
 }
 
 int main()
@@ -193,24 +209,25 @@ int main()
 	params["time_step"] = 0.0001;
 	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 1;
 #ifdef NDEBUG
-	params["train_samples"] = 256;
-	params["valid_samples"] = 256;
+	params["train_samples"] = 128;
+	params["valid_samples"] = 128;
 #else
 	params["train_samples"] = 1;
 	params["valid_samples"] = 1;
 #endif
-	params["batch_size"] = 256; // 512
-	params["num_epochs"] = USE_LBFGS ? 128 : 64;
+	params["batch_size"] = 128; // 512
+	params["num_epochs"] = USE_LBFGS ? 128 : 1024; // 768
 	params["loss_p"] = 2;
 
-	params["lr"] = USE_LBFGS ? 0.05 : 0.005;
-	params["lr_decay"] = USE_LBFGS ? 1.0 : 1.0;
-	params["weight_decay"] = 0.0;
+	params["lr"] = USE_LBFGS ? 0.002 : 0.001;
+	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
+	params["lr_epoch_update"] = 512;
+	params["weight_decay"] = 0.0;//5e-4;
 	params["history_size"] = 100;
 
 	params["depth"] = 4;
 	params["bias"] = true;
-	params["num_inputs"] = NUM_INPUTS;
+	params["num_inputs"] = std::is_same_v<NetType, nn::Convolutional> ? 1 : NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	// makeNetwork uses this but does not handle the spatial dimension correctly
 	params["state_size"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
@@ -222,25 +239,26 @@ int main()
 	params["kernel_size_temp"] = 3; // temporal dim
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
-	params["average"] = false;
+	params["average"] = true;
 	params["residual"] = true;
 	params["interleaved"] = true;
-	params["padding_mode"] = torch::kCircular;
+	params["padding_mode"] = torch::nn::detail::conv_padding_mode_t(torch::kCircular);
+	params["padding_mode_temp"] = torch::nn::detail::conv_padding_mode_t(torch::kZeros); // padding in temporal dim; only used when interleaved=true
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
-	params["name"] = std::string("heateq32_tcn_5_3_interleaved");
+	params["name"] = std::string("tcn_interleaved_wd_new");
 	params["load_net"] = false;
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{
-		auto trainingStates = generateStates(heatEq, 64, 0x612FF6AEu);
-		auto validStates = generateStates(heatEq, 8, 0x195A4Cu);
-		auto warmupSteps = std::vector<size_t>{ 0, 64, 0, 256, 16, 4, 128, 2 };
+		auto trainingStates = generateStates(heatEq, 128, 0x612FF6AEu);
+		auto validStates = generateStates(heatEq, 32, 0x195A4Cu);
+		auto warmupSteps = std::vector<size_t>{ 0, 64, 384, 256, 16, 4, 128, 2, 0, 64, 384, 256, 16, 4, 128, 400 };
 
 		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
-			systems::discretization::SuperSampleIntegrator<T, N, N * 32>,
+			SuperSampleIntegrator,
 			systems::discretization::AnalyticHeatEq<T, N>>;
 
 		auto systems = USE_LOCAL_DIFFUSIFITY ? generateSystems(trainingStates.size() + validStates.size(), 0x6341241)
@@ -251,24 +269,27 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			params["name"] = std::string("single_output_kernel2");
+			params["name"] = std::string("conv_wd_2");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {5}},
-					{"hidden_channels", {4,8}},
+				//	{"hidden_channels", {4,8}},
 				//	{"residual", {false, true}},
 				//	{"bias", {false, true}},
-					{"depth", {2,4}},
+				//	{"depth", {2,4}},
 				//	{"lr", {0.02, 0.025, 0.03}},
 				//	{"lr", {0.015, 0.01, 0.005}},
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
 				//	{"amsgrad", {false, true}},
+				//	{"lr_decay", {0.25, 0.1}},
+					{"weight_decay", {0.001, 0.01, 0.1}}
+				//	{"padding_mode_temp", {torch::kZeros, torch::kCircular, torch::kReflect}}
 				//	{"num_epochs", {2048}},
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
 				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
 				}, params);
 
-			hyperOptimizer.run(2);
+			hyperOptimizer.run(4);
 		}
 		if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 			std::cout << trainNetwork(params) << "\n";
@@ -277,7 +298,7 @@ int main()
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
 		auto validStates = generateStates(heatEq, 4, 0x195A4C);
-		auto& state = validStates[0];
+		auto& state = validStates[1];
 		auto trainingStates = generateStates(heatEq, 32, 0x612FF6AEu);
 
 		auto system = USE_LOCAL_DIFFUSIFITY ? generateSystems(1, 0xE312A41)[0]
@@ -287,12 +308,12 @@ int main()
 		disc::AnalyticHeatEq analytic(system, timeStep, state);
 		disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, timeStep);
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
-		disc::SuperSampleIntegrator<T, N, N * 32> superSampleFiniteDifs(system, timeStep, state, 64);
+		SuperSampleIntegrator superSampleFiniteDifs(system, timeStep, state, 64);
 
-		auto net = nn::load<NetType, USE_WRAPPER>(params);
+	//	auto net = nn::load<NetType, USE_WRAPPER>(params);
 	//	auto net = nn::load<NetType, USE_WRAPPER>(params, "1_0_single_output_kernel");
 	//	torch::load(net, "0_1_0_1_diffusivity2.pt");
-		nn::Integrator<System, decltype(net), NUM_INPUTS> nn(system, net);
+	//	nn::Integrator<System, decltype(net), NUM_INPUTS> nn(system, net);
 
 	//	nn::exportTensor(analytic.getGreenFn(timeStep, 63), "green.txt");
 	//	eval::checkEnergy(net->layers.front(), 64);
@@ -316,6 +337,8 @@ int main()
 
 		eval::EvalOptions options;
 		options.numShortTermSteps = 128;
+		options.numLongTermSteps = 1024;
+		options.mseAvgWindow = 8;
 	/*	for(auto& state : trainingStates)
 		{
 			disc::AnalyticHeatEq analytic(system, timeStep, state);
@@ -333,10 +356,64 @@ int main()
 			eval::evaluate(heatEq, state, options, analytic, finiteDiffs, superSampleFiniteDifs, superSampleFiniteDifs1, superSampleFiniteDifs2);
 			break;
 		}*/
-		auto tcn = nn::load<nn::TCN2D, USE_WRAPPER>(params, "heateq32_tcn_5_3");
+	//	auto tcn = nn::load<nn::TCN2d, USE_WRAPPER>(params, "heateq32_tcn_5_3");
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
-			evaluate<8>(system, state, timeStep, options, wrapNetwork<NUM_INPUTS>(net), wrapNetwork<8>(tcn));
+		{
+			// magnitude
+			std::vector<System> systems;
+		/*	std::array<T, N> heatCoefs{};
+			heatCoefs.fill(0.2);
+			systems.emplace_back(heatCoefs);
+			heatCoefs.fill(0.5);
+			systems.emplace_back(heatCoefs);
+			heatCoefs.fill(1.0);
+			systems.emplace_back(heatCoefs);
+			heatCoefs.fill(2.0);
+			systems.emplace_back(heatCoefs);
+			heatCoefs.fill(3.0);
+			systems.emplace_back(heatCoefs);*/
+			// roughness
+			systems.push_back(generateSystems(1, 0xE312A41, 0.05, 1.0)[0]); // standard training sample with smooth changes
+			systems.push_back(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0]);
+			systems.push_back(generateSystems(1, 0xFBB4F, 0.25, 1.0)[0]); 
+			systems.push_back(generateSystems(1, 0xBB4F0101, 0.5, 1.0)[0]);
+			std::vector<State> states(systems.size(), state);
+			std::cout << torch::zeros({ 4, 4 });
+			// networks
+		//	auto tcnInterleaved = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_interleaved_lbfgs");
+		//	auto tcnInterleavedAdam = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_interleaved");
+			auto tcnInterleavedWd0 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_interleaved_wd");
+			auto tcnInterleavedWd1 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "1_tcn_interleaved_wd");
+			auto tcnInterleavedWd2 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "2_tcn_interleaved_wd");
+			auto tcnInterleavedWd3 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "3_tcn_interleaved_wd");
+			auto tcnInterleavedWd4 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "4_tcn_interleaved_wd_768_epochs");
+			auto tcnInterleavedWd5 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "4_tcn_interleaved_wd");
+			auto tcnInterleavedWd6 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_wd_2");
+			auto tcnInterleavedWd7 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "1_tcn_wd_2");
+			auto tcnInterleavedWd8 = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_wd_3");
+			auto conv0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv");
+			auto conv1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_adam");
+			auto conv2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv");
+			auto conv3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv");
+			auto conv4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd_2");
+			auto conv5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_wd_2");
+			evaluate<8>(systems, states, timeStep, options, 
+				wrapNetwork<8>(tcnInterleavedWd0), 
+			//	wrapNetwork<8>(tcnInterleavedWd1),
+			//	wrapNetwork<8>(tcnInterleavedWd2),
+				wrapNetwork<8>(tcnInterleavedWd3),
+				wrapNetwork<8>(tcnInterleavedWd6),
+				wrapNetwork<8>(tcnInterleavedWd7),
+				wrapNetwork<8>(tcnInterleavedWd8),
+				wrapNetwork<1>(conv0),
+				wrapNetwork<1>(conv1),
+				wrapNetwork<1>(conv2),
+				wrapNetwork<1>(conv3),
+				wrapNetwork<1>(conv4),
+				wrapNetwork<1>(conv5));
+		//	evaluate<8>(system, state, timeStep, options, wrapNetwork<NUM_INPUTS>(net), wrapNetwork<8>(tcnInterleaved));
+		}
 		else
-			eval::evaluate(system, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl, nn);
+			eval::evaluate(system, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl); //nn
 	}
 }

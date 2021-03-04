@@ -25,8 +25,11 @@ namespace eval {
 		bool writeEnergy = false;
 		bool writeState = false;
 		bool writeMSE = false;
+		bool append = false; // append to file instead of overwriting it for all write options
+		int mseAvgWindow = 0; // take average of a number of previous time-steps; if 0 use numShortTermSteps
 		int numShortTermSteps = 256;
-		int numLongTermSteps = 4;
+		int numLongTermSteps = 4096;
+		int numLongTermRuns = 4;
 	};
 
 	// Simulates the given system with different integrators to observe energy over time.
@@ -53,20 +56,24 @@ namespace eval {
 		std::cout << "initial state:  " << _initialState << "\n";
 		std::cout << "initial energy: " << initialEnergy << std::endl;
 
-		// short term
+		// short term simulation
 		stateLog.reserve(_options.numShortTermSteps + 1);
 		for (int i = 0; i < _options.numShortTermSteps; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
 			stateLog.push_back(currentState);
+		}
 
+		const int avgWindow = _options.mseAvgWindow ? _options.mseAvgWindow : _options.numShortTermSteps;
+		for (int i = _options.numShortTermSteps - avgWindow; i < _options.numShortTermSteps; ++i)
+		{
 			for (size_t j = 0; j < numIntegrators; ++j)
 			{
-				const auto& state = currentState[j];
+				const auto& state = stateLog[i][j];
 				double err = 0.0;
 				for (size_t k = 0; k < state.size(); ++k)
 				{
-					const double d = state[k] - currentState[0][k];
+					const double d = state[k] - stateLog[i][0][k];
 					err += d * d;
 				}
 				cumulativeError[j] += std::sqrt(err);
@@ -99,7 +106,7 @@ namespace eval {
 
 		if (_options.writeState)
 		{
-			std::ofstream spaceTimeFile("spacetime.txt");
+			std::ofstream spaceTimeFile("spacetime.txt", _options.append ? std::ios::app : std::ios::out);
 
 			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state)
 				{
@@ -109,11 +116,11 @@ namespace eval {
 
 		if (_options.writeMSE)
 		{
-			std::ofstream mseFile("mse.txt", std::ios::app);
+			std::ofstream mseFile("mse.txt", _options.append ? std::ios::app : std::ios::out);
 			mseFile << initialEnergy << ", ";
 			for (double err : cumulativeError)
 			{
-				mseFile << err / _options.numShortTermSteps << ", ";
+				mseFile << err / avgWindow << ", ";
 			}
 			mseFile << "\n";
 		}
@@ -124,17 +131,17 @@ namespace eval {
 		std::cout << "mse -------------------------------------------\n";
 		for (double err : cumulativeError)
 		{
-			std::cout << err / _options.numShortTermSteps << ", ";
+			std::cout << err / avgWindow << ", ";
 		}
 		std::cout << "\n";
 
-		if (_options.numLongTermSteps)
+		if (_options.numLongTermRuns)
 		{
 			// long term energy behavior
 			std::cout << "longterm --------------------------------------" << "\n";
-			for (int i = 0; i < _options.numLongTermSteps; ++i)
+			for (int i = 0; i < _options.numLongTermRuns; ++i)
 			{
-				for (int j = 0; j < 4096; ++j)
+				for (int j = 0; j < _options.numLongTermSteps; ++j)
 				{
 					details::evaluateStep<0>(currentState, _integrators...);
 				}

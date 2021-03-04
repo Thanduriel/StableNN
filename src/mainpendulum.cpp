@@ -32,7 +32,7 @@
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
-using NetType = nn::HamiltonianInterleafed;
+using NetType = nn::AntiSymmetric;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
@@ -111,12 +111,14 @@ void evaluate(const System& _system,
 }
 
 template<size_t NumTimeSteps, typename... Networks>
-void makeEnergyErrorData(const System& _system, double _timeStep, int _numSteps, Networks&... _networks)
+void makeEnergyErrorData(const System& _system, double _timeStep, int _numSteps, int _avgWindow, Networks&... _networks)
 {
 	eval::EvalOptions options;
 	options.writeMSE = true;
-	options.numLongTermSteps = 0;
+	options.numLongTermRuns = 0;
 	options.numShortTermSteps = _numSteps;
+	options.mseAvgWindow = _avgWindow;
+	options.append = true;
 
 	constexpr int numStates = 128;
 	std::vector<State> states;
@@ -278,28 +280,28 @@ int main()
 	params["momentum"] = 0.9;
 	params["dampening"] = 0.0;
 
-	params["seed"] = 9378341130ull;
-	params["depth"] = 2;
+	params["seed"] = 9378341130ull;//9378341130ull;
+	params["depth"] = 4;
 	params["diffusion"] = 0.05;
-	params["bias"] = false;
-	params["time"] = 0.25;
+	params["bias"] = true;
+	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
-	params["hidden_size"] = 8;
+	params["hidden_size"] = 4;
 	params["train_in"] = false;
 	params["train_out"] = false;
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
-	params["augment"] = 4;
+	params["augment"] = 8;
 	params["kernel_size"] = 3;
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
 	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("antisym_2_8");
+	params["name"] = std::string("mlp_4_4_2t");
 	params["load_net"] = false;
 
 /*	std::uniform_int_distribution<uint64_t> dist(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint64_t>::max());
@@ -309,7 +311,7 @@ int main()
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("HamiltonianAugmented_2_4l");
+		params["name"] = std::string("antisym_4_8");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
@@ -318,12 +320,12 @@ int main()
 			//	{"batch_size", {64, 256}},
 			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
-				{"time", { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 }},
+			//	{"time", { /*0.25, 0.5, 1.0,*/ 2.0, 4.0, 8.0, 16.0 }},
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
 			//	{"time_step", { 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 }},
-			//	{"bias", {false, true}},
+				{"bias", {false, true}},
 			//	{"in_out_bias", {false,true}},
 			//	{"diffusion", {0.0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0}},
 			//	{"hidden_size", {4, 8}},
@@ -334,7 +336,7 @@ int main()
 			//	{"average", {false, true}},
 			//	{"block_size", {1,2,3}},
 			//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::zerosigmoid), nn::ActivationFn(nn::elu)}},
-			//	{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
+				{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
 			}, params);
 
 		hyperOptimizer.run(8);

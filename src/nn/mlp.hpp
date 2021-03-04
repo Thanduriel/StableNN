@@ -30,6 +30,7 @@ namespace nn {
 
 		MLPOptions options;
 		std::vector<torch::nn::Linear> layers;
+		double timeStep;
 	};
 
 	TORCH_MODULE(MultiLayerPerceptron);

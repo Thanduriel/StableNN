@@ -40,6 +40,7 @@ namespace nn {
 			}
 		}
 
+		// final layer only reduces the number of channels
 		convOptions.out_channels(1);
 		convOptions.kernel_size(1);
 		convOptions.padding(0);

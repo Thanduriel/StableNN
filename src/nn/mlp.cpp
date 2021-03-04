@@ -12,11 +12,12 @@ namespace nn {
 
 	void MultiLayerPerceptronImpl::reset()
 	{
-		torch::nn::LinearOptions hiddenOptions(options.hidden_size(), options.hidden_size());
-		hiddenOptions.bias(options.bias());
 		layers.clear();
 		layers.reserve(options.hidden_layers());
+		timeStep = options.total_time() / options.hidden_layers();
 
+		torch::nn::LinearOptions hiddenOptions(options.hidden_size(), options.hidden_size());
+		hiddenOptions.bias(options.bias());
 		for (int64_t i = 0; i < options.hidden_layers(); ++i)
 		{
 			layers.emplace_back(torch::nn::Linear(hiddenOptions));
@@ -28,7 +29,6 @@ namespace nn {
 
 	torch::Tensor MultiLayerPerceptronImpl::forward(torch::Tensor x)
 	{
-		const double timeStep = options.total_time() / layers.size();
 		auto& activation = options.activation();
 		for (auto& layer : layers)
 			x = x + timeStep * activation(layer(x));

@@ -11,7 +11,7 @@ namespace eval {
 		double p = 1.0;
 		for (const auto& layer : _net->layers)
 		{
-			p *= 1.0 + details::norm(layer->weight, 2);
+			p *= 1.0 + _net->timeStep * details::norm(layer->weight, 2);
 		}
 
 		return p;

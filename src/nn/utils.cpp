@@ -18,7 +18,6 @@ namespace nn {
 	torch::Tensor lp_loss(const torch::Tensor& input, const torch::Tensor& target, c10::Scalar p)
 	{
 		assert(input.squeeze().dim() <= 2); // currently no support for multidimensional data
-
 		torch::Tensor dif = input - target;
 		return (input - target).norm(p, dif.dim()-1).mean();
 	}

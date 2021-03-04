@@ -21,6 +21,7 @@ namespace discretization {
 		{
 			// variable heat coefficients are currently not supported
 		//	assert(std::all_of(m_system.heatCoefficients().begin(), m_system.heatCoefficients().end(), [](T v) { return v == 1.0; }));
+			reset(m_system, _initialState);
 		}
 
 		AnalyticHeatEq(const AnalyticHeatEq& _oth, const HeatEquation<T, N>& _system, const State& _initialState)
@@ -185,12 +186,12 @@ namespace discretization {
 
 	// Wrapper which increases the internal spatial and temporal sampling to reduce the error.
 	// @param M internal spatial resolution
-	template<typename T, int N, int M>
+	template<typename T, int N, int M, int Order = 1>
 	class SuperSampleIntegrator
 	{
 		using SmallState = typename HeatEquation<T, N>::State;
 		using LargeState = typename HeatEquation<T, M>::State;
-		using BaseIntegrator = FiniteDifferencesExplicit<T, M, 1>;
+		using BaseIntegrator = FiniteDifferencesExplicit<T, M, Order>;
 	public:
 		SuperSampleIntegrator(const HeatEquation<T, N>& _system, T _dt, const SmallState& _state = {}, int _sampleRate = 1)
 			: m_system(),
@@ -224,10 +225,10 @@ namespace discretization {
 				coefficients[i] = smallCoefs[lower] * (1.0 - t) + smallCoefs[std::min(upper, N - 1)] * t;
 			}
 			m_system = HeatEquation<T, M>(coefficients, _system.radius());
-			/*	torch::Tensor small = nn::arrayToTensor(_system.heatCoefficients(), m_options);
-				small = torch::fft_rfft(small);
-				torch::Tensor large = torch::fft_irfft(small, M);
-				m_system = HeatEquation<T,M>(nn::tensorToArray<T, M>(large), _system.radius());*/
+		/*	torch::Tensor small = nn::arrayToTensor(_system.heatCoefficients(), m_options);
+			small = torch::fft_rfft(small);
+			torch::Tensor large = torch::fft_irfft(small, M);
+			m_system = HeatEquation<T,M>(nn::tensorToArray<T, M>(large), _system.radius());*/
 
 			// upscale state with fft
 			torch::Tensor stateSmall = nn::arrayToTensor(_state, m_options);

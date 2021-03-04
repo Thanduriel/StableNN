@@ -11,18 +11,18 @@ namespace nn {
 		return arr;
 	}
 
-	template<int64_t D, typename Derived>
-	TemporalConvBlockImpl<D, Derived>::TemporalConvBlockImpl(const TemporalConvBlockOptions<D>& _options)
+	template<int64_t D>
+	TemporalConvBlockImpl<D>::TemporalConvBlockImpl(const TemporalConvBlockOptions<D>& _options)
 		: residual(nullptr),
-		dropout_layer(nullptr),
 		avg_residual(nullptr),
+		dropout_layer(nullptr),
 		options(_options)
 	{
 		reset();
 	}
 
-	template<int64_t D, typename Derived>
-	void TemporalConvBlockImpl<D, Derived>::reset()
+	template<int64_t D>
+	void TemporalConvBlockImpl<D>::reset()
 	{
 		// currently not supported
 		assert(D == 1 || !options.dropout());
@@ -96,10 +96,10 @@ namespace nn {
 		}
 	}
 
-	template<int64_t D, typename Derived>
-	torch::Tensor TemporalConvBlockImpl<D, Derived>::forward(torch::Tensor x)
+	template<int64_t D>
+	torch::Tensor TemporalConvBlockImpl<D>::forward(torch::Tensor x)
 	{
-		auto in = x.clone();
+		torch::Tensor in = options.residual() ? x.clone() : torch::Tensor();
 
 		auto activation = options.activation();
 		for (auto& layer : layers)
@@ -120,8 +120,6 @@ namespace nn {
 	// explicit instantiations
 	template class TemporalConvBlockImpl<1>;
 	template class TemporalConvBlockImpl<2>;
-	template class TemporalConvBlockImpl<1, TemporalConvBlock1DImpl>;
-	template class TemporalConvBlockImpl<2, TemporalConvBlock2DImpl>;
 
 	// ============================================================================
 
@@ -140,14 +138,14 @@ namespace nn {
 			.interleaved(options.interleaved());
 	}
 
-	template<size_t D, typename Derived>
-	TCNImpl<D, Derived>::TCNImpl(const TCNOptions<D>& _options) : options(_options)
+	template<size_t D>
+	TCNImpl<D>::TCNImpl(const TCNOptions<D>& _options) : options(_options)
 	{
 		reset();
 	}
 
-	template<size_t D, typename Derived>
-	void TCNImpl<D, Derived>::reset()
+	template<size_t D>
+	void TCNImpl<D>::reset()
 	{
 		layers = torch::nn::Sequential();
 		// change number of channels in first block
@@ -180,27 +178,40 @@ namespace nn {
 		this->register_module("layers", layers);
 	}
 
-	template<size_t D, typename Derived>
-	torch::Tensor TCNImpl<D, Derived>::forward(torch::Tensor x)
+	template<size_t D>
+	torch::Tensor TCNImpl<D>::forward(torch::Tensor x)
 	{
 		// remove time and channel dimension if 1
 		return layers->forward(x).squeeze(2).squeeze(1);
 	}
 
 	// explicit instantiations
-	template class TCNImpl<1, TCN1DImpl>;
-	template class TCNImpl<2, TCN2DImpl>;
+	template class TCNImpl<1>;
+	template class TCNImpl<2>;
+
+	// ============================================================================
+
+	SimpleTCNImpl::SimpleTCNImpl(const Options& _options)
+		: layers(nullptr),
+		options(_options)
+	{
+		reset();
+	}
+
+	void SimpleTCNImpl::reset()
+	{
+		layers = register_module("tcn", TCN1d(options));
+	}
 
 	torch::Tensor SimpleTCNImpl::forward(torch::Tensor x)
 	{
 		using namespace torch::indexing;
 		auto residual = x.index({ "...", options.in_size()->at(1) - 1 });
-		x = TCNImpl<1, SimpleTCNImpl>::forward(x) + residual;
+		x = layers->forward(x) + residual;
 
 		return x;
 	//	return x.squeeze().unsqueeze(0);
 	}
-	template class TCNImpl<1, SimpleTCNImpl>;
 
 	// ============================================================================
 

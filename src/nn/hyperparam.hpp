@@ -36,7 +36,12 @@ namespace nn {
 			if constexpr (is_stream_writable<std::ostream, T>::value)
 				_out << std::any_cast<T>(_any);
 			else
-				_out << _any.type().name();
+			{
+				std::string name = _any.type().name();
+				// sanitize string to not interfere with HyperParams serialization
+				std::replace(name.begin(), name.end(), ',', ';');
+				_out << name;
+			}
 		}
 
 		template<typename T>
@@ -67,6 +72,7 @@ namespace nn {
 		ExtAny(const ExtAny& _oth) = default;
 		ExtAny(ExtAny&& _oth) = default;
 
+		// allow construction from any type besides ExtAny to not be confused with move construction
 		template<typename T, std::enable_if_t<std::negation_v<std::is_same<std::decay_t<T>, ExtAny>>, int> = 0>
 		ExtAny(T&& _val)
 			: any(std::forward<T>(_val)),
@@ -87,7 +93,7 @@ namespace nn {
 			return *this;
 		}
 
-		// Works only when already initialized with a type
+		// Works only when already initialized with a type.
 		// No stream operators are provided since implicit conversion to ExtAny would enable this for all types.
 		void print(std::ostream& _out) const;
 		void read(std::istream& _out);
@@ -202,7 +208,7 @@ namespace nn {
 	class GridSearchOptimizer
 	{
 	public:
-		// @param _defaults Set of parameters to us which are not found in HyperParamGrid.
+		// @param _defaults Set of parameters to use which are not set in _paramGrid.
 		GridSearchOptimizer(const TrainFn& _trainFn, const HyperParamGrid& _paramGrid,
 			const HyperParams& _defaults = {});
 
@@ -210,6 +216,7 @@ namespace nn {
 		// The number of actual threads can be higher if the network execution/training itself is multi-threaded.
 		void run(unsigned _numThreads = 1) const;
 	private:
+		// Compute new indices for a k-flattening of the HyperParamGrid tensor from a flatIndex.
 		std::pair<size_t, size_t> decomposeFlatIndex(size_t _flatIndex, int _k) const;
 
 		HyperParamGrid m_hyperGrid;

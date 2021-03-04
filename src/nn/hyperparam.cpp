@@ -50,7 +50,7 @@ namespace nn {
 			entry >> buf; // ":"
 			auto it = _params.m_data.find(key);
 			if (it == _params.m_data.end())
-				std::cerr << "Unknown key " << key << std::endl;
+				std::cerr << "Encountered unknown key while parsing param file: " << key << std::endl;
 			else
 				it->second.read(entry);
 		}

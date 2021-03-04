@@ -82,7 +82,7 @@ namespace nn {
 			// not constexpr to prevent warnings
 			if (MODE != Mode::TRAIN_MULTI)
 				std::cout << "Generating data took " << genTime << "s\n";
-
+			
 			// LBFGS does not work with mini batches and random sampling
 			using Sampler = std::conditional_t<USE_SEQ_SAMPLER,
 				dat::samplers::SequentialSampler,
