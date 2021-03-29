@@ -25,6 +25,7 @@ namespace eval {
 		bool writeEnergy = false;
 		bool writeState = false;
 		bool writeMSE = false;
+		bool addInitialStateMSE = false; // print state in addition to energy in mse file
 		bool append = false; // append to file instead of overwriting it for all write options
 		int mseAvgWindow = 0; // take average of a number of previous time-steps; if 0 use numShortTermSteps
 		int numShortTermSteps = 256;
@@ -118,6 +119,8 @@ namespace eval {
 		{
 			std::ofstream mseFile("mse.txt", _options.append ? std::ios::app : std::ios::out);
 			mseFile << initialEnergy << ", ";
+			if (_options.addInitialStateMSE)
+				mseFile << _initialState << ", ";
 			for (double err : cumulativeError)
 			{
 				mseFile << err / avgWindow << ", ";

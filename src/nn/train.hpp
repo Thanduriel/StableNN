@@ -163,6 +163,7 @@ namespace nn {
 				net->train();
 
 				torch::Tensor totalLoss = torch::zeros({ 1 });
+				int forwardRuns = 0;
 
 				for (torch::data::Example<>& batch : *data_loader)
 				{
@@ -178,6 +179,7 @@ namespace nn {
 						}
 						torch::Tensor loss = lossFn(output, batch.target);
 						totalLoss += loss;
+						++forwardRuns; // count runs to normalize the training error
 
 						loss.backward();
 						return loss;
@@ -186,6 +188,7 @@ namespace nn {
 					optimizer.step(closure);
 				}
 				lrScheduler.step(epoch);
+				const double trainLoss = totalLoss.item<double>() / forwardRuns;
 
 				// validation
 				net->eval();
@@ -205,7 +208,8 @@ namespace nn {
 
 				if constexpr (LOG_LEARNING_LOSS)
 				{
-					learnLossLog << totalLoss.item<double>() << ", " << validLoss.item<double>() << "\n";
+					learnLossLog << trainLoss
+						<< ", " << validLoss.item<double>() << "\n";
 				}
 
 				const double totalValidLossD = validLoss.item<double>();
@@ -228,7 +232,7 @@ namespace nn {
 							std::cout << "#";
 						for (int k = progress; k < intervals; ++k)
 							std::cout << " ";
-						std::cout << "> [" << epoch << "/" << numEpochs << "] train loss: " << totalLoss.item<double>() << "\n";
+						std::cout << "> [" << epoch << "/" << numEpochs << "] train loss: " << trainLoss << "\n";
 					}
 				}
 			}
