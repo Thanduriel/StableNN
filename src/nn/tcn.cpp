@@ -40,9 +40,14 @@ namespace nn {
 		const int64_t out_channels = options.out_channels();
 		// set padding so that the size is not changed by the convolutions
 		auto padding = kernel_size;
-		padding->front() = kernel_size->front() / 2 * dilation;
+		assert(kernel_size->front() % 2 == 1 || options.average());
+		padding->front() = options.average() ? kernel_size->front() / 2 - 1 + kernel_size->front() % 2
+			: (kernel_size->front() - 1) * dilation / 2;
 		for (size_t i = 1; i < D; ++i)
+		{
 			padding->at(i) = kernel_size->at(i) / 2;
+			assert(kernel_size->at(i) % 2 == 1);
+		}
 
 		for (int i = 0; i < stack_size; ++i)
 		{
@@ -215,58 +220,25 @@ namespace nn {
 
 	// ============================================================================
 
-/*	TCNInterleafed::TCNInterleafed(const Options& _options)
-		: options(_options)
+	ExtTCNImpl::ExtTCNImpl(const Options& _options)
+		: layers(nullptr),
+		options(_options)
 	{
 		reset();
 	}
 
-	void TCNInterleafed::reset()
+	void ExtTCNImpl::reset()
 	{
-		using TCNBlock = TemporalConvBlockImpl<2>;
-
-		layers = torch::nn::Sequential();
-
-		auto spatialConvOpts = torch::nn::ConvOptions<2>(
-			options.in_size()->front(),
-			options.hidden_channels(),
-			options.kernel_size())
-			.bias(options.bias())
-			.padding(options.kernel_size()->at(1) / 2)
-			.padding_mode(torch::kCircular);
-		spatialConvOpts.kernel_size()->front() = 1;
-
-		auto resOptions = makeBlockOptions<2>(options.hidden_channels(),
-			options.hidden_channels(),
-			options);
-		resOptions.kernel_size()->at(1) = 1;
-
-		for (int i = 0; i < options.residual_blocks(); ++i)
-		{
-			layers->push_back(TCNBlock(resOptions));
-			layers->push_back(torch::nn:Conv2d(spatialConvOpts));
-			if (!options.average())
-				resOptions.dilation() <<= 1;
-		}
-
-		// convolution over the complete remaining time dimension
-		int64_t window_size = options.in_size()->at(1);
-		if (options.average()) // divide by 2 for each block
-			window_size >>= options.residual_blocks();
-
-		auto convOptions = torch::nn::ConvOptions<2>(
-			options.hidden_channels(),
-			options.out_size()->front(),
-			makeExpandingArray<D>(window_size))
-			.bias(options.bias());
-		layers->push_back(torch::nn::Conv2d(convOptions));
-
-		this->register_module("layers", layers);
+		layers = register_module("tcn", TCN2d(options));
 	}
 
-	torch::Tensor TCNInterleafed::forward(torch::Tensor x)
+	torch::Tensor ExtTCNImpl::forward(torch::Tensor x)
 	{
-		// remove time and channel dimension if 1
-		return layers->forward(x).squeeze(2).squeeze(1);
-	}*/
+		using namespace torch::indexing;
+		/* batch size, channels, time, spatial */
+		auto residual = x.index({ "...", 0, -1, "..." });
+		x = layers->forward(x) + residual;
+
+		return x;
+	}
 } 

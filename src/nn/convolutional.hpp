@@ -35,4 +35,17 @@ namespace nn {
 
 	TORCH_MODULE(Convolutional);
 
+	// this wrapper makes it possible to compute the Jacobian of just the first the channel with eval::computeJacobian.
+	struct FlatConvWrapperImpl : public torch::nn::Module
+	{
+		explicit FlatConvWrapperImpl(Convolutional _net);
+
+		torch::Tensor forward(torch::Tensor _input);
+
+		Convolutional net;
+		torch::Tensor constantInputs;
+	};
+
+	TORCH_MODULE(FlatConvWrapper);
+
 }

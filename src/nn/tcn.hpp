@@ -152,18 +152,18 @@ namespace nn {
 
 	// ============================================================================
 
-	// 2d TCN which preforms 1D convolutions alternating between dimensions
-/*	class TCNInterleafed : public torch::nn::Cloneable<TCNInterleafed>
+	// 2d TCN with experimental extensions
+	class ExtTCNImpl : public torch::nn::Cloneable<ExtTCNImpl>
 	{
 	public:
 		using Options = TCNOptions<2>;
-		explicit TCNInterleafed(const Options& options);
+		explicit ExtTCNImpl(const Options& options);
 
 		void reset() override;
-
 		torch::Tensor forward(torch::Tensor x);
 
-		torch::nn::Sequential layers;
+		TCN2d layers;
 		Options options;
-	};*/
+	};
+	TORCH_MODULE(ExtTCN);
 }

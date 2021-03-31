@@ -17,6 +17,7 @@ namespace eval {
 	}
 
 	// Gives the gradient of _module with respect to the inputs.
+	// Expects 1D inputs.
 	template<typename Module>
 	torch::Tensor computeJacobian(Module& _module, const torch::Tensor& _inputs)
 	{
@@ -39,4 +40,5 @@ namespace eval {
 
 	// Checks that this convolution reduces the amount of total energy.
 	void checkEnergy(const torch::nn::Conv1d& _conv, int64_t _size);
+	void checkEnergy(const torch::Tensor& _netLinear);
 }

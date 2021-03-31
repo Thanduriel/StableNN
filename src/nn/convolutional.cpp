@@ -78,4 +78,18 @@ namespace nn {
 
 		return x.squeeze();
 	}
+
+	// ******************************************************************** //
+	FlatConvWrapperImpl::FlatConvWrapperImpl(Convolutional _net)
+		: net(_net)
+	{
+	//	net = register_module("net", Convolutional(_options));
+	}
+
+	torch::Tensor FlatConvWrapperImpl::forward(torch::Tensor _input)
+	{
+		torch::Tensor constants = constantInputs.repeat({ _input.size(0), 1 });
+		torch::Tensor tensor = torch::cat({ _input.unsqueeze(1), constants.unsqueeze(1) }, 1);
+		return net->forward(tensor);
+	}
 }

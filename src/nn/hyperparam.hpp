@@ -55,8 +55,6 @@ namespace nn {
 			}
 			else
 			{
-				std::string s;
-				_in >> s; // still consume the element
 				std::cerr << "Could not read value of type " << _any.type().name() << "\n";
 			}
 		}

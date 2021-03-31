@@ -66,7 +66,7 @@ namespace nn {
 	{
 		return torch::from_blob(const_cast<T*>(_data.data()),
 			{ static_cast<int64_t>(N) },
-			_options);
+			_options).clone();
 	}
 
 	template<typename T, size_t N>

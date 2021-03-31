@@ -26,13 +26,15 @@ namespace nn {
 		using ValueT = typename System::ValueT;
 
 		TrainNetwork(const System& _system, std::vector<State> _trainStates, std::vector<State> _validStates, std::vector<size_t> _warmupSteps = {})
-			: TrainNetwork(std::vector{ _system }, std::move(_trainStates), std::move(_validStates), std::move(_warmupSteps))
+			: TrainNetwork(std::vector{ _system }, std::vector{ _system }, std::move(_trainStates), std::move(_validStates), std::move(_warmupSteps))
 		{
 		}
 
-		TrainNetwork(std::vector<System> _systems, std::vector<State> _trainStates, std::vector<State> _validStates, 
+		TrainNetwork(std::vector<System> _trainSystems, std::vector<System> _validSystems,
+			std::vector<State> _trainStates, std::vector<State> _validStates, 
 			std::vector<size_t> _warmupSteps = {})
-			: m_systems(std::move(_systems)),
+			: m_trainSystems(std::move(_trainSystems)),
+			m_validSystems(std::move(_validSystems)),
 			m_trainStates(std::move(_trainStates)),
 			m_validStates(std::move(_validStates)),
 			m_warmupSteps(std::move(_warmupSteps))
@@ -48,26 +50,17 @@ namespace nn {
 				// integrator implements temporal hyper sampling already
 				if constexpr (std::is_constructible_v<Integrator, System, ValueT, State, int>)
 				{
-					auto integ = Integrator(m_systems[0], *_params.get<double>("time_step"), State{}, hyperSampleRate);
+					auto integ = Integrator(m_trainSystems[0], *_params.get<double>("time_step"), State{}, hyperSampleRate);
 					hyperSampleRate = 1;
 					return integ;
 				}
 				else
-					return Integrator(m_systems[0], *_params.get<double>("time_step") / hyperSampleRate);
+					return Integrator(m_trainSystems[0], *_params.get<double>("time_step") / hyperSampleRate);
 			};
 			Integrator referenceIntegrator = makeIntegrator();
 			
-			// distribute systems to training and validation generation
-			const size_t numTotalStates = m_validStates.size() + m_trainStates.size();
-			const size_t numTrainSystems = std::max(static_cast<size_t>(1), (m_trainStates.size() * m_systems.size()) / numTotalStates );
-			const size_t numValidSystems = std::max(static_cast<size_t>(1), m_systems.size() - numTrainSystems);
-			
-			DataGenerator<System, Integrator, InputMaker, OutputMaker> trainGenerator(
-				std::vector<System>(m_systems.begin(), m_systems.begin() + numTrainSystems), 
-				referenceIntegrator);
-			DataGenerator<System, Integrator, InputMaker, OutputMaker> validGenerator(
-				std::vector<System>(m_systems.end() - numValidSystems, m_systems.end()),
-				referenceIntegrator);
+			DataGenerator<System, Integrator, InputMaker, OutputMaker> trainGenerator(m_trainSystems, referenceIntegrator);
+			DataGenerator<System, Integrator, InputMaker, OutputMaker> validGenerator(m_validSystems, referenceIntegrator);
 
 			auto start = std::chrono::high_resolution_clock::now();
 			namespace dat = torch::data;
@@ -257,7 +250,8 @@ namespace nn {
 		}
 
 	private:
-		std::vector<System> m_systems;
+		std::vector<System> m_trainSystems;
+		std::vector<System> m_validSystems;
 		std::vector<State> m_trainStates;
 		std::vector<State> m_validStates;
 		std::vector<size_t> m_warmupSteps;

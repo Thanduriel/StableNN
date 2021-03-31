@@ -38,6 +38,7 @@ namespace eval {
 
 	struct EvalOptions
 	{
+		bool printHeader = true;
 		bool writeEnergy = false;
 		bool writeState = false;
 		bool writeGlobalError = false;
@@ -72,8 +73,11 @@ namespace eval {
 
 		std::cout << "===============================================\n";
 		const auto initialEnergy = _system.energy(_initialState);
-		std::cout << "initial state:  " << _initialState << "\n";
-		std::cout << "initial energy: " << initialEnergy << std::endl;
+		if (_options.printHeader)
+		{
+			std::cout << "initial state:  " << _initialState << "\n";
+			std::cout << "initial energy: " << initialEnergy << std::endl;
+		}
 
 		// short term simulation
 		const int numShortTermSteps = _options.numShortTermSteps;

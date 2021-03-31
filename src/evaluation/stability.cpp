@@ -97,21 +97,8 @@ namespace eval {
 
 	void checkEnergy(const torch::nn::Conv1d& _conv, int64_t _size)
 	{
-		const auto mat = toMatrix(_conv, _size);
-		const auto [eigs, _] = torch::eig(torch::eye(_size, mat.options()) - mat.transpose(0, 1) * mat);
+		checkEnergy(toMatrix(_conv, _size));
 
-		bool isPositiveDefinite = true;
-		for (int64_t i = 0; i < _size; ++i)
-		{
-			if (eigs.index({ i,0 }).item<double>() < 0.0)
-			{
-				isPositiveDefinite = false;
-				break;
-			}
-		}
-
-		std::cout << "Energy does not increase: " << isPositiveDefinite << std::endl;
-		
 		const int64_t filterSize = _conv->options.kernel_size()->front();
 		const int64_t halfSize = filterSize / 2;
 		const torch::Tensor filter = _conv->weight.squeeze();
@@ -122,12 +109,35 @@ namespace eval {
 			if ((filter[j] - filter[filterSize - j - 1]).item<double>() > std::numeric_limits<double>::epsilon() * 16.0)
 			{
 				symmetric = false;
-			//	break;
+				//	break;
 			}
 			sum += std::abs(filter[j].item<double>()) + std::abs(filter[filterSize - j - 1].item<double>());
 		}
 
 		std::cout << filter[halfSize].item<double>() + sum;
-	//	std::cout << "Holds for any size: " << (sum < filter[halfSize].item<double>()) << std::endl;
+		//	std::cout << "Holds for any size: " << (sum < filter[halfSize].item<double>()) << std::endl;
+	}
+
+	void checkEnergy(const torch::Tensor& _netLinear)
+	{
+		assert(_netLinear.dim() == 2);
+		assert(_netLinear.size(0) == _netLinear.size(1));
+		const int64_t size = _netLinear.sizes().front();
+		const auto mat = torch::eye(size, _netLinear.options()) - _netLinear.transpose(0, 1) * _netLinear;
+		const auto [eigs, _] = torch::eig(mat);
+	//	std::cout << "eigenvalues of I - A^T A:\n" << eigs << "\n";
+
+		double minEig = std::numeric_limits<double>::max();
+		for (int64_t i = 0; i < size; ++i)
+		{
+			const double eig = eigs.index({ i,0 }).item<double>();
+			if ( eig < minEig)
+			{
+				minEig = eig;
+			}
+		}
+		const bool isPositiveDefinite = minEig > 0;
+		//std::cout << "Energy does not increase: " << isPositiveDefinite << std::endl;
+		std::cout << minEig << "\n";
 	}
 }
