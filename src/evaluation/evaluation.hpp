@@ -24,6 +24,7 @@ namespace eval {
 	{
 		bool writeEnergy = false;
 		bool writeState = false;
+		bool writeGlobalError = false;
 		bool writeMSE = false;
 		bool addInitialStateMSE = false; // print state in addition to energy in mse file
 		bool append = false; // append to file instead of overwriting it for all write options
@@ -68,13 +69,14 @@ namespace eval {
 		const int avgWindow = _options.mseAvgWindow ? _options.mseAvgWindow : _options.numShortTermSteps;
 		for (int i = _options.numShortTermSteps - avgWindow; i < _options.numShortTermSteps; ++i)
 		{
+			const auto& refState = stateLog[i][0];
 			for (size_t j = 0; j < numIntegrators; ++j)
 			{
 				const auto& state = stateLog[i][j];
 				double err = 0.0;
 				for (size_t k = 0; k < state.size(); ++k)
 				{
-					const double d = state[k] - stateLog[i][0][k];
+					const double d = state[k] - refState[k];
 					err += d * d;
 				}
 				cumulativeError[j] += std::sqrt(err);
@@ -85,10 +87,11 @@ namespace eval {
 		{
 			for (int i = 0; i < _options.numShortTermSteps; ++i)
 			{
+				const State& refState = stateLog[i][0];
 				for (size_t j = 0; j < numIntegrators; ++j)
 				{
-					const auto& state = stateLog[i][j];
-					printFn(out, state);
+					const State& state = stateLog[i][j];
+					printFn(out, state, refState);
 				}
 				out << "\n";
 			}
@@ -99,7 +102,7 @@ namespace eval {
 		{
 			std::ofstream energyFile("energy.txt");
 
-			evalSteps(energyFile, [&](std::ostream& out, const State& state)
+			evalSteps(energyFile, [&](std::ostream& out, const State& state, const State&)
 				{
 					out << _system.energy(state) << " ";
 				});
@@ -109,9 +112,25 @@ namespace eval {
 		{
 			std::ofstream spaceTimeFile("spacetime.txt", _options.append ? std::ios::app : std::ios::out);
 
-			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state)
+			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state, const State&)
 				{
 					out << state << ", ";
+				});
+		}
+
+		if (_options.writeGlobalError)
+		{
+			std::ofstream file("globalerror.txt", _options.append ? std::ios::app : std::ios::out);
+
+			evalSteps(file, [&](std::ostream& out, const State& state, const State& refState)
+				{
+					double err = 0.0;
+					for (size_t k = 0; k < state.size(); ++k)
+					{
+						const double d = state[k] - refState[k];
+						err += d * d;
+					}
+					out << std::sqrt(err) << ",";
 				});
 		}
 

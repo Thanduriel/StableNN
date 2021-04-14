@@ -32,13 +32,33 @@ namespace discretization{
 		}
 	};
 
+	struct RK2_heun
+	{
+		constexpr static int Order = 2;
+
+		constexpr static RKMatrix<Order> coefficients()
+		{
+			return { 1.0 };
+		}
+
+		constexpr static RKNodes<Order> nodes()
+		{
+			return { 1.0 };
+		}
+
+		constexpr static RKWeights<Order> weights()
+		{
+			return { 0.5, 0.5 };
+		}
+	};
+
 	struct RK3
 	{
 		constexpr static int Order = 3;
 
 		constexpr static RKMatrix<Order> coefficients()
 		{
-			return { 0.5, 0.5,
+			return { 0.5, 0.0,
 					-1.0, 2.0};
 		}
 
@@ -50,6 +70,27 @@ namespace discretization{
 		constexpr static RKWeights<Order> weights()
 		{
 			return { 1/6.0, 2/3.0, 1/6.0 };
+		}
+	};
+
+	struct RK3_ralston
+	{
+		constexpr static int Order = 3;
+
+		constexpr static RKMatrix<Order> coefficients()
+		{
+			return { 0.5, 0.0,
+					 0.0, 0.75 };
+		}
+
+		constexpr static RKNodes<Order> nodes()
+		{
+			return { 0.5, 0.75 };
+		}
+
+		constexpr static RKWeights<Order> weights()
+		{
+			return { 2 / 9.0, 1 / 3.0, 4 / 9.0 };
 		}
 	};
 
@@ -66,7 +107,7 @@ namespace discretization{
 
 		constexpr static RKNodes<Order> nodes()
 		{
-			return { 0.5f, 0.5f, 1.0 };
+			return { 0.5, 0.5, 1.0 };
 		}
 
 		constexpr static RKWeights<Order> weights()
@@ -103,11 +144,11 @@ namespace discretization{
 				samples[i] = _system.rhs(_state + _dt * dir);
 			}
 
-			State sum = _state;
+			Vec sum{};
 			for (int i = 0; i < Order; ++i)
-				sum = sum +  _dt * weights[i] * samples[i];
+				sum = sum + weights[i] * samples[i];
 
-			return sum;
+			return _state + _dt * sum;
 		}
 	};
 
