@@ -1,11 +1,12 @@
 #pragma once
 
 namespace eval {
-
+	// energy level indicating that the simulation grows unbounded
 	constexpr double INF_ENERGY = 4.0;
 	constexpr double THRESHOLD = 0.02;
 
-	// @return energy of attractors and intervals bounding the position of possible initial states for bifurcation points
+	// @return energy of attractors and intervals bounding the position 
+	//         of possible initial states for bifurcation points
 	template<typename System, typename Integrator>
 	auto findAttractors(const System& _system, const Integrator& _integrator, bool computeBifurcations = true)
 		-> std::pair<std::vector<double>, std::vector<std::pair<double,double>>>
@@ -17,8 +18,9 @@ namespace eval {
 		std::vector<double> attractors; // energy
 		std::vector<std::pair<double, double>> repellers; // position [lower, upper]
 
-		const double stepSize = PI / 16.0;
+		constexpr double stepSize = PI / 16.0;
 
+		// integrate until asymptotic energy can be identified
 		auto integrate = [&system, &integrator](double x)
 		{
 			State state{ x, 0.0 };
@@ -36,7 +38,7 @@ namespace eval {
 				++steps;
 				// switch of sign indicates oscillation around attractor
 				// second rule is for infinity and 0
-			} while (d0 * d1 >= 0.0 && d1 != 0.0 && steps < 256);
+			} while (d0 * d1 >= 0.0 && d1 != 0.0 && steps < 256);//256
 
 			return e0;
 		};
@@ -51,6 +53,8 @@ namespace eval {
 				attractors.push_back(e);
 				repellers.push_back({ 0.0, x });
 			}
+			// early out if simulation already explodes
+			if (e == INF_ENERGY) break;
 		}
 
 		// refine repellers / bifurcations
@@ -65,16 +69,33 @@ namespace eval {
 				{
 					x += step * sign;
 					step *= 0.5;
-					const double e = integrate(x);
-					if (std::abs(e - attractors[j]) > THRESHOLD)
+
+					constexpr int maxRetries = 4;
+					double e0 = 0.0;
+					int k = 0;
+					for (; k < maxRetries; ++i)
 					{
-						sign = 1.0;
-						repellers[j].first = x;
+						const double e = integrate(x);
+						if (std::abs(e - attractors[j - 1]) <= THRESHOLD)
+						{
+							sign = 1.0;
+							repellers[j].first = x;
+							break;
+						}
+						else if (std::abs(e - attractors[j]) <= THRESHOLD)
+						{
+							sign = -1.0;
+							repellers[j].second = x;
+							break;
+						}
+						if (e == e0) k = maxRetries;
+						e0 = e;
 					}
-					else
+					if(k == maxRetries) // very close to the bifurcation
 					{
-						sign = -1.0;
+						repellers[j].first = x;
 						repellers[j].second = x;
+						break;
 					}
 				}
 			}

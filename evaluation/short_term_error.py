@@ -10,13 +10,14 @@ data = np.genfromtxt(fname="mse.txt",
                        delimiter=',',
                        skip_header=0)
 
-end = -16
+end = -128
 energy = data[:end,0]
-errors = data[:end,2:-1]
+errors = data[:end,4:-4]
 num = errors.shape[1]
 
 for i in range(0, num):
 	plt.semilogy( energy, errors[:,i])
 plt.xlabel('initial energy'), plt.ylabel('error')
-plt.legend( ["leap frog", "ResNet", "AntiSym"])
+plt.legend( ["Verlet", "RK2", "RK3", "RK4"])
+#plt.legend( ["leap frog", "ResNet", "AntiSym"])
 plt.show()

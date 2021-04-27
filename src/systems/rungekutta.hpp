@@ -52,6 +52,26 @@ namespace discretization{
 		}
 	};
 
+	struct RK2_ralston
+	{
+		constexpr static int Order = 2;
+
+		constexpr static RKMatrix<Order> coefficients()
+		{
+			return { 2.0/3.0 };
+		}
+
+		constexpr static RKNodes<Order> nodes()
+		{
+			return { 2.0/3.0 };
+		}
+
+		constexpr static RKWeights<Order> weights()
+		{
+			return { 0.25, 0.75 };
+		}
+	};
+
 	struct RK3
 	{
 		constexpr static int Order = 3;
@@ -91,6 +111,27 @@ namespace discretization{
 		constexpr static RKWeights<Order> weights()
 		{
 			return { 2 / 9.0, 1 / 3.0, 4 / 9.0 };
+		}
+	};
+
+	struct RK3_ssp
+	{
+		constexpr static int Order = 3;
+
+		constexpr static RKMatrix<Order> coefficients()
+		{
+			return { 1.0, 0.0,
+					 0.25, 0.25 };
+		}
+
+		constexpr static RKNodes<Order> nodes()
+		{
+			return { 1.0, 0.5 };
+		}
+
+		constexpr static RKWeights<Order> weights()
+		{
+			return { 1 / 6.0, 1 / 6.0, 2 / 3.0 };
 		}
 	};
 

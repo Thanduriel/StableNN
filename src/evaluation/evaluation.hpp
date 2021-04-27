@@ -20,6 +20,22 @@ namespace eval {
 
 	}
 
+	template<typename State>
+	auto l2Error(const State& v, const State& w)
+	{
+		assert(v.size() == w.size());
+
+		using T = decltype(v[0]);
+
+		T sum = 0.0;
+		for (size_t k = 0; k < v.size(); ++k)
+		{
+			const T d = v[k] - w[k];
+			sum += d * d;
+		}
+		return std::sqrt(sum);
+	}
+
 	struct EvalOptions
 	{
 		bool writeEnergy = false;
@@ -28,6 +44,7 @@ namespace eval {
 		bool writeMSE = false;
 		bool addInitialStateMSE = false; // print state in addition to energy in mse file
 		bool append = false; // append to file instead of overwriting it for all write options
+		int downSampleRate = 1; // write only every n-th entry; adds timestep as first column
 		int mseAvgWindow = 0; // take average of a number of previous time-steps; if 0 use numShortTermSteps
 		int numShortTermSteps = 256;
 		int numLongTermSteps = 4096;
@@ -48,7 +65,7 @@ namespace eval {
 		using StateArray = std::array<State, numIntegrators>;
 		StateArray currentState;
 		std::vector<StateArray> stateLog;
-		std::array<double, numIntegrators> cumulativeError{};
+
 		for (auto& state : currentState) state = _initialState;
 
 		stateLog.push_back(currentState);
@@ -59,90 +76,118 @@ namespace eval {
 		std::cout << "initial energy: " << initialEnergy << std::endl;
 
 		// short term simulation
-		stateLog.reserve(_options.numShortTermSteps + 1);
-		for (int i = 0; i < _options.numShortTermSteps; ++i)
+		const int numShortTermSteps = _options.numShortTermSteps;
+		stateLog.reserve(numShortTermSteps + 1);
+		for (int i = 0; i < numShortTermSteps; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
 			stateLog.push_back(currentState);
 		}
 
-		const int avgWindow = _options.mseAvgWindow ? _options.mseAvgWindow : _options.numShortTermSteps;
-		for (int i = _options.numShortTermSteps - avgWindow; i < _options.numShortTermSteps; ++i)
+		const int avgWindow = _options.mseAvgWindow ? _options.mseAvgWindow : numShortTermSteps;
+		const int start = _options.writeGlobalError ? 0 : numShortTermSteps - avgWindow;
+		std::vector<std::array<double, numIntegrators>> globalError;
+		globalError.reserve(numShortTermSteps - start);
+
+		for (int i = start; i < numShortTermSteps; ++i)
 		{
+			globalError.push_back({});
+			auto& err = globalError.back();
 			const auto& refState = stateLog[i][0];
 			for (size_t j = 0; j < numIntegrators; ++j)
 			{
 				const auto& state = stateLog[i][j];
-				double err = 0.0;
-				for (size_t k = 0; k < state.size(); ++k)
-				{
-					const double d = state[k] - refState[k];
-					err += d * d;
-				}
-				cumulativeError[j] += std::sqrt(err);
+				err[j] = l2Error(state, refState);
 			}
 		}
 
-		auto evalSteps = [&](std::ostream& out, auto printFn)
+		// compute averages
+		std::vector<std::array<double, numIntegrators>> globalErrorAvg;
+		globalErrorAvg.reserve(globalError.size());
+		std::array<double, numIntegrators> currentAvg{};
+
+		for (size_t i = 0; i < globalError.size(); ++i)
 		{
-			for (int i = 0; i < _options.numShortTermSteps; ++i)
+			globalErrorAvg.push_back({});
+			auto& avgErr = globalErrorAvg.back();
+			const int offsetInd = static_cast<int>(i) - avgWindow;
+			for (size_t j = 0; j < numIntegrators; ++j)
 			{
+				currentAvg[j] += globalError[i][j];
+				if (i >= avgWindow)
+				{
+					currentAvg[j] -= globalError[i - avgWindow][j];
+					avgErr[j] = currentAvg[j] / avgWindow;
+				}
+				else
+				{
+					avgErr[j] = currentAvg[j] / (i+1);
+				}
+			}
+		}
+		auto& cumulativeError = globalErrorAvg.back();
+
+		const int downSampleRate = _options.downSampleRate ? _options.downSampleRate : 1;
+		auto evalSteps = [&](std::ostream& out, auto printFn, const std::string& delim = " ")
+		{
+			for (int i = 0; i < numShortTermSteps; i += downSampleRate)
+			{
+				if (downSampleRate > 1)
+					out << i << delim;
+
 				const State& refState = stateLog[i][0];
 				for (size_t j = 0; j < numIntegrators; ++j)
 				{
 					const State& state = stateLog[i][j];
-					printFn(out, state, refState);
+					printFn(out, state, refState, i, static_cast<int>(j));
+					out << delim;
 				}
 				out << "\n";
 			}
 			out.flush();
 		};
+		auto fileOptions = _options.append ? std::ios::app : std::ios::out;
 
 		if (_options.writeEnergy)
 		{
 			std::ofstream energyFile("energy.txt");
 
-			evalSteps(energyFile, [&](std::ostream& out, const State& state, const State&)
+			evalSteps(energyFile, [&](std::ostream& out, const State& state, const State&, int, int)
 				{
-					out << _system.energy(state) << " ";
+					out << _system.energy(state);
 				});
 		}
 
 		if (_options.writeState)
 		{
-			std::ofstream spaceTimeFile("spacetime.txt", _options.append ? std::ios::app : std::ios::out);
+			std::ofstream spaceTimeFile("spacetime.txt", fileOptions);
 
-			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state, const State&)
+			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state, const State&, int, int)
 				{
-					out << state << ", ";
-				});
+					out << state;
+				}, ", ");
 		}
 
 		if (_options.writeGlobalError)
 		{
-			std::ofstream file("globalerror.txt", _options.append ? std::ios::app : std::ios::out);
+			std::ofstream file("globalerror.txt", fileOptions);
 
-			evalSteps(file, [&](std::ostream& out, const State& state, const State& refState)
+			evalSteps(file, [&](std::ostream& out, const State& state, const State& refState, 
+				int step, int integrator)
 				{
-					double err = 0.0;
-					for (size_t k = 0; k < state.size(); ++k)
-					{
-						const double d = state[k] - refState[k];
-						err += d * d;
-					}
-					out << std::sqrt(err) << ",";
+					out << globalErrorAvg[step][integrator];
 				});
 		}
 
 		if (_options.writeMSE)
 		{
-			std::ofstream mseFile("mse.txt", _options.append ? std::ios::app : std::ios::out);
+			std::ofstream mseFile("mse.txt", fileOptions);
 			mseFile << initialEnergy << ", ";
 			if (_options.addInitialStateMSE)
 				mseFile << _initialState << ", ";
 			for (double err : cumulativeError)
 			{
-				mseFile << err / avgWindow << ", ";
+				mseFile << err << ", ";
 			}
 			mseFile << "\n";
 		}
@@ -153,7 +198,7 @@ namespace eval {
 		std::cout << "mse -------------------------------------------\n";
 		for (double err : cumulativeError)
 		{
-			std::cout << err / avgWindow << ", ";
+			std::cout << err << ", ";
 		}
 		std::cout << "\n";
 
