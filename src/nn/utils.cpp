@@ -19,10 +19,10 @@ namespace nn {
 	{
 		assert(input.squeeze().dim() <= 2); // currently no support for multidimensional data
 		torch::Tensor dif = input - target;
-		return (input - target).norm(p, dif.dim()-1).mean();
+		return (input - target).norm(p, dif.dim()-1).mean() * 100.0;
 	}
 
-	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName)
+	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName, bool _pgfPlotsFormat)
 	{
 		std::ofstream file(_fileName);
 		file.precision(24);
@@ -35,7 +35,12 @@ namespace nn {
 		for (int64_t i = 0; i < size[0]; ++i)
 		{
 			for (int64_t j = 0; j < size[1]; ++j)
-				file << tensor.index({ i,j }).item<double>() << " ";
+			{
+				if(_pgfPlotsFormat)
+					file << j << " " << i << " " << tensor.index({ i,j }).item<double>() << "\n";
+				else
+					file << tensor.index({ i,j }).item<double>() << " ";
+			}
 			file << "\n";
 		}
 	//	file << content;

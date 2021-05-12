@@ -59,7 +59,8 @@ namespace nn {
 
 	torch::Tensor lp_loss(const torch::Tensor& input, const torch::Tensor& target, c10::Scalar p);
 
-	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName);
+	// @param _pgfPlotsFormat write explicit row and column index with just one value per line
+	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName, bool _pgfPlotsFormat = false);
 
 	template<typename T, size_t N>
 	torch::Tensor arrayToTensor(const std::array<T, N>& _data, const c10::TensorOptions& _options = c10::TensorOptions(c10::CppTypeToScalarType<T>()))

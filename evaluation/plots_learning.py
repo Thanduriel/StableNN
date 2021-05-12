@@ -32,13 +32,13 @@ def plot_training_error(files, begin = 0, end = 0, show_valid_err = True):
         #    np.append(errors, [errors[-1]] * (end - length))
 
         smoothErrors, minVal, minInd = smooth_range(errors[begin:end])
-        plt.plot(smoothErrors, label=label)
+        plt.semilogy(smoothErrors, label=label)
         print("min: {}, {} - {}".format(minVal, minInd, label))
 
     plt.legend()
     plt.show()
 
-plot_training_error([("loss_hamiltonian.txt", "Hamiltonian"),
+plot_training_error([("architectures/mlp_loss.txt", "MLP"),
                  #    ("loss_mlp.txt", "MLP"),
-                     ("loss_antisym.txt", "AntiSym")],
-                     0, 3000, True)
+                     ("architectures/mlp_loss.txt", "AntiSym")],
+                     0, 256, True)
