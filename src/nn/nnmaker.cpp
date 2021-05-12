@@ -38,7 +38,8 @@ namespace nn {
 			.total_time(*_params.get<double>("time"))
 			.bias(*_params.get<bool>("bias"))
 			.activation(*_params.get<nn::ActivationFn>("activation"))
-			.augment_size(*_params.get<int>("augment"));
+			.augment_size(*_params.get<int>("augment"))
+			.symmetric(*_params.get<bool>("symmetric"));
 	}
 
 	template<>

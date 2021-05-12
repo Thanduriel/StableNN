@@ -1,14 +1,8 @@
-#include "systems/pendulum.hpp"
-#include "systems/odesolver.hpp"
-#include "systems/rungekutta.hpp"
-#include "systems/serialization.hpp"
-#include "constants.hpp"
 #include "defs.hpp"
 #include "nn/train.hpp"
 #include "nn/mlp.hpp"
 #include "nn/dataset.hpp"
 #include "nn/nnintegrator.hpp"
-#include "nn/hyperparam.hpp"
 #include "generator.hpp"
 #include "nn/antisymmetric.hpp"
 #include "nn/hamiltonian.hpp"
@@ -16,326 +10,20 @@
 #include "nn/inoutwrapper.hpp"
 #include "nn/utils.hpp"
 #include "nn/nnmaker.hpp"
-#include "evaluation/evaluation.hpp"
-#include "evaluation/renderer.hpp"
-#include "evaluation/stability.hpp"
-#include "evaluation/lipschitz.hpp"
-#include "evaluation/asymptotic.hpp"
 
-#include <type_traits>
+#include "pendulumeval.hpp"
+
 #include <torch/torch.h>
 #include <chrono>
-#include <iostream>
 #include <cmath>
 #include <random>
 #include <filesystem>
 
-using System = systems::Pendulum<double>;
-using State = typename System::State;
-using NetType = nn::MultiLayerPerceptron;
+using NetType = nn::HamiltonianInterleafed;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 // simulation related
 constexpr int HYPER_SAMPLE_RATE = 128;
 constexpr bool USE_SIMPLE_SYSTEM = true;
-
-namespace discret = systems::discretization;
-using LeapFrog = discret::ODEIntegrator<System, discret::LeapFrog>;
-
-template<size_t NumTimeSteps, typename... Networks>
-void evaluate(
-	const System& system,
-	const State& _initialState, 
-	double _timeStep, 
-	eval::EvalOptions _options, 
-	Networks&... _networks)
-{
-	LeapFrog leapFrog(system, _timeStep);
-	discret::ODEIntegrator<System, discret::ForwardEuler> forwardEuler(system, _timeStep);
-	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK2_heun>> rk2(system, _timeStep);
-	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK3_ssp>> rk3(system, _timeStep);
-	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK4>> rk4(system, _timeStep);
-
-	auto referenceIntegrate = [&](const State& _state)
-	{
-		LeapFrog forward(system, _timeStep / HYPER_SAMPLE_RATE);
-		auto state = _state;
-		for (int i = 0; i < HYPER_SAMPLE_RATE; ++i)
-			state = forward(state);
-		return state;
-	};
-
-/*	eval::PendulumRenderer renderer(0.05);
-	renderer.addIntegrator([drawIntegrator = rk2, state = _initialState]() mutable
-	{
-		state = drawIntegrator(state);
-		return state.position;
-	});
-	renderer.run();*/
-
-	// prepare initial time series
-	const auto& [initialStates, initialState] = nn::computeTimeSeries<NumTimeSteps>(referenceIntegrate, _initialState);
-
-	if constexpr (SHOW_VISUAL)
-	{
-		// copy integrator because nn::Integrator may have an internal state
-		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
-		auto visState = initialState;
-		// warmup to see long term behavior
-		for (int i = 0; i < 10000; ++i)
-		{
-			visState = std::get<0>(integrators)(visState);
-		}
-
-		eval::PendulumRenderer renderer(_timeStep);
-		renderer.addIntegrator([drawIntegrator=std::get<0>(integrators), state=visState]() mutable
-			{
-				state = drawIntegrator(state);
-				return state.position;
-			});
-		renderer.run();
-	}
-
-/*	auto cosRef = [&, t=0.0](const State& _state) mutable
-	{
-		t += _timeStep;
-		return State{ std::cos(t / 2.30625 * 2.0 * PI) * _initialState.position, 0.0 };
-	};*/
-	
-	eval::evaluate(system,
-		initialState, 
-		_options,
-		referenceIntegrate, 
-		leapFrog,
-		rk2,
-		rk3,
-		rk4,
-		nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
-}
-
-template<size_t NumTimeSteps, typename... Networks>
-void evaluate(const System& _system, 
-	const std::vector<State>& _initialStates, 
-	double _timeStep,
-	const eval::EvalOptions& _options,
-	Networks&... _networks)
-{
-	for (const State& state : _initialStates)
-		evaluate<NumTimeSteps>(_system, state, _timeStep, _options, _networks...);
-}
-
-template<size_t NumTimeSteps, typename... Networks>
-void makeEnergyErrorData(const System& _system, double _timeStep, int _numSteps, int _avgWindow, Networks&... _networks)
-{
-	eval::EvalOptions options;
-	options.writeMSE = true;
-	options.numLongTermRuns = 0;
-	options.numShortTermSteps = _numSteps;
-	options.mseAvgWindow = _avgWindow;
-	options.append = true;
-	options.addInitialStateMSE = true;
-
-	constexpr int numStates = 256;
-	std::vector<State> states;
-	states.reserve(numStates);
-	for (int i = 0; i < numStates; ++i)
-		states.push_back({ static_cast<double>(i) / numStates * PI, 0.0 });
-
-	evaluate<NumTimeSteps>(_system, states, _timeStep, options, _networks...);
-}
-
-template<size_t NumTimeSteps, typename... Networks>
-void makeGlobalErrorData(const System& _system, const State& _state, double _timeStep, int _numSteps, int _avgWindow, Networks&... _networks)
-{
-	eval::EvalOptions options;
-	options.numLongTermRuns = 0;
-	options.writeGlobalError = true;
-	options.numShortTermSteps = 10000;
-	options.mseAvgWindow = 64;
-	options.downSampleRate = 32; // 1.02765 
-
-	evaluate<NumTimeSteps>(_system, _state, _timeStep, options, _networks...);
-}
-
-template<typename NetType>
-void makeStableFrequencyData(const System& system, const nn::HyperParams& params)
-{
-	//{ 0.1, 0.05, 0.025, 0.01, 0.005 };
-	std::vector<double> timeSteps = /*{ 0.1, 0.05, 0.025, 0.01, 0.005 };*/{ 0.05, 0.049, 0.048, 0.047, 0.046, 0.045 };
-	std::vector<std::pair<std::string, double>> names;
-	for (int j = 4; j < 6; ++j)
-		for (int i = 0; i < 4; ++i)
-		{
-			const std::string name = std::to_string(i) + "_" + std::to_string(j) + "_closeFreq.pt";
-			if (std::filesystem::exists(name))
-				names.emplace_back(name, timeSteps[j]);
-		}
-
-	std::mutex outputMutex;
-	auto computeFrequencies = [&](size_t begin, size_t end)
-	{
-		for (size_t i = begin; i < end; ++i)
-		{
-			const auto& [name, timeStep] = names[i];
-			auto param = params;
-			param["time_step"] = timeStep;
-			auto othNet = nn::makeNetwork<NetType, USE_WRAPPER>(param);
-			torch::load(othNet, name);
-
-			nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
-			auto [attractors, repellers] = eval::findAttractors(system, integrator, false);
-			std::vector<double> stablePeriods;
-			for (double attractor : attractors)
-			{
-				if (attractor == 0.0 || attractor == eval::INF_ENERGY)
-					continue;
-				stablePeriods.push_back(
-					eval::computePeriodLength(system.energyToState(0.0, attractor), integrator, 64, 6.0 / timeStep)
-					* timeStep);
-			}
-			std::unique_lock lock(outputMutex);
-			std::cout << name << "," << timeStep << ", ";
-			for (double p : stablePeriods)
-				std::cout << p << ",";
-			std::cout << "\n";
-		}
-	};
-	std::vector<std::thread> threads;
-	const size_t numThreads = std::min(static_cast<size_t>(8), names.size());
-	const size_t numTasks = names.size() / numThreads;
-	for (size_t i = 0; i < numThreads - 1; ++i)
-	{
-		threads.emplace_back(computeFrequencies, i * numTasks, (i + 1) * numTasks);
-	}
-	computeFrequencies((numThreads - 1) * numTasks, names.size());
-	for (auto& t : threads) t.join();
-}
-
-// evaluate the Jacobian on a grid
-template<typename Network>
-void makeJacobianData(
-	Network& _network, 
-	const State& _min,
-	const State& _max, 
-	const systems::Vec<double, 2>& _steps)
-{
-	using namespace torch;
-	std::ofstream file1("spectral_radius.txt");
-	std::ofstream file2("determinant.txt");
-	for (double v = _min.velocity; v <= _max.velocity; v += _steps[1])
-	{
-		for (double p = _min.position; p <= _max.position; p += _steps[0])
-		{
-			const Tensor z = tensor({ p, v }, c10::TensorOptions(c10::kDouble));
-			const Tensor J = eval::computeJacobian(_network, z);
-			const auto eigenvalues = eval::computeEigs(J);
-			double max = 0.0;
-			std::complex<double> det = 1.0;
-			for (auto eig : eigenvalues)
-			{
-				const double abs = std::abs(eig);
-				if (abs > max) max = abs;
-				det *= eig;
-			}
-			file1 << p << " " << v << " " << max << "\n";
-			file2 << p << " " << v << " " << det.real() << "\n";
-		}
-		file1 << "\n";
-		file2 << "\n";
-	}
-}
-
-void makeVerletPeriodErrorData(const System& _system, double _timeStep)
-{
-	LeapFrog integrator(_system, _timeStep);
-	LeapFrog reference(_system, _timeStep / HYPER_SAMPLE_RATE);
-	auto referenceIntegrate = [&](const State& _state)
-	{
-		auto state = _state;
-		for (int i = 0; i < HYPER_SAMPLE_RATE; ++i)
-			state = reference(state);
-		return state;
-	};
-	LeapFrog integrator2(_system, _timeStep/2);
-	auto integrate2 = [&](const State& _state)
-	{
-		auto state = _state;
-		for (int i = 0; i < 2; ++i)
-			state = integrator2(state);
-		return state;
-	};
-	LeapFrog integrator3(_system, _timeStep / 4);
-	auto integrate3 = [&](const State& _state)
-	{
-		auto state = _state;
-		for (int i = 0; i < 4; ++i)
-			state = integrator3(state);
-		return state;
-	};
-
-	std::ofstream file("frequency.txt");
-
-	constexpr int numStates = 256;
-	constexpr int periods = 4096;
-	for (int i = 0; i < numStates; ++i)
-	{
-		State state{ static_cast<double>(i) / numStates * PI, 0.0 };
-		double ref = eval::computePeriodLength(state, referenceIntegrate, 4096);
-		double verlet = eval::computePeriodLength(state, integrator, 4096);
-		double verlet2 = eval::computePeriodLength(state, integrate2, 4096);
-		double verlet3 = eval::computePeriodLength(state, integrate3, 4096);
-		file << state.position << " "
-			<< _system.energy(state) << " "
-			<< ref << " " 
-			<< std::abs(ref-verlet) << " " 
-			<< std::abs(ref-verlet2) << " "
-			<< std::abs(ref-verlet3) << "\n";
-	}
-}
-
-template<size_t NumTimeSteps, typename Integrator>
-void makeAsymptoticEnergyData(const System& _system, Integrator& _integrator)
-{
-	std::vector<State> states;
-/*	const auto& [attractors, repellers] = eval::findAttractors(_system, _integrator, true);
-	for (const auto& [lower, upper] : repellers)
-	{
-		states.push_back(State{ lower,0.0 });
-		states.push_back(State{ upper,0.0 });
-	}*/
-/*	states.push_back({ 0.0 ,0.0 });
-	states.push_back({ 1.13307, 0.0});  // ResNet
-	states.push_back({ 1.1309, 0.0 });
-	states.push_back({ 2.67286, 0.0 });
-	states.push_back({ 2.67373, 0.0 });*/
-/*	states.push_back({ 1.02086, 0.0 }); // Hamiltonian
-	states.push_back({ 1.02163, 0.0 });*/
-	states.push_back({ 0.0, 0.0 });
-	states.push_back({ 0.00076699, 0.0 });
-	states.push_back({ 3.12, 0.0 }); // AntiSym
-	states.push_back({ 3.13, 0.0 });
-
-	constexpr int numSteps = 150000;
-	constexpr int downSample = numSteps / 256;
-
-	std::ofstream file("asymptotic.txt");
-	for (int i = 0; i < numSteps; ++i)
-	{
-		if (i % downSample == 0)
-		{
-			file << i << " ";
-			for (auto& state : states)
-			{
-				file << _system.energy(state) << " ";
-			}
-			file << "\n";
-		}
-		for (auto& state : states) 
-		{
-			if (_system.energy(state) > 8.0) continue;
-			state = _integrator(state);
-		}
-	}
-}
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
 {
@@ -397,42 +85,46 @@ int main()
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1; // 0.998 : 0.999
 	params["lr_epoch_update"] = 2048;
 	params["batch_size"] = 64;
-	params["num_epochs"] = USE_LBFGS ? 256 : 2048;
+	params["num_epochs"] = USE_LBFGS ? 512 : 2048;
 	params["momentum"] = 0.9;
 	params["dampening"] = 0.0;
 
 	params["seed"] = 16708911996216745849ull;//9378341130ull;
-	params["depth"] = 2;
-	params["diffusion"] = 0.01;
+	params["depth"] = 1;
+	params["diffusion"] = 0.1;
 	params["bias"] = false;
 	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
-	params["hidden_size"] = 4;
+	params["hidden_size"] = 8;
 	params["train_in"] = true;
 	params["train_out"] = true;
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
 	params["augment"] = 4;
+	params["symmetric"] = true;
 	params["kernel_size"] = 3;
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
 	params["average"] = true;
 	params["num_channels"] = systems::sizeOfState<System>();
 
-	params["name"] = std::string("training_adam_v2");
-	params["load_net"] = true;
+	params["name"] = std::string("antisym_4_4");
+	params["load_net"] = false;
 
 /*	std::uniform_int_distribution<uint64_t> dist(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint64_t>::max());
 	std::default_random_engine rng;
 	for (int i = 0; i < 8; ++i)
 		std::cout << dist(rng) << "ull,";*/
 
+	makeLipschitzData<NetType>(params, trainNetwork);
+	return 0;
+
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
-		params["name"] = std::string("hamiltonian_4_4l");
+		params["name"] = std::string("hamiltonianSym_2_4l");
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 			{//	{"depth", {2, 4}},
 			//  {"lr", {0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06, 0.065, 0.07, 0.075, 0.08, 0.085, 0.09, 0.095}},
@@ -442,6 +134,7 @@ int main()
 			//	{"num_epochs", {4096, 8000}},
 			//	{"weight_decay", {1e-6, 1e-5}},
 			//	{"time", { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0 }},
+				{"time", { 1.0, 2.0 }},
 			//	{"train_in", {false, true}},
 			//	{"train_out", {false, true}},
 			//  {"time_step", { 0.1, 0.05, 0.025, 0.01, 0.005 }},
@@ -472,8 +165,9 @@ int main()
 	{
 		const double timeStep = * params.get<double>("time_step");
 	/*	eval::EvalOptions options;
+		options.numLongTermRuns = 8;
 
-		auto othNet = nn::load<NetType, USE_WRAPPER>(params);
+	/*	auto othNet = nn::load<NetType, USE_WRAPPER>(params);
 	//	nn::exportTensor(othNet->layers->at<torch::nn::LinearImpl>(othNet->layers->size()-1).weight, "outlinear.txt");
 		nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
 	//	auto [attractors, repellers] = eval::findAttractors(system, integrator, true);
@@ -494,7 +188,8 @@ int main()
 		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
 		makeJacobianData(mlp, { -2.0, -1.0 }, { 2.0, 1.01 }, { 0.05, 0.05 });*/
 
-	/*	auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp_4_4l");
+	/*	auto mlpIORef = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
+		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp_4_4l");
 		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp_4_4l_t2");
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4l");
 		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian_4_4l");*/
@@ -507,8 +202,13 @@ int main()
 		auto antisym2 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4");
 		auto antisym3 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_8_2");
 		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "HamiltonianInterleafed_2_4l");
+		
+	/*	auto antisym0d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_0d");
+		auto antisym01d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_01d");
+		auto antisym001d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4");
+		auto hamiltonianSym = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonianSym_4_4");*/
 
-		nn::Integrator<System, decltype(antisym), NUM_INPUTS> integrator(system, antisym);
+		nn::Integrator<System, decltype(mlpIO), NUM_INPUTS> integrator(system, mlpIO);
 	/*	auto state = system.energyToState(1.02765, 0.0);
 		double e = 0.0;
 		int n = 100000;
@@ -522,21 +222,29 @@ int main()
 		discret::ODEIntegrator<System, discret::RungeKutta<discret::RK3_ssp>> rk3(system, timeStep);
 		discret::ODEIntegrator<System, discret::RungeKutta<discret::RK4>> rk4(system, timeStep);
 		LeapFrog leapFrog(system, timeStep);
+		nn::VerletPendulum verletNN(timeStep, HYPER_SAMPLE_RATE);
 	//	auto [attractors, repellers] = eval::findAttractors(system, leapFrog, true);
 
+		makeSinglePhasePeriodData<NUM_INPUTS>(system, State{ 1.1309, 0.0 }, timeStep, mlpIO);
+		return 0;
+
 		eval::EvalOptions options;
-		options.numLongTermRuns = 128;
+	//	options.numLongTermRuns = 128;
 	//	options.writeGlobalError = true;
-		options.numShortTermSteps = 15000;
+		options.numShortTermSteps = 128;
 		options.mseAvgWindow = 64;
-		options.downSampleRate = 32; // 1.02765 
+		options.downSampleRate = 32;// 1.02765 
+		return 0;
 	//	evaluate<NUM_INPUTS>(system, /*State{ -0.324639, 1.39669 }*/system.energyToState(1.02763, 0.0), timeStep, options, mlpIO/*, antisym, hamiltonian*/);
 	//	makeGlobalErrorData(system, system.energyToState(1.02763, 0.0), timeStep, mlpIO, antisym, hamiltonian);
-	//	makeEnergyErrorData<NUM_INPUTS>(system, timeStep, 128, 16, mlpIO, antisym, hamiltonian);
+	//	makeEnergyErrorData<NUM_INPUTS>(system, timeStep, 1024, 16, antisym0d, antisym01d, antisym001d);
 	//	makeVerletPeriodErrorData(system, timeStep);
-		makeAsymptoticEnergyData<NUM_INPUTS>(system, integrator);
+	//	makeAsymptoticEnergyData<NUM_INPUTS>(system, integrator);
+		const double maxEnergy = system.energy(State{ 3.1, 0.0 });
+		auto restrictDomain = [&](const State& _state) { return system.energy(_state) > maxEnergy; };
+		auto restrictNone = [&](const State& _state) { return false; };
+		makeJacobianData(verletNN, { -PI, -2.0 }, { PI, 2.0 }, { 64, 64 }, restrictNone);
 		return 0;
-	//	makeJacobianData(antisym, { -2.0, -1.0 }, { 2.0, 1.01 }, { 0.05, 0.05 });
 
 	/*	std::cout << eval::lipschitz(mlp) << ", "
 			<< eval::lipschitz(mlpIO) << ", " 

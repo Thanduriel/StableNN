@@ -14,6 +14,8 @@ endif()
 # find all source and header files
 file(GLOB_RECURSE SOURCE_FILES "src/*.cpp" "src/*.hpp" "src/*.inl")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainpendulum.cpp")
+list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/pendulumeval.cpp")
+list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/pendulumeval.hpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainheateq.cpp")
 
 if(NOT USE_GRAPHICS)
@@ -43,7 +45,7 @@ set_target_properties(stableNN PROPERTIES
     CXX_STANDARD_REQUIRED YES
 )
 
-add_executable(pendulum "src/mainpendulum.cpp")
+add_executable(pendulum "src/mainpendulum.cpp" "src/pendulumeval.cpp" "src/pendulumeval.hpp")
 set_target_properties(pendulum PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES

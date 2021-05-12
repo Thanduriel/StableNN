@@ -11,6 +11,7 @@ namespace nn {
 		TORCH_ARG(int64_t, input_size);
 		TORCH_ARG(int64_t, num_layers) = 1;
 		TORCH_ARG(bool, bias) = true;
+		TORCH_ARG(bool, symmetric) = false; // only used in HamiltonianInterleafed
 		TORCH_ARG(int64_t, augment_size) = 1; // only used in HamiltonianAugmented
 		TORCH_ARG(double, total_time) = 1.0;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
@@ -40,7 +41,7 @@ namespace nn {
 	class HamiltonianCellImpl : public torch::nn::Cloneable<HamiltonianCellImpl>
 	{
 	public:
-		HamiltonianCellImpl(int64_t _stateSize, int64_t _augmentSize, bool _bias = true);
+		HamiltonianCellImpl(int64_t _stateSize, int64_t _augmentSize, bool _bias = true, bool _symmetric = false);
 
 		void reset() override;
 		void reset_parameters();
@@ -49,7 +50,10 @@ namespace nn {
 
 		torch::Tensor forwardY(const torch::Tensor& input);
 		torch::Tensor forwardZ(const torch::Tensor& input);
+		// anti symmetric matrix that represents both steps
 		torch::Tensor system_matrix(bool y) const;
+		// only the weight matrix, could be parameterized
+		torch::Tensor system_matrix() const;
 
 		torch::Tensor weight;
 		torch::Tensor biasY;
@@ -57,6 +61,7 @@ namespace nn {
 		int64_t size;
 		int64_t augmentSize;
 		bool useBias;
+		bool symmetric = false;
 	};
 
 	TORCH_MODULE(HamiltonianCell);

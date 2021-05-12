@@ -63,7 +63,7 @@ namespace nn {
 		: m_hyperGrid(_paramGrid), m_trainFunc(_trainFn), m_defaultParams(_defaults)
 	{}
 
-	void GridSearchOptimizer::run(unsigned numThreads) const
+	HyperParams GridSearchOptimizer::run(unsigned numThreads) const
 	{
 		// compute number of configurations
 		size_t numOptions = 1;
@@ -216,6 +216,9 @@ namespace nn {
 
 		std::cout << "\nbest result:\n" << bestParams << "\n"
 			<< "loss: " << bestResult << std::endl;
+
+		bestParams["validation_loss"] = bestResult;
+		return bestParams;
 	}
 
 	std::pair<size_t, size_t> GridSearchOptimizer::decomposeFlatIndex(size_t flatIndex, int _k) const

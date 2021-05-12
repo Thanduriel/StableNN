@@ -45,8 +45,9 @@ namespace nn {
 
 
 	// ****************************************************************** //
-	HamiltonianCellImpl::HamiltonianCellImpl(int64_t _stateSize, int64_t _augmentSize, bool _bias)
-		: size(_stateSize), augmentSize(_augmentSize), useBias(_bias)
+	HamiltonianCellImpl::HamiltonianCellImpl(int64_t _stateSize, int64_t _augmentSize, 
+		bool _bias, bool _symmetric)
+		: size(_stateSize), augmentSize(_augmentSize), useBias(_bias), symmetric(_symmetric)
 	{
 		reset();
 	}
@@ -89,12 +90,12 @@ namespace nn {
 
 	Tensor HamiltonianCellImpl::forwardY(const Tensor& input)
 	{
-		return torch::nn::functional::linear(input, weight.t(), biasZ);
+		return torch::nn::functional::linear(input, system_matrix().t(), biasZ);
 	}
 
 	Tensor HamiltonianCellImpl::forwardZ(const Tensor& input)
 	{
-		return torch::nn::functional::linear(input, weight, biasY);
+		return torch::nn::functional::linear(input, system_matrix(), biasY);
 	}
 
 	Tensor HamiltonianCellImpl::system_matrix(bool y) const
@@ -108,6 +109,11 @@ namespace nn {
 			mat.index_put_({ Slice(0, size), Slice(size) }, weight);
 
 		return mat;
+	}
+
+	Tensor HamiltonianCellImpl::system_matrix() const
+	{
+		return symmetric ? 0.5 * (weight + weight.t()) : weight;
 	}
 
 	// ****************************************************************** //
@@ -165,7 +171,7 @@ namespace nn {
 		const int64_t halfSize = options.input_size() / 2;
 		for (int64_t i = 0; i < options.num_layers(); ++i)
 		{
-			layers.emplace_back(halfSize, halfSize, options.bias());
+			layers.emplace_back(halfSize, halfSize, options.bias(), options.symmetric());
 			register_module("layer" + std::to_string(i), layers.back());
 		}
 	}

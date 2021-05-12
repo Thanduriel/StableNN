@@ -88,7 +88,7 @@ namespace nn {
 		ExtAny& operator=(T&& _val)
 		{
 			any = std::forward<T>(_val);
-			m_print = &details::printImpl<T>;
+			m_print = &details::printImpl<std::remove_reference_t<T>>;
 			m_read = &details::readImpl<std::decay_t<T>>;
 			return *this;
 		}
@@ -214,7 +214,7 @@ namespace nn {
 
 		// Run the grid search training up to _numThreads networks in parallel.
 		// The number of actual threads can be higher if the network execution/training itself is multi-threaded.
-		void run(unsigned _numThreads = 1) const;
+		HyperParams run(unsigned _numThreads = 1) const;
 	private:
 		// Compute new indices for a k-flattening of the HyperParamGrid tensor from a flatIndex.
 		std::pair<size_t, size_t> decomposeFlatIndex(size_t _flatIndex, int _k) const;
