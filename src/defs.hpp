@@ -1,12 +1,13 @@
 #pragma once
 
 #include <cinttypes>
+#include <cstddef>
 
 // network parameters
 
 // number of time-steps given as inputs
 // This value only needs to be available at compile-time for evaluation.
-constexpr size_t NUM_INPUTS = 1;
+constexpr size_t NUM_INPUTS = 16;
 
 // expect only the next time-step
 constexpr bool USE_SINGLE_OUTPUT = true;
@@ -18,12 +19,12 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::EVALUATE;
+constexpr Mode MODE = Mode::TRAIN;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
 constexpr int64_t NUM_FORWARDS = 1;
-constexpr bool SAVE_NET = true || MODE == Mode::EVALUATE;
+constexpr bool SAVE_NET = false || MODE == Mode::EVALUATE;
 static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be saved in order to be evaluated.");
 
 // Append final validation loss of a trained network to a persistent log.
@@ -38,7 +39,7 @@ enum struct Optimizer {
 	RMSPROP,
 	LBFGS
 };
-constexpr Optimizer OPTIMIZER = Optimizer::LBFGS;
+constexpr Optimizer OPTIMIZER = Optimizer::ADAM;
 constexpr bool USE_LBFGS = OPTIMIZER == Optimizer::LBFGS;
 
 // only relevant in TRAIN_MULTI to enforce consistent rng state for all networks during initialization
@@ -53,4 +54,4 @@ constexpr uint64_t TORCH_SEED = 9378341130ull; // 9378341130ul
 
 // evaluation
 // only set to true if build option USE_GRAPHICS=true
-constexpr bool SHOW_VISUAL = false;
+constexpr bool SHOW_VISUAL = true;

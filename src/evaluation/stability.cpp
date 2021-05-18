@@ -80,7 +80,7 @@ namespace eval {
 		assert(filterSize <= _size);
 		
 		using namespace std::literals::complex_literals;
-		const std::complex<double> w = std::exp(2.0 * PI * 1i / static_cast<double>(_size));
+		const std::complex<double> w = std::exp(2.0 * PI / static_cast<double>(_size) * 1i);
 
 		torch::Tensor vals = torch::zeros({_size, 2}, filter.options());
 		for (int64_t i = 0; i < _size; ++i)

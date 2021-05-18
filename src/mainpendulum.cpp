@@ -1,8 +1,6 @@
-#include "defs.hpp"
 #include "nn/train.hpp"
 #include "nn/mlp.hpp"
 #include "nn/dataset.hpp"
-#include "nn/nnintegrator.hpp"
 #include "generator.hpp"
 #include "nn/antisymmetric.hpp"
 #include "nn/hamiltonian.hpp"
@@ -17,13 +15,9 @@
 #include <chrono>
 #include <cmath>
 #include <random>
-#include <filesystem>
 
 using NetType = nn::HamiltonianInterleafed;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
-// simulation related
-constexpr int HYPER_SAMPLE_RATE = 128;
-constexpr bool USE_SIMPLE_SYSTEM = true;
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
 {
@@ -91,7 +85,7 @@ int main()
 
 	params["seed"] = 16708911996216745849ull;//9378341130ull;
 	params["depth"] = 1;
-	params["diffusion"] = 0.1;
+	params["diffusion"] = 0.025;
 	params["bias"] = false;
 	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
@@ -104,7 +98,7 @@ int main()
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
 	params["augment"] = 4;
-	params["symmetric"] = true;
+	params["symmetric"] = false;
 	params["kernel_size"] = 3;
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
@@ -119,8 +113,8 @@ int main()
 	for (int i = 0; i < 8; ++i)
 		std::cout << dist(rng) << "ull,";*/
 
-	makeLipschitzData<NetType>(params, trainNetwork);
-	return 0;
+//	makeLipschitzData<NetType>(params, trainNetwork);
+//	return 0;
 
 	if constexpr (MODE == Mode::TRAIN_MULTI)
 	{
@@ -198,10 +192,10 @@ int main()
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym");
 		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian");*/
 		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
-		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4l");
+	/*	auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4l");
 		auto antisym2 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4");
 		auto antisym3 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_8_2");
-		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "HamiltonianInterleafed_2_4l");
+		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "HamiltonianInterleafed_2_4l");*/
 		
 	/*	auto antisym0d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_0d");
 		auto antisym01d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_01d");
@@ -218,6 +212,14 @@ int main()
 			e += system.energy(state);
 		}
 		std::cout << e / n;*/
+
+		std::string netName = "resnet_2_4l";
+		auto net = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, netName);
+		nn::exportTensor(net->inputLayer->weight, "input_" + netName + ".txt");
+		nn::exportTensor(net->outputLayer->weight, "output_" + netName + ".txt");
+		return 0;
+		//	nn::exportTensor(net->hiddenNet->layers[0]->weight, "layer0_" + netName + ".txt", false);
+		//	nn::exportTensor(net->hiddenNet->layers[1]->weight, "layer1_" + netName + ".txt", false);
 
 		discret::ODEIntegrator<System, discret::RungeKutta<discret::RK3_ssp>> rk3(system, timeStep);
 		discret::ODEIntegrator<System, discret::RungeKutta<discret::RK4>> rk4(system, timeStep);
@@ -258,7 +260,7 @@ int main()
 
 	//	evaluate<NUM_INPUTS>(system, { {1.5, 1.0 }, { 0.9196, 0.0 }, { 0.920388, 0.0 }, { 2.2841, 0.0 }, { 2.28486, 0.0 } }, othNet);
 
-		auto& net = antisym;
+	/*	auto& net = antisym;
 		std::cout << eval::details::norm(net->inputLayer->weight, 2) << ", "
 			<< eval::details::norm(net->outputLayer->weight, 2) << "\n";
 		for (size_t i = 0; i < net->hiddenNet->layers.size(); ++i)
@@ -266,9 +268,9 @@ int main()
 			std::cout << eval::details::norm(net->hiddenNet->layers[i]->system_matrix(), 2);
 		/*	auto eigs = eval::computeEigs(antisym3->hiddenNet->layers[i]->system_matrix());
 			for (auto eig : eigs)
-				std::cout << eig << "\n";*/
+				std::cout << eig << "\n";
 			std::cout << "\n";
 		//	nn::exportTensor(othNet->hiddenNet->hiddenLayers[i]->weight, "layer" + std::to_string(i) + ".txt");
-		}
+		}*/
 	}
 }

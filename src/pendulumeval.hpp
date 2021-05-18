@@ -2,18 +2,25 @@
 #include "systems/odesolver.hpp"
 #include "systems/rungekutta.hpp"
 #include "nn/hyperparam.hpp"
+#include "nn/nnintegrator.hpp"
 #include "evaluation/evaluation.hpp"
 #include "evaluation/renderer.hpp"
 #include "evaluation/stability.hpp"
 #include "evaluation/lipschitz.hpp"
 #include "evaluation/asymptotic.hpp"
 #include "constants.hpp"
+#include "defs.hpp"
 
 #include <iostream>
 #include <type_traits>
+#include <filesystem>
 
 using System = systems::Pendulum<double>;
 using State = typename System::State;
+
+// simulation related
+constexpr int HYPER_SAMPLE_RATE = 128;
+constexpr bool USE_SIMPLE_SYSTEM = true;
 
 namespace discret = systems::discretization;
 using LeapFrog = discret::ODEIntegrator<System, discret::LeapFrog>;
@@ -155,7 +162,7 @@ void makeStableFrequencyData(const System& system, const nn::HyperParams& params
 			const auto& [name, timeStep] = names[i];
 			auto param = params;
 			param["time_step"] = timeStep;
-			auto othNet = nn::makeNetwork<NetType, USE_WRAPPER>(param);
+			auto othNet = nn::makeNetwork<NetType, true>(param);
 			torch::load(othNet, name);
 
 			nn::Integrator<System, decltype(othNet), NUM_INPUTS> integrator(system, othNet);
