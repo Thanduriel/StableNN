@@ -25,7 +25,7 @@ namespace eval {
 	{
 		assert(v.size() == w.size());
 
-		using T = decltype(v[0]);
+		using T = std::remove_cv_t<std::remove_reference_t<decltype(v[0])>>;
 
 		T sum = 0.0;
 		for (size_t k = 0; k < v.size(); ++k)

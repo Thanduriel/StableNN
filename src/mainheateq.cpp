@@ -13,15 +13,21 @@
 
 constexpr bool USE_WRAPPER = false;
 constexpr bool USE_LOCAL_DIFFUSIFITY = true;
+constexpr bool ABSOLUTE_ZERO = false;
 constexpr size_t N = 32;
-using System = systems::HeatEquation<double, N>;
-using State = typename System::State;
-using T = System::ValueT;
 
-using NetType = nn::TCN2d;
+using T = double;
+using System = systems::HeatEquation<T, N>;
+using State = typename System::State;
+
+constexpr T MEAN = ABSOLUTE_ZERO ? 128.0 : 0.0;
+constexpr T STD_DEV = ABSOLUTE_ZERO ? 64.0 : 1.0;
+
+using NetType = nn::ExtTCN;
 
 using OutputMaker = nn::StateToTensor;
-static_assert(!std::is_same_v<NetType, nn::TCN2d> || USE_LOCAL_DIFFUSIFITY, "input tensor not implemented for this config");
+static_assert((!std::is_same_v<NetType, nn::TCN2d> && !std::is_same_v<NetType, nn::ExtTCNImpl>) || USE_LOCAL_DIFFUSIFITY, 
+	"input tensor not implemented for this config");
 namespace nn {
 	template<>
 	struct InputMakerSelector<nn::TCN2d>
@@ -136,26 +142,33 @@ void evaluate(const std::vector<System>& _systems,
 	}
 }
 
-std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed, T _meanDeriv = 0.0)
+std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed, 
+	T _randMeanDev = 0.0,
+	T _mean = MEAN,
+	T _stdDev = STD_DEV)
 {
 	std::vector<State> states;
 	states.reserve(_numStates);
 
 	std::default_random_engine rng(_seed);
-	T base = 128.0;
-	if (_meanDeriv != 0.0)
-	{
-		std::uniform_real_distribution<T> shift(-_meanDeriv, _meanDeriv);
-		base += shift(rng);
-	}
-	std::normal_distribution<T> energy(base, 64.0);
+	T base = _mean;
+	std::uniform_real_distribution<T> meanDev(-_randMeanDev, _randMeanDev);
 
 	for (size_t i = 0; i < _numStates; ++i)
 	{
-		const T e = energy(rng);
+		if (_randMeanDev != 0.0)
+			base = _mean + meanDev(rng);
+		std::normal_distribution<T> energy(base, _stdDev);
+		auto genEnergy = [&]() 
+		{
+			if constexpr (ABSOLUTE_ZERO)
+				return std::max(static_cast<T>(0), energy(rng));
+			else
+				return energy(rng);
+		};
+
 		State state;
-		for (auto& v : state)
-			v = std::max(static_cast<T>(0), energy(rng));
+		std::generate(state.begin(), state.end(), genEnergy);
 		states.push_back(state);
 	}
 
@@ -349,7 +362,7 @@ int main()
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
 		SuperSampleIntegrator superSampleFiniteDifs(system, timeStep, state, 64);
 
-		auto net = nn::load<NetType, USE_WRAPPER>(params);
+	//	auto net = nn::load<NetType, USE_WRAPPER>(params);
 	//	auto net = nn::load<NetType, USE_WRAPPER>(params, "1_0_single_output_kernel");
 	//	torch::load(net, "0_1_0_1_diffusivity2.pt");
 	//	nn::Integrator<System, decltype(net), NUM_INPUTS> nn(system, net);
@@ -364,9 +377,9 @@ int main()
 			auto systems = generateSystems(36, 0x6341241);
 			for (int i = 0; i < 4; ++i) 
 			{
-			//	disc::FiniteDifferencesExplicit finiteDiffs2(systems[i], timeStep);
+		//		disc::FiniteDifferencesExplicit finiteDiffs2(systems[i], timeStep);
 				disc::SuperSampleIntegrator<T, N, N * 32> finiteDiffs2(systems[i], timeStep, trainingStates[i], 64);
-				eval::HeatRenderer renderer(timeStep, N, systems[i].heatCoefficients().data(), [&, state = trainingStates[i]]() mutable
+				eval::HeatRenderer renderer(timeStep, N, systems[i].heatCoefficients().data(), [&, state = trainingStates[0]]() mutable
 				{
 					state = finiteDiffs2(state);
 					return std::vector<double>(state.begin(), state.end());
@@ -409,6 +422,7 @@ int main()
 				heatCoefs.fill(i);
 				systems.emplace_back(heatCoefs);
 			}
+
 		/*	heatCoefs.fill(0.2);
 			systems.emplace_back(heatCoefs);
 			heatCoefs.fill(0.5);

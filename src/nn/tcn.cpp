@@ -236,9 +236,8 @@ namespace nn {
 	{
 		using namespace torch::indexing;
 		/* batch size, channels, time, spatial */
-		auto residual = x.index({ "...", 0, -1, "..." });
+		auto residual = x.index({Slice(), 0, -1, Slice() });
 		x = layers->forward(x) + residual;
-
 		return x;
 	}
 } 

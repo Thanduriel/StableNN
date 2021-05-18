@@ -3,6 +3,8 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Graphics/Color.hpp>
 #include <cmath>
+#include <algorithm>
+#include <numeric>
 
 namespace eval {
 
@@ -126,7 +128,6 @@ namespace eval {
 		m_diffusivity(_domainSize, 0.0),
 		m_integrator(_integrator)
 	{
-
 		const auto [minDif, maxDif] = std::minmax_element(_diffusivity, _diffusivity + _domainSize);
 		const double interval = (*maxDif - *minDif) * 0.5;
 
@@ -137,14 +138,22 @@ namespace eval {
 		}
 	}
 
-	constexpr float BASE_RADIUS = 8.f;
+	constexpr int WINDOW_SIZE = 512;
+	const float HALF_SIZE = WINDOW_SIZE * 0.5f;
+	const float MEAN_RADIUS = WINDOW_SIZE * 0.25f;
+	const float MIN_RADIUS = 8.f;
 
 	void HeatRenderer::run()
 	{
-		const sf::Vector2f origin(256.f, 256.f);
 		std::vector<double> state = m_integrator();
+		// scale system to fit the window
+		const float mean = std::accumulate(state.begin(), state.end(), 0.0) / state.size();
+		const auto [minE, maxE] = std::minmax_element(state.begin(), state.end());
+		const float radiusScale = (HALF_SIZE - MIN_RADIUS) / (*maxE - *minE);
+		const float baseRadius = std::max(MIN_RADIUS - static_cast<float>(*minE) * radiusScale, MEAN_RADIUS - mean);
 
-		sf::RenderWindow window(sf::VideoMode(512, 512), "heateq");
+		sf::RenderWindow window(sf::VideoMode(WINDOW_SIZE, WINDOW_SIZE), "heateq");
+		const sf::Vector2f origin(HALF_SIZE, HALF_SIZE);
 		window.setFramerateLimit(std::min(static_cast<unsigned>(1.0 / m_deltaTime), 60u));
 
 		// + 1 for origin, + 1 to close the loop
@@ -167,8 +176,7 @@ namespace eval {
 				const float angle = static_cast<float>(i) / state.size() * 2.f * PI_F;
 				const sf::Vector2f dir = sf::Vector2f(std::sin(angle), std::cos(angle));
 				triangles[i + 1].position = origin
-					+ BASE_RADIUS * dir
-					+ static_cast<float>(state[i]) * dir;
+					+ (baseRadius + radiusScale * static_cast<float>(state[i])) *dir;
 
 				HSV color{ m_diffusivity[i] > 0.0 ? 0.f : 240.f, std::abs(m_diffusivity[i]), 1.f };
 				triangles[i + 1].color = HSVtoRGB(color);

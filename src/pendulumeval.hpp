@@ -324,18 +324,20 @@ void makeSinglePhasePeriodData(const System& _system, const State& _state, doubl
 template<typename NetType, typename TrainFn>
 void makeLipschitzData(const nn::HyperParams& _params, TrainFn trainNetwork)
 {
-	std::vector<double> times{ 4.0, 3.0, 2.0, 1.0, 0.5, 0.25 };
+	std::vector<double> times{ 0.125/2/*, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125*/ };
 	std::vector<nn::HyperParams> bestNets;
 	nn::HyperParams params = _params;
 
-	params["name"] = std::string("resnet_lipschitz");
+	
 	for (double time : times)
 	{
 		params["time"] = time;
+		params["name"] = std::string("hamiltonian_lipschitz_") + std::to_string(static_cast<int>(time * 100));
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork, {
+		//	{"seed", {93784130ul, 167089119616745849ull, 23423223442167775ull, 168488165347327969ull, 116696928402573611ull, 17932827895858725ull, 51338360522333466ull, 100818424363624464ull}}
 			{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
 			}, params);
-		bestNets.emplace_back(hyperOptimizer.run(2));
+		bestNets.emplace_back(hyperOptimizer.run(8));
 	}
 
 	std::ofstream file("lipschitz.txt");
