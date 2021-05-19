@@ -76,6 +76,13 @@ namespace nn {
 			if (MODE != Mode::TRAIN_MULTI)
 				std::cout << "Generating data took " << genTime << "s\n";
 			
+			torch::Device device(torch::kCPU);
+			if (torch::cuda::is_available() && _params.get<bool>("train_gpu", true)) 
+			{
+				std::cout << "Cuda is available. Training on GPU." << std::endl;
+				device = torch::kCUDA;
+			}
+
 			// LBFGS does not work with mini batches and random sampling
 			using Sampler = std::conditional_t<USE_SEQ_SAMPLER,
 				dat::samplers::SequentialSampler,
@@ -94,9 +101,10 @@ namespace nn {
 				s_initMutex.lock();
 				torch::manual_seed(_params.get<uint64_t>("seed", TORCH_SEED));
 			}
-			auto net = _params.get<bool>("load_net", false) ? nn::load<Network, UseWrapper>(_params) 
-				: nn::makeNetwork<Network, UseWrapper>(_params);
-			auto bestNet = nn::makeNetwork<Network, UseWrapper>(_params);
+			auto net = _params.get<bool>("load_net", false) ? nn::load<Network, UseWrapper>(_params, "", device)
+				: nn::makeNetwork<Network, UseWrapper>(_params, device);
+			auto bestNet = nn::makeNetwork<Network, UseWrapper>(_params, device);
+
 			if constexpr (THREAD_FIXED_SEED)
 			{
 				s_initMutex.unlock();
@@ -155,23 +163,26 @@ namespace nn {
 				// train
 				net->train();
 
-				torch::Tensor totalLoss = torch::zeros({ 1 });
+				double totalLoss = 0.0;
 				int forwardRuns = 0;
 
 				for (torch::data::Example<>& batch : *data_loader)
 				{
+					torch::Tensor data = batch.data.to(device);
+					torch::Tensor target = batch.target.to(device);
+
 					auto closure = [&]()
 					{
 						net->zero_grad();
 						torch::Tensor output;
-						torch::Tensor input = batch.data;
+						torch::Tensor input = data;
 						for (int64_t i = 0; i < NUM_FORWARDS; ++i)
 						{
 							output = net->forward(input);
 							input = nextInput(input, output);
 						}
-						torch::Tensor loss = lossFn(output, batch.target);
-						totalLoss += loss;
+						torch::Tensor loss = lossFn(output, target);
+						totalLoss += loss.item<double>();
 						++forwardRuns; // count runs to normalize the training error
 
 						loss.backward();
@@ -181,37 +192,39 @@ namespace nn {
 					optimizer.step(closure);
 				}
 				lrScheduler.step(epoch);
-				const double trainLoss = totalLoss.item<double>() / forwardRuns;
+				const double trainLoss = totalLoss / forwardRuns;
 
 				// validation
+				torch::NoGradGuard gradGuard;
 				net->eval();
-				torch::Tensor validLoss = torch::zeros({ 1 });
+				double validLoss = 0.0;
 				for (torch::data::Example<>& batch : *validationLoader)
 				{
+					torch::Tensor input = batch.data.to(device);
+					torch::Tensor target = batch.target.to(device);
 					torch::Tensor output;
-					torch::Tensor input = batch.data;
+
 					for (int64_t i = 0; i < NUM_FORWARDS; ++i)
 					{
 						output = net->forward(input);
 						input = nextInput(input, output);
 					}
-					torch::Tensor loss = lossFn(output, batch.target);
-					validLoss += loss;
+					torch::Tensor loss = lossFn(output, target);
+					validLoss += loss.item<double>();
 				}
 
 				if constexpr (LOG_LEARNING_LOSS)
 				{
 					learnLossLog << trainLoss
-						<< ", " << validLoss.item<double>() << "\n";
+						<< ", " << validLoss << "\n";
 				}
 
-				const double totalValidLossD = validLoss.item<double>();
-				if (totalValidLossD < bestValidLoss)
+				if (validLoss < bestValidLoss)
 				{
 					if constexpr (MODE != Mode::TRAIN_MULTI)
-						std::cout << validLoss.item<double>() << "\n";
+						std::cout << validLoss << "\n";
 					bestNet = nn::clone(net);
-					bestValidLoss = totalValidLossD;
+					bestValidLoss = validLoss;
 				}
 
 				if constexpr (MODE != Mode::TRAIN_MULTI)

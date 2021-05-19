@@ -275,7 +275,11 @@ int main()
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
 	params["name"] = std::string("conv_zero");
+	params["train_gpu"] = true;
 	params["load_net"] = false;
+
+	if (!torch::cuda::is_available())
+		params["train_gpu"] = false;
 
 	if constexpr (MODE != Mode::EVALUATE)
 	{

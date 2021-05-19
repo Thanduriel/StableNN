@@ -40,7 +40,7 @@ namespace nn {
 
 	// @param _name File name without ending.
 	template<typename NetType, bool UseWrapper>
-	auto load(const HyperParams& _params, const std::string& _name = "")
+	auto load(const HyperParams& _params, const std::string& _name = "", torch::Device _device = torch::kCPU)
 	{
 		const std::string& name = _name.empty() ? *_params.get<std::string>("name") : _name;
 
@@ -49,7 +49,7 @@ namespace nn {
 		file >> params;
 
 		auto net = nn::makeNetwork<NetType, UseWrapper>(params);
-		torch::load(net, name + ".pt");
+		torch::load(net, name + ".pt", _device);
 
 		return net;
 	}

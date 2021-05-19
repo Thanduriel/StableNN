@@ -9,7 +9,7 @@ namespace nn {
 	Options makeOptions(const HyperParams& _params);
 
 	template<typename Net, bool UseWrapper>
-	auto makeNetwork(const nn::HyperParams& _params)
+	auto makeNetwork(const nn::HyperParams& _params, torch::Device _device = torch::kCPU)
 	{
 		const size_t stateSize = *_params.get<size_t>("state_size");
 		const size_t numInputsNet = *_params.get<size_t>("num_inputs") * stateSize;
@@ -34,13 +34,13 @@ namespace nn {
 				.train_in(*_params.get<bool>("train_in"))
 				.in_out_bias(*_params.get<bool>("in_out_bias"))
 				, options);
-			net->to(torch::kDouble);
+			net->to(_device, torch::kDouble);
 			return net;
 		}
 		else
 		{
 			Net net(options);
-			net->to(torch::kDouble);
+			net->to(_device, torch::kDouble);
 			return net;
 		}
 	}
