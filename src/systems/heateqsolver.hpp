@@ -156,7 +156,6 @@ namespace discretization {
 			torch::Tensor mat = torch::zeros({ m, m }, m_options);
 			for (int64_t i = 0; i < N; ++i)
 			{
-				const T da = a[m_system.index(i + 1)] - a[m_system.index(i - 1)];
 				const torch::Tensor scale = Order == 1 ? 
 					torch::tensor({ a[i], a[i], a[i] }, m_options)
 					 : torch::tensor({ a[i], a[i], a[i], a[i], a[i] }, m_options);

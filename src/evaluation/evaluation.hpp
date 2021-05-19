@@ -88,8 +88,8 @@ namespace eval {
 			stateLog.push_back(currentState);
 		}
 
-		const int avgWindow = _options.mseAvgWindow ? _options.mseAvgWindow : numShortTermSteps;
-		const int start = _options.writeGlobalError ? 0 : numShortTermSteps - avgWindow;
+		const size_t avgWindow = static_cast<size_t>(_options.mseAvgWindow ? _options.mseAvgWindow : numShortTermSteps);
+		const size_t start = static_cast<size_t>(_options.writeGlobalError ? 0 : numShortTermSteps - avgWindow);
 		std::vector<std::array<double, numIntegrators>> globalError;
 		globalError.reserve(numShortTermSteps - start);
 
@@ -114,7 +114,6 @@ namespace eval {
 		{
 			globalErrorAvg.push_back({});
 			auto& avgErr = globalErrorAvg.back();
-			const int offsetInd = static_cast<int>(i) - avgWindow;
 			for (size_t j = 0; j < numIntegrators; ++j)
 			{
 				currentAvg[j] += globalError[i][j];

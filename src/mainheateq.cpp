@@ -138,6 +138,12 @@ void evaluate(const std::vector<System>& _systems,
 {
 	for (size_t i = 0; i < _systems.size(); ++i)
 	{
+		if (_systems[i].radius() == 0.0)
+		{
+			std::cout << "######################################################\n";
+			continue;
+		}
+		std::cout << "Num" << i << "\n";
 		evaluate<NumTimeSteps>(_systems[i], _initialStates[i], _timeStep, _options, std::forward<Networks>(_networks)...);
 	}
 }
@@ -248,7 +254,7 @@ int main()
 	params["lr"] = USE_LBFGS ? 0.002 : 0.001;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
 	params["lr_epoch_update"] = 512;
-	params["weight_decay"] = 0.0001;//5e-4;
+	params["weight_decay"] = 0.005;//5e-4;
 	params["history_size"] = 100;
 
 	params["depth"] = 4;
@@ -325,7 +331,12 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			params["name"] = std::string("conv_wd");
+			constexpr int numSeeds = 8;
+			std::mt19937_64 rng;
+			std::vector<nn::ExtAny> seeds(numSeeds);
+			std::generate(seeds.begin(), seeds.end(), rng);
+
+			params["name"] = std::string("conv_seed");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {3, 7, 9}},
 				//	{"hidden_channels", {4,6}},
@@ -337,15 +348,16 @@ int main()
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
 				//	{"amsgrad", {false, true}},
 				//	{"lr_decay", {0.25, 0.1}},
-					{"weight_decay", {0.001, 0.005, 0.01}}
+				//	{"weight_decay", {0.001, 0.005, 0.01}}
 				//	{"padding_mode_temp", {torch::kZeros, torch::kCircular, torch::kReflect}}
 				//	{"num_epochs", {2048}},
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
 				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
+					{"seed", seeds}
 				}, params);
 
-			hyperOptimizer.run(3);
+			hyperOptimizer.run(2);
 		}
 		if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 			std::cout << trainNetwork(params) << "\n";
@@ -420,14 +432,14 @@ int main()
 		{
 			// magnitude
 			std::vector<System> systems;
-			std::array<T, N> heatCoefs{};
+		/*	std::array<T, N> heatCoefs{};
 			for (double i = 0.05; i < 3.0; i += 0.05)
 			{
 				heatCoefs.fill(i);
 				systems.emplace_back(heatCoefs);
-			}
+			}*/
 
-		/*	heatCoefs.fill(0.2);
+			heatCoefs.fill(0.1);
 			systems.emplace_back(heatCoefs);
 			heatCoefs.fill(0.5);
 			systems.emplace_back(heatCoefs);
@@ -438,13 +450,38 @@ int main()
 			heatCoefs.fill(2.5);
 			systems.emplace_back(heatCoefs);
 			heatCoefs.fill(3.0);
-			systems.emplace_back(heatCoefs);*/
+			systems.emplace_back(heatCoefs);
 			// roughness
-		/*	systems.push_back(generateSystems(1, 0xE312A41, 0.05, 1.0)[0]); // standard training sample with smooth changes
+			systems.emplace_back(0.0);
+			systems.push_back(generateSystems(1, 0xE312A41, 0.05, 1.0)[0]); // standard training sample with smooth changes
 			systems.push_back(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0]);
 			systems.push_back(generateSystems(1, 0xFBB4F, 0.25, 1.0)[0]); 
-			systems.push_back(generateSystems(1, 0xBB4F0101, 0.5, 1.0)[0]);*/
+			systems.push_back(generateSystems(1, 0xBB4F0101, 0.5, 1.0)[0]);
+			systems.emplace_back(0.0);
 			std::vector<State> states(systems.size(), state);
+
+			// different states
+			heatCoefs.fill(1.0);
+			for (auto& state : validStates)
+			{
+				systems.push_back(heatCoefs);
+				states.push_back(state);
+			}
+
+			auto convWd0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd");
+			auto convWd1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_wd");
+			auto convSeed0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_seed");
+			auto convSeed1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_seed");
+			auto convSeed2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "2_conv_seed");
+			auto convSeed3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "3_conv_seed");
+			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
+				wrapNetwork<1>(convWd0),
+				wrapNetwork<1>(convWd1),
+				wrapNetwork<1>(convSeed0),
+				wrapNetwork<1>(convSeed1),
+				wrapNetwork<1>(convSeed2),
+				wrapNetwork<1>(convSeed3));
+			return 0;
 			// networks
 		//	auto tcnInterleaved = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_interleaved_lbfgs");
 		//	auto tcnInterleavedAdam = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_interleaved");
@@ -493,7 +530,7 @@ int main()
 				eval::checkEnergy(eval::computeJacobian(wrapper, nn::arrayToTensor(state)));
 			}
 			return 0;*/
-			evaluate<NUM_INPUTS*4>(systems, states, timeStep, options, 
+			evaluate<8>(systems, states, timeStep, options, 
 		//		wrapNetwork<NUM_INPUTS>(net),
 				wrapNetwork<8>(tcnInterleavedAvg),
 				wrapNetwork<8>(tcnInterleavedFull),

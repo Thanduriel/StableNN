@@ -19,7 +19,7 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN;
+constexpr Mode MODE = Mode::TRAIN_MULTI;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
@@ -54,4 +54,4 @@ constexpr uint64_t TORCH_SEED = 9378341130ull; // 9378341130ul
 
 // evaluation
 // only set to true if build option USE_GRAPHICS=true
-constexpr bool SHOW_VISUAL = true;
+constexpr bool SHOW_VISUAL = false;
