@@ -23,7 +23,7 @@ using State = typename System::State;
 constexpr T MEAN = ABSOLUTE_ZERO ? 128.0 : 0.0;
 constexpr T STD_DEV = ABSOLUTE_ZERO ? 64.0 : 1.0;
 
-using NetType = nn::ExtTCN;
+using NetType = nn::Convolutional;
 
 using OutputMaker = nn::StateToTensor;
 static_assert((!std::is_same_v<NetType, nn::TCN2d> && !std::is_same_v<NetType, nn::ExtTCNImpl>) || USE_LOCAL_DIFFUSIFITY, 
@@ -274,7 +274,7 @@ int main()
 	params["train_out"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
-	params["name"] = std::string("tcn_wd_2t_full");
+	params["name"] = std::string("conv_zero");
 	params["load_net"] = false;
 
 	if constexpr (MODE != Mode::EVALUATE)
@@ -321,7 +321,7 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			params["name"] = std::string("tcn_wd_2t");
+			params["name"] = std::string("conv_wd");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {3, 7, 9}},
 				//	{"hidden_channels", {4,6}},

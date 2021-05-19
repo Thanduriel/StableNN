@@ -109,12 +109,13 @@ namespace eval {
 			if ((filter[j] - filter[filterSize - j - 1]).item<double>() > std::numeric_limits<double>::epsilon() * 16.0)
 			{
 				symmetric = false;
-				//	break;
+				break;
 			}
 			sum += std::abs(filter[j].item<double>()) + std::abs(filter[filterSize - j - 1].item<double>());
 		}
 
-		std::cout << filter[halfSize].item<double>() + sum;
+		std::cout << filter[halfSize].item<double>() + sum << "\n";
+		std::cout << "symmetric: " << symmetric << "\n";
 		//	std::cout << "Holds for any size: " << (sum < filter[halfSize].item<double>()) << std::endl;
 	}
 
@@ -136,7 +137,7 @@ namespace eval {
 				minEig = eig;
 			}
 		}
-		const bool isPositiveDefinite = minEig > 0;
+		//const bool isPositiveDefinite = minEig > 0;
 		//std::cout << "Energy does not increase: " << isPositiveDefinite << std::endl;
 		std::cout << minEig << "\n";
 	}

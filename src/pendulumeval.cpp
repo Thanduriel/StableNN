@@ -35,10 +35,10 @@ void makeVerletPeriodErrorData(const System& _system, double _timeStep, int _ref
 	for (int i = 0; i < numStates; ++i)
 	{
 		State state{ static_cast<double>(i) / numStates * PI, 0.0 };
-		double ref = eval::computePeriodLength(state, referenceIntegrate, 4096);
-		double verlet = eval::computePeriodLength(state, integrator, 4096);
-		double verlet2 = eval::computePeriodLength(state, integrate2, 4096);
-		double verlet3 = eval::computePeriodLength(state, integrate3, 4096);
+		double ref = eval::computePeriodLength(state, referenceIntegrate, periods);
+		double verlet = eval::computePeriodLength(state, integrator, periods);
+		double verlet2 = eval::computePeriodLength(state, integrate2, periods);
+		double verlet3 = eval::computePeriodLength(state, integrate3, periods);
 		file << state.position << " "
 			<< _system.energy(state) << " "
 			<< ref << " "

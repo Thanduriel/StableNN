@@ -158,8 +158,8 @@ int main()
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
 		const double timeStep = * params.get<double>("time_step");
-	/*	eval::EvalOptions options;
-		options.numLongTermRuns = 8;
+	//	eval::EvalOptions options;
+	//	options.numLongTermRuns = 8;
 
 	/*	auto othNet = nn::load<NetType, USE_WRAPPER>(params);
 	//	nn::exportTensor(othNet->layers->at<torch::nn::LinearImpl>(othNet->layers->size()-1).weight, "outlinear.txt");
@@ -242,8 +242,8 @@ int main()
 	//	makeEnergyErrorData<NUM_INPUTS>(system, timeStep, 1024, 16, antisym0d, antisym01d, antisym001d);
 	//	makeVerletPeriodErrorData(system, timeStep);
 	//	makeAsymptoticEnergyData<NUM_INPUTS>(system, integrator);
-		const double maxEnergy = system.energy(State{ 3.1, 0.0 });
-		auto restrictDomain = [&](const State& _state) { return system.energy(_state) > maxEnergy; };
+	//	const double maxEnergy = system.energy(State{ 3.1, 0.0 });
+	//	auto restrictDomain = [&](const State& _state) { return system.energy(_state) > maxEnergy; };
 		auto restrictNone = [&](const State& _state) { return false; };
 		makeJacobianData(verletNN, { -PI, -2.0 }, { PI, 2.0 }, { 64, 64 }, restrictNone);
 		return 0;
@@ -266,7 +266,7 @@ int main()
 		for (size_t i = 0; i < net->hiddenNet->layers.size(); ++i)
 		{
 			std::cout << eval::details::norm(net->hiddenNet->layers[i]->system_matrix(), 2);
-		/*	auto eigs = eval::computeEigs(antisym3->hiddenNet->layers[i]->system_matrix());
+			auto eigs = eval::computeEigs(antisym3->hiddenNet->layers[i]->system_matrix());
 			for (auto eig : eigs)
 				std::cout << eig << "\n";
 			std::cout << "\n";

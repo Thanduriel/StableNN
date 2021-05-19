@@ -27,6 +27,8 @@ public:
 	// @param _numInputSteps Number of steps which are combined to one sample for inputs in a time series.
 	// @param _numOutputSteps Number of steps which are combined to one sample for outputs in a time series.
 	//						  A value of zero means that _numInputSteps are given.
+	// @param _warmup Number of steps to simulate before starting to record the actual samples. 
+	//				  If less elements are provided then _initialStates, they are reused.
 	nn::Dataset generate(const std::vector<SysState>& _initialStates,
 		int64_t _numSamples = 256,
 		int64_t _downSampleRate = 1,
@@ -37,10 +39,6 @@ public:
 	{
 		assert(_initialStates.size() >= 1);
 		if (_numInputSteps == 1) _useSingleOutput = true;
-
-		constexpr int64_t stateSize = systems::sizeOfState<System>();
-		const int64_t inputSize = _numInputSteps * stateSize;
-		const int64_t outputSize = _useSingleOutput ? stateSize : inputSize;
 
 		// steps required without considering _numInputSteps
 		const int64_t samplesReq = _numSamples + _inOutShift;
@@ -111,7 +109,6 @@ private:
 				return Integrator(_system, m_integrator.deltaTime());
 		}();
 
-		const size_t warmupStates = _steps * _warmup;
 		for (size_t i = 0; i < _warmup; ++i)
 			state = integrator(state);
 

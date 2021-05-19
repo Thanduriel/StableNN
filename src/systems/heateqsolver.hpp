@@ -91,8 +91,8 @@ namespace discretization {
 
 		FiniteDifferencesExplicit(const HeatEquation<T, N>& _system, T _dt)
 			: m_system(_system), 
-			m_dt(_dt), 
-			m_r(0.0)
+			m_r(0.0),
+			m_dt(_dt)
 		{
 			// double sized intervals so that the first order central differences uses whole steps
 			const T h = m_system.radius() * 2.0 * PI / N;

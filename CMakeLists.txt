@@ -71,7 +71,7 @@ if (MSVC)
 else()
 	# public options are propagated to the other targets
 	target_compile_options(stableNN PUBLIC "$<$<CONFIG:DEBUG>:-Wall;-pedantic>")
-	target_compile_options(stableNN PUBLIC "$<$<CONFIG:RELEASE>:-Wall;-pedantic;-O3;-march=native>")
+	target_compile_options(stableNN PUBLIC "$<$<CONFIG:RELEASE>:-Wall;-pedantic;-O3;-march=native;-DNDEBUG>")
 endif (MSVC)
 
 #---------------------------------------------------------------------------------------
