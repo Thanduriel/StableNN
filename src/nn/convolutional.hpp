@@ -1,6 +1,7 @@
 #pragma once
 
 #include "activation.hpp"
+#include "extconv.hpp"
 #include <torch/torch.h>
 
 namespace nn {
@@ -29,7 +30,8 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor _input);
 
 		Options options;
-		std::vector<torch::nn::Conv1d> layers;
+		using Conv = ExtConv1d; // torch::nn::Conv1d
+		std::vector<Conv> layers;
 		torch::nn::Conv1d residual;
 	};
 

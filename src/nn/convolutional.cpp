@@ -22,7 +22,7 @@ namespace nn {
 
 		if (options.num_layers() > 1)
 		{
-			layers.emplace_back(torch::nn::Conv1d(convOptions));
+			layers.emplace_back(convOptions);
 			register_module("layer" + std::to_string(0), layers.back());
 			if (options.residual() && options.num_channels() != options.hidden_channels())
 			{
@@ -35,7 +35,7 @@ namespace nn {
 			convOptions.in_channels(options.hidden_channels());
 			for (int64_t i = 1; i < options.num_layers() - 1; ++i)
 			{
-				layers.emplace_back(torch::nn::Conv1d(convOptions));
+				layers.emplace_back(convOptions);
 				register_module("layer" + std::to_string(i), layers.back());
 			}
 		}
@@ -44,7 +44,7 @@ namespace nn {
 		convOptions.out_channels(1);
 		convOptions.kernel_size(1);
 		convOptions.padding(0);
-		layers.emplace_back(torch::nn::Conv1d(convOptions));
+		layers.emplace_back(convOptions);
 		register_module("layer" + std::to_string(options.num_layers()-1), layers.back());
 	}
 
