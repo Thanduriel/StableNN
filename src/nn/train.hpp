@@ -101,9 +101,11 @@ namespace nn {
 				s_initMutex.lock();
 				torch::manual_seed(_params.get<uint64_t>("seed", TORCH_SEED));
 			}
-			auto net = _params.get<bool>("load_net", false) ? nn::load<Network, UseWrapper>(_params, "", device)
+			const bool loadNet = _params.get<bool>("load_net", false);
+			HyperParams loadedParams = _params;
+			auto net = loadNet ? nn::load<Network, UseWrapper>(_params, "", device, &loadedParams)
 				: nn::makeNetwork<Network, UseWrapper>(_params, device);
-			auto bestNet = nn::makeNetwork<Network, UseWrapper>(_params, device);
+			auto bestNet = nn::clone(net);
 
 			if constexpr (THREAD_FIXED_SEED)
 			{
@@ -250,14 +252,19 @@ namespace nn {
 			}
 			if constexpr(SAVE_NET)
 			{
-				nn::save(bestNet, _params);
+				// store loaded params again to ensure that at least the network parameters are correct
+				if (loadNet)
+					loadedParams["load_net"] = true;
+				nn::save(bestNet, loadedParams);
 			}
 			end = std::chrono::high_resolution_clock::now();
 			const float trainTime = std::chrono::duration<float>(end - start).count();
 			// not constexpr to prevent warnings
 			if (MODE != Mode::TRAIN_MULTI)
-				std::cout << "Finished training in " << trainTime 
-						  << "s. The final validation loss is " << bestValidLoss << ".\n";
+			{
+				std::cout << "Finished training in " << trainTime
+					<< "s. The final validation loss is " << bestValidLoss << ".\n";
+			}
 
 			return bestValidLoss;
 		}

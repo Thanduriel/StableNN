@@ -32,7 +32,7 @@ namespace nn {
 	template<typename Module>
 	void save(const Module& _module, const HyperParams& _params)
 	{
-		auto name = _params.get<std::string>("name", "net");
+		const auto name = _params.get<std::string>("name", "net");
 		torch::save(_module,  name + ".pt");
 		std::ofstream file(name + ".hparam");
 		file << _params;
@@ -40,13 +40,21 @@ namespace nn {
 
 	// @param _name File name without ending.
 	template<typename NetType, bool UseWrapper>
-	auto load(const HyperParams& _params, const std::string& _name = "", torch::Device _device = torch::kCPU)
+	auto load(const HyperParams& _params, const std::string& _name = "", torch::Device _device = torch::kCPU,
+		HyperParams* _outParams = nullptr)
 	{
 		const std::string& name = _name.empty() ? *_params.get<std::string>("name") : _name;
 
 		HyperParams params = _params;
 		std::ifstream file(name + ".hparam");
 		file >> params;
+		if (_outParams) *_outParams = params;
+
+		const std::string storedType = params.get<std::string>("net_type", "unknown");
+		const std::string type = std::string(typeid(NetType).name());
+		if (storedType != type)
+			std::cout << "Warning: possible model type mismatch. Expected " << type
+				<< " but saved model is of type " << storedType << "\n";
 
 		auto net = nn::makeNetwork<NetType, UseWrapper>(params);
 		torch::load(net, name + ".pt", _device);

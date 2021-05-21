@@ -50,7 +50,8 @@ namespace nn {
 			.bias(*_params.get<bool>("bias"))
 			.hidden_channels(*_params.get<int>("hidden_channels"))
 			.residual(_params.get<bool>("residual", false))
-			.activation(*_params.get<nn::ActivationFn>("activation"));
+			.activation(*_params.get<nn::ActivationFn>("activation"))
+			.symmetric(*_params.get<bool>("symmetric"));
 	}
 
 	template<>

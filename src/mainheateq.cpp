@@ -238,8 +238,14 @@ int main()
 	System heatEq(heatCoefs, 1.0);
 
 	nn::HyperParams params;
+	params["name"] = std::string("conv_sym_large");
+	params["load_net"] = false;
+
+	// simulation
 	params["time_step"] = 0.0001;
 	params["hyper_sample_rate"] = USE_LOCAL_DIFFUSIFITY ? 64 : 1;
+
+	// training
 #ifdef NDEBUG
 	params["train_samples"] = 128;
 	params["valid_samples"] = 128;
@@ -250,39 +256,42 @@ int main()
 	params["batch_size"] = 128; // 512
 	params["num_epochs"] = USE_LBFGS ? 128 : 1024; // 768
 	params["loss_p"] = 2;
+	params["train_gpu"] = true;
+	params["net_type"] = std::string(typeid(NetType).name());
 
+	// optimizer
 	params["lr"] = USE_LBFGS ? 0.002 : 0.001;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
 	params["lr_epoch_update"] = 512;
-	params["weight_decay"] = 0.005;//5e-4;
+	params["weight_decay"] = 0.005;//0.005
 	params["history_size"] = 100;
 
+	// general
 	params["depth"] = 4;
 	params["bias"] = true;
 	params["num_inputs"] = std::is_same_v<NetType, nn::Convolutional> ? 1 : NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
+	params["hidden_size"] = N;
 	// makeNetwork uses this but does not handle the spatial dimension correctly
 	params["state_size"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
-	params["augment"] = 2;
-	params["hidden_size"] = N;
-	params["hidden_channels"] = 4;
-	params["kernel_size"] = 3;
+	params["activation"] = nn::ActivationFn(torch::tanh);
+	params["hidden_channels"] = 6;
+	params["kernel_size"] = 5;
+	params["residual"] = true;
+	params["symmetric"] = true;
+
+	// tcn
 	params["kernel_size_temp"] = 3; // temporal dim
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
 	params["average"] = false;
-	params["residual"] = true;
 	params["interleaved"] = true;
 	params["padding_mode"] = torch::nn::detail::conv_padding_mode_t(torch::kCircular);
 	params["padding_mode_temp"] = torch::nn::detail::conv_padding_mode_t(torch::kZeros); // padding in temporal dim; only used when interleaved=true
+	
 	params["train_in"] = false;
 	params["train_out"] = false;
-	params["activation"] = nn::ActivationFn(torch::tanh);
-
-	params["name"] = std::string("conv_zero");
-	params["train_gpu"] = true;
-	params["load_net"] = false;
 
 	if (!torch::cuda::is_available())
 		params["train_gpu"] = false;
@@ -298,7 +307,7 @@ int main()
 #endif
 		auto trainingStates = generateStates(heatEq, numTrain, 0x612FF6AEu); // 20.0
 		auto validStates = generateStates(heatEq, numValid, 0x195A4Cu); // 30.0
-		auto warmupSteps = std::vector<size_t>{ 0, 64, 384, 256, 16, 4, 128, 2, 0, 64, 384, 256, 16, 4, 128, 400 };
+		auto warmupSteps = std::vector<size_t>{ 0, 64, 384, 256, 16, 4, 128, 2, 128, 64, 384, 256, 16, 512, 0, 0 };
 
 		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
 			SuperSampleIntegrator,
@@ -309,16 +318,13 @@ int main()
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
 			trainSystems = generateSystems(trainingStates.size(), 0x6341241u);
-		//	auto systems = generateSystems(trainingStates.size() + validStates.size(), 0x6341241u);
-		//	trainSystems.insert(trainSystems.end(), systems.begin(), systems.begin() + trainingStates.size());
-		//	validSystems.insert(validSystems.end(), systems.end() - validStates.size(), systems.end());
-			auto randSystems = generateSystems(validStates.size()-2, 0xBE0691u);
+			validSystems = generateSystems(validStates.size()-2, 0xBE0691u);
 			std::array<T, N> heatCoefs{};
 			heatCoefs.fill(0.1);
 			validSystems.emplace_back(heatCoefs);
 			heatCoefs.fill(3.0);
 			validSystems.emplace_back(heatCoefs);
-			validSystems.insert(validSystems.end(), randSystems.begin(), randSystems.end());
+		//	validSystems.insert(validSystems.end(), randSystems.begin(), randSystems.end());
 		}
 		else
 		{
@@ -408,7 +414,7 @@ int main()
 		options.numShortTermSteps = 128;
 		options.numLongTermRuns = 0;
 		options.numLongTermSteps = 1024;
-		options.mseAvgWindow = 4;
+		options.mseAvgWindow = 0;
 		options.printHeader = false;
 	/*	for(auto& state : trainingStates)
 		{
@@ -430,6 +436,13 @@ int main()
 	//	auto tcn = nn::load<nn::TCN2d, USE_WRAPPER>(params, "heateq32_tcn_5_3");
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
+			auto net = nn::load<NetType, USE_WRAPPER>(params);
+		/*	for (auto& layer : net->layers)
+			{
+				int yooo = layer->weight.dim();
+				std::cout << layer->weight + layer->weight.flip(2) << "\n";
+				std::cout << layer->weight.flip(2) << "\n";
+			}*/
 			// magnitude
 			std::vector<System> systems;
 		/*	std::array<T, N> heatCoefs{};
@@ -457,7 +470,20 @@ int main()
 			systems.push_back(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0]);
 			systems.push_back(generateSystems(1, 0xFBB4F, 0.25, 1.0)[0]); 
 			systems.push_back(generateSystems(1, 0xBB4F0101, 0.5, 1.0)[0]);
+
+		/*	State v1 = state;
+			State v2 = state;
+			for (auto& v : v2) v *= 0.1;
+			for (int i = 0; i < 64; ++i)
+			{
+				v1 = finiteDiffs(v1);
+				v2 = finiteDiffs(v2);
+			}
+			for (auto& v : v2) v *= 10.0;*/
+
+
 			systems.emplace_back(0.0);
+			
 			std::vector<State> states(systems.size(), state);
 
 			// different states
@@ -468,19 +494,25 @@ int main()
 				states.push_back(state);
 			}
 
+			auto convBase = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero_sym_base");
+			auto convZero = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero");
+		/*	auto convWd0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd");
 			auto convWd0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd");
 			auto convWd1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_wd");
 			auto convSeed0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_seed");
 			auto convSeed1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_seed");
 			auto convSeed2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "2_conv_seed");
-			auto convSeed3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "3_conv_seed");
+			auto convSeed3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "3_conv_seed");*/
 			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
-				wrapNetwork<1>(convWd0),
+				wrapNetwork<1>(net),
+				wrapNetwork<1>(convBase),
+				wrapNetwork<1>(convZero)
+		/*		wrapNetwork<1>(convWd0),
 				wrapNetwork<1>(convWd1),
 				wrapNetwork<1>(convSeed0),
 				wrapNetwork<1>(convSeed1),
 				wrapNetwork<1>(convSeed2),
-				wrapNetwork<1>(convSeed3));
+				wrapNetwork<1>(convSeed3)*/);
 			return 0;
 			// networks
 		//	auto tcnInterleaved = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_interleaved_lbfgs");

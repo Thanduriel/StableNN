@@ -15,10 +15,11 @@ namespace nn {
 		layers.reserve(options.num_layers());
 		residual = nullptr;
 
-		torch::nn::Conv1dOptions convOptions(options.num_channels(), options.hidden_channels(), options.filter_size());
+		nn::ExtConvOptions<1> convOptions(options.num_channels(), options.hidden_channels(), options.filter_size());
 		convOptions.padding_mode(torch::kCircular);
 		convOptions.padding(options.filter_size() / 2);
 		convOptions.bias(options.bias());
+		convOptions.symmetric(options.symmetric());
 
 		if (options.num_layers() > 1)
 		{
@@ -44,6 +45,7 @@ namespace nn {
 		convOptions.out_channels(1);
 		convOptions.kernel_size(1);
 		convOptions.padding(0);
+		convOptions.symmetric(false);
 		layers.emplace_back(convOptions);
 		register_module("layer" + std::to_string(options.num_layers()-1), layers.back());
 	}
