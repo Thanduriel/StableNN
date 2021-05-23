@@ -59,6 +59,10 @@ namespace nn {
 		if (x.dim() < 3)
 			x = x.unsqueeze(0);
 
+		using namespace torch::indexing;
+		torch::Tensor extResidual;
+		if(options.ext_residual()) extResidual = x.index({ Slice(), 0, Slice() });
+
 		auto& activation = options.activation();
 
 		if (layers.size() > 1)
@@ -76,9 +80,11 @@ namespace nn {
 				x = options.residual() ? x + y : y;
 			}
 		}
-		x = layers.back()(x);
+		x = layers.back()(x).squeeze();
+		if (extResidual.defined())
+			x += extResidual.squeeze();
 
-		return x.squeeze();
+		return x;
 	}
 
 	// ******************************************************************** //

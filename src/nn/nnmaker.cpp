@@ -51,7 +51,8 @@ namespace nn {
 			.hidden_channels(*_params.get<int>("hidden_channels"))
 			.residual(_params.get<bool>("residual", false))
 			.activation(*_params.get<nn::ActivationFn>("activation"))
-			.symmetric(*_params.get<bool>("symmetric"));
+			.symmetric(*_params.get<bool>("symmetric"))
+			.ext_residual(*_params.get<bool>("ext_residual"));
 	}
 
 	template<>

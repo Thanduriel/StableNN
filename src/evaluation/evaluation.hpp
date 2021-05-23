@@ -52,6 +52,15 @@ namespace eval {
 		int numLongTermRuns = 4;
 	};
 
+	template<typename State>
+	struct ExtEvalOptions : public EvalOptions
+	{
+		ExtEvalOptions(const EvalOptions& _options) : EvalOptions(_options) {}
+
+		using PrintFn = void(std::ostream&, const State&, const State&, int, int);
+		std::vector<std::function<PrintFn>> customPrintFunctions;
+	};
+	
 	// Simulates the given system with different integrators to observe energy over time.
 	// For error computations the first integrator is used as reference.
 	template<typename System, typename State, typename... Integrators>
@@ -59,6 +68,16 @@ namespace eval {
 		const System& _system,
 		const State& _initialState,
 		const EvalOptions& _options,
+		Integrators&&... _integrators)
+	{
+		evaluate(_system, _initialState, ExtEvalOptions<State>(_options), std::forward<Integrators>(_integrators)...);
+	}
+
+	template<typename System, typename State, typename... Integrators>
+	void evaluate(
+		const System& _system,
+		const State& _initialState,
+		const ExtEvalOptions<State>& _options,
 		Integrators&&... _integrators)
 	{
 		constexpr size_t numIntegrators = sizeof...(_integrators);
@@ -193,6 +212,11 @@ namespace eval {
 				mseFile << err << ", ";
 			}
 			mseFile << "\n";
+		}
+
+		for (auto& printFn : _options.customPrintFunctions)
+		{
+			evalSteps(std::cout, printFn);
 		}
 
 		std::cout.precision(5);

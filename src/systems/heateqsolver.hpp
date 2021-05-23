@@ -102,6 +102,8 @@ namespace discretization {
 			assert(m_r <= 0.5);
 		}
 
+		void reset(const HeatEquation<T, N>& _system, const State& _initialState) { m_system = _system; }
+
 		State operator()(const State& _state) const
 		{
 			State next;
@@ -127,7 +129,7 @@ namespace discretization {
 
 		T deltaTime() const { return m_dt; }
 	private:
-		const HeatEquation<T, N>& m_system;
+		const HeatEquation<T, N> m_system;
 		T m_r;
 		T m_dt;
 	};
@@ -169,6 +171,8 @@ namespace discretization {
 			m_LU = torch::_lu_with_info(torch::eye(m, m_options) + mat);
 		}
 
+		void reset(const HeatEquation<T, N>& _system, const State& _initialState) { m_system = _system; }
+
 		State operator()(const State& _state) const
 		{
 			const torch::Tensor b = torch::from_blob(const_cast<T*>(_state.data()), { 1, static_cast<int64_t>(N), 1 }, m_options);
@@ -178,7 +182,7 @@ namespace discretization {
 		}
 
 	private:
-		const HeatEquation<T, N>& m_system;
+		const HeatEquation<T, N> m_system;
 		std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> m_LU;
 		c10::TensorOptions m_options;
 	};

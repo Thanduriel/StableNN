@@ -81,16 +81,38 @@ std::array<State, NumSteps> arrayView(const std::array<State, MaxSteps>& _array)
 	return arr;
 }
 
-template<size_t NumSteps, typename Network, typename System, size_t MaxSteps>
+template<typename T>
+struct Unwrap
+{
+	constexpr static size_t numSteps = 1;
+	using ContainedType = T;
+
+	Unwrap(T& _contained) : contained(_contained) {};
+	T& contained;
+};
+
+template<size_t NumSteps, typename Network>
+struct Unwrap<NetWrapper<NumSteps, Network>> 
+{ 
+	constexpr static size_t numSteps = NumSteps; 
+	using ContainedType = Network; 
+
+	Unwrap(const NetWrapper<NumSteps, Network>& _wrapper) : contained(_wrapper.network) {};
+	Network& contained;
+};
+
+template<typename Network, typename System, size_t MaxSteps>
 auto makeNNIntegrator(const System& _system,
-	const NetWrapper<NumSteps, Network>& _wrapper, 
+	Network&& _network,
 	const std::array<State, MaxSteps>& _initialStates)
 {
-
-	return nn::Integrator<System, Network, NumSteps>(
+	using UnwrapT = Unwrap<std::remove_reference_t<Network>>;
+	auto& net = UnwrapT(_network).contained;
+	constexpr size_t numSteps = UnwrapT::numSteps;
+	return nn::Integrator<System, typename UnwrapT::ContainedType, numSteps>(
 		_system, 
-		_wrapper.network, 
-		arrayView<NumSteps-1>(_initialStates));
+		net,
+		arrayView<numSteps - 1>(_initialStates));
 }
 
 
@@ -99,8 +121,8 @@ void evaluate(
 	const System& system,
 	const State& _initialState,
 	double _timeStep,
-	eval::EvalOptions _options,
-	const Networks&... _networks)
+	const eval::ExtEvalOptions<State>& _options,
+	Networks&&... _networks)
 {
 	disc::AnalyticHeatEq analytic(system, _timeStep, _initialState);
 	disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, _timeStep);
@@ -133,7 +155,7 @@ template<size_t NumTimeSteps, typename... Networks>
 void evaluate(const std::vector<System>& _systems,
 	const std::vector<State>& _initialStates,
 	double _timeStep,
-	const eval::EvalOptions& _options,
+	const eval::ExtEvalOptions<State>& _options,
 	Networks&&... _networks)
 {
 	for (size_t i = 0; i < _systems.size(); ++i)
@@ -218,6 +240,49 @@ std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed, T _maxCh
 	return systems;
 }
 
+template<typename... Networks>
+void checkSymmetry(const System& _system, const State& _state, double _timeStep,
+	const eval::EvalOptions& _options,
+	Networks&&... _networks)
+{
+
+	State state{};
+	System::HeatCoefficients heatCoeffs;
+	for (size_t i = 0; i < N/2; ++i)
+	{
+	//	state[i] = _state[i];
+		state[i] = static_cast<double>(i) / N * 4.0;
+		state[N - i - 1] = state[i];
+	//	heatCoeffs[i] = _system.heatCoefficients()[i];
+		heatCoeffs[i] = static_cast<double>(i) / N * 4.0;
+		heatCoeffs[N - i - 1] = heatCoeffs[i];
+	}
+
+	System system(heatCoeffs);
+
+	auto symErr = [](std::ostream& out, const State& s, const State&, int, int)
+	{
+		double err = 0.0;
+		for (size_t i = 0; i < N / 2; ++i)
+		{
+			const double dif = s[i] - s[N - i - 1];
+			err += dif * dif;
+		}
+		out << err;
+	};
+
+	eval::ExtEvalOptions<State> options(_options);
+	options.customPrintFunctions.emplace_back(symErr);
+
+	evaluate<NUM_INPUTS>(system, state, _timeStep, options, std::forward<Networks>(_networks)...);
+
+/*	for (int i = 0; i < 64; ++i)
+	{
+		std::cout << i << "   " << symErr(state) << "\n";
+		state = integrator(state);
+	}*/
+}
+
 void runComparison(const nn::HyperParams& _params)
 {
 
@@ -238,7 +303,7 @@ int main()
 	System heatEq(heatCoefs, 1.0);
 
 	nn::HyperParams params;
-	params["name"] = std::string("conv_sym_large");
+	params["name"] = std::string("ext_residual_sym");
 	params["load_net"] = false;
 
 	// simulation
@@ -254,7 +319,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 128; // 512
-	params["num_epochs"] = USE_LBFGS ? 128 : 1024; // 768
+	params["num_epochs"] = USE_LBFGS ? 512 : 1024; // 768
 	params["loss_p"] = 2;
 	params["train_gpu"] = true;
 	params["net_type"] = std::string(typeid(NetType).name());
@@ -276,9 +341,10 @@ int main()
 	params["state_size"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["activation"] = nn::ActivationFn(torch::tanh);
-	params["hidden_channels"] = 6;
+	params["hidden_channels"] = 4;
 	params["kernel_size"] = 5;
 	params["residual"] = true;
+	params["ext_residual"] = true;
 	params["symmetric"] = true;
 
 	// tcn
@@ -384,10 +450,8 @@ int main()
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
 		SuperSampleIntegrator superSampleFiniteDifs(system, timeStep, state, 64);
 
-	//	auto net = nn::load<NetType, USE_WRAPPER>(params);
-	//	auto net = nn::load<NetType, USE_WRAPPER>(params, "1_0_single_output_kernel");
-	//	torch::load(net, "0_1_0_1_diffusivity2.pt");
-	//	nn::Integrator<System, decltype(net), NUM_INPUTS> nn(system, net);
+		auto net = nn::load<NetType, USE_WRAPPER>(params);
+		nn::Integrator<System, decltype(net), NUM_INPUTS> nnIntegrator(system, net);
 
 	//	nn::exportTensor(analytic.getGreenFn(timeStep, 63), "green.txt");
 	//	eval::checkEnergy(net->layers.front(), 64);
@@ -437,6 +501,7 @@ int main()
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
 			auto net = nn::load<NetType, USE_WRAPPER>(params);
+			auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual");
 		/*	for (auto& layer : net->layers)
 			{
 				int yooo = layer->weight.dim();
@@ -471,17 +536,6 @@ int main()
 			systems.push_back(generateSystems(1, 0xFBB4F, 0.25, 1.0)[0]); 
 			systems.push_back(generateSystems(1, 0xBB4F0101, 0.5, 1.0)[0]);
 
-		/*	State v1 = state;
-			State v2 = state;
-			for (auto& v : v2) v *= 0.1;
-			for (int i = 0; i < 64; ++i)
-			{
-				v1 = finiteDiffs(v1);
-				v2 = finiteDiffs(v2);
-			}
-			for (auto& v : v2) v *= 10.0;*/
-
-
 			systems.emplace_back(0.0);
 			
 			std::vector<State> states(systems.size(), state);
@@ -493,6 +547,9 @@ int main()
 				systems.push_back(heatCoefs);
 				states.push_back(state);
 			}
+
+			checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
+			return 0;
 
 			auto convBase = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero_sym_base");
 			auto convZero = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero");

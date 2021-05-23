@@ -23,6 +23,11 @@ namespace nn{
 				m_states[i] = _initialState[i - 1];
 		}
 
+		void reset(const System& _system, const State& _state)
+		{
+			m_system = _system;
+		}
+
 		auto operator()(const State& _state)
 		{
 			for (size_t i = 0; i < NumStates-1; ++i)

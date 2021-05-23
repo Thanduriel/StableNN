@@ -18,6 +18,7 @@ namespace nn {
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 		TORCH_ARG(bool, residual) = false;
+		TORCH_ARG(bool, ext_residual) = false;
 		TORCH_ARG(bool, symmetric) = false;
 	};
 
