@@ -398,6 +398,9 @@ int main()
 			validSystems.push_back(heatEq);
 		}
 		
+		if (torch::cuda::is_available() && params.get<bool>("train_gpu", true))
+			std::cout << "Cuda is available. Training on GPU." << "\n";
+
 		nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, OutputMaker, USE_WRAPPER> trainNetwork(
 			trainSystems, validSystems, trainingStates, validStates, warmupSteps);
 

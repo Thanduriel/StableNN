@@ -45,7 +45,7 @@ namespace nn {
 			{
 				std::string name = _any.type().name();
 				std::replace(name.begin(), name.end(), ',', ';');
-				_out << "not writable type " << name;
+				_out << "non-writable type " << name;
 			}
 		}
 

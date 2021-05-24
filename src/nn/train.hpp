@@ -78,10 +78,7 @@ namespace nn {
 			
 			torch::Device device(torch::kCPU);
 			if (torch::cuda::is_available() && _params.get<bool>("train_gpu", true)) 
-			{
-				std::cout << "Cuda is available. Training on GPU." << std::endl;
 				device = torch::kCUDA;
-			}
 
 			// LBFGS does not work with mini batches and random sampling
 			using Sampler = std::conditional_t<USE_SEQ_SAMPLER,
