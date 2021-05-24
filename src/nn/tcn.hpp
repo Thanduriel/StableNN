@@ -153,10 +153,18 @@ namespace nn {
 	// ============================================================================
 
 	// 2d TCN with experimental extensions
+	struct ExtTCNOptions : public TCNOptions<2>
+	{
+		using TCNOptions<2>::TCNOptions;
+
+		TORCH_ARG(int64_t, ext_residual) = false;
+	//	TORCH_ARG(int64_t, symmetric) = false;
+	};
+
 	class ExtTCNImpl : public torch::nn::Cloneable<ExtTCNImpl>
 	{
 	public:
-		using Options = TCNOptions<2>;
+		using Options = ExtTCNOptions;
 		explicit ExtTCNImpl(const Options& options);
 
 		void reset() override;

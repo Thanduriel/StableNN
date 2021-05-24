@@ -9,6 +9,14 @@
 
 
 namespace nn {
+	std::string sanitizeString(const std::string& _str)
+	{
+		std::string s = _str;
+		std::replace(s.begin(), s.end(), ' ', '_'); // breaks >>
+		std::replace(s.begin(), s.end(), ',', ';'); // needed to differentiate keys
+		return s;
+	}
+
 	void ExtAny::print(std::ostream& _out) const
 	{
 		m_print(_out, any);
@@ -50,7 +58,7 @@ namespace nn {
 			entry >> buf; // ":"
 			auto it = _params.m_data.find(key);
 			if (it == _params.m_data.end())
-				std::cerr << "Encountered unknown key while parsing param file: " << key << std::endl;
+				std::cerr << "[Warning] Encountered unknown key while parsing param file: \"" << key << "\".\n";
 			else
 				it->second.read(entry);
 		}

@@ -13,6 +13,9 @@
 
 namespace nn {
 
+	// sanitize strings to not interfere with HyperParams serialization
+	std::string sanitizeString(const std::string& _str);
+
 	namespace details {
 		// type trait that checks for the operator<<(S&, T)
 		template<typename S, typename T, typename = void>
@@ -33,14 +36,16 @@ namespace nn {
 		template<typename T>
 		void printImpl(std::ostream& _out, const std::any& _any)
 		{
-			if constexpr (is_stream_writable<std::ostream, T>::value)
+			
+			if constexpr (std::is_same_v<T, std::string>)
+				_out << sanitizeString(std::any_cast<T>(_any));
+			else if constexpr (is_stream_writable<std::ostream, T>::value)
 				_out << std::any_cast<T>(_any);
 			else
 			{
 				std::string name = _any.type().name();
-				// sanitize string to not interfere with HyperParams serialization
 				std::replace(name.begin(), name.end(), ',', ';');
-				_out << name;
+				_out << "not writable type " << name;
 			}
 		}
 
@@ -55,7 +60,7 @@ namespace nn {
 			}
 			else
 			{
-				std::cerr << "Could not read value of type " << _any.type().name() << "\n";
+				std::cerr << "[Warning] Could not read value of type \"" << _any.type().name() << "\".\n";
 			}
 		}
 	}

@@ -234,10 +234,16 @@ namespace nn {
 
 	torch::Tensor ExtTCNImpl::forward(torch::Tensor x)
 	{
-		using namespace torch::indexing;
-		/* batch size, channels, time, spatial */
-		auto residual = x.index({Slice(), 0, -1, Slice() });
-		x = layers->forward(x) + residual;
+		if (options.ext_residual())
+		{
+			using namespace torch::indexing;
+			/* batch size, channels, time, spatial */
+			auto residual = x.index({ Slice(), 0, -1, Slice() });
+			x = layers->forward(x) + residual;
+		}
+		else
+			x = layers->forward(x);
+
 		return x;
 	}
 } 

@@ -51,10 +51,12 @@ namespace nn {
 		if (_outParams) *_outParams = params;
 
 		const std::string storedType = params.get<std::string>("net_type", "unknown");
-		const std::string type = std::string(typeid(NetType).name());
+		const std::string type = nn::sanitizeString(std::string(typeid(NetType).name()));
 		if (storedType != type)
-			std::cout << "Warning: possible model type mismatch. Expected " << type
-				<< " but saved model is of type " << storedType << "\n";
+		{
+			std::cout << "[Warning] Possible model type mismatch. Expected " << type
+				<< " but saved model is of type " << storedType << ".\n";
+		}
 
 		auto net = nn::makeNetwork<NetType, UseWrapper>(params);
 		torch::load(net, name + ".pt", _device);

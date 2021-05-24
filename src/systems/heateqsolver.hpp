@@ -30,6 +30,7 @@ namespace discretization {
 
 		void reset(const HeatEquation<T, N>& _system, const State& _initialState)
 		{
+			m_system = _system;
 			const torch::Tensor s = torch::from_blob(const_cast<T*>(_initialState.data()),
 				{ static_cast<int64_t>(_initialState.size()) },
 				c10::TensorOptions(c10::CppTypeToScalarType<T>()));
@@ -71,7 +72,7 @@ namespace discretization {
 			return green;
 		}
 	private:
-		const HeatEquation<T, N>& m_system;
+		HeatEquation<T, N> m_system;
 		T m_dt;
 		T m_t = 0.0;
 		T m_rSqr;
@@ -129,7 +130,7 @@ namespace discretization {
 
 		T deltaTime() const { return m_dt; }
 	private:
-		const HeatEquation<T, N> m_system;
+		HeatEquation<T, N> m_system;
 		T m_r;
 		T m_dt;
 	};
@@ -197,11 +198,10 @@ namespace discretization {
 		using BaseIntegrator = FiniteDifferencesExplicit<T, M, Order>;
 	public:
 		SuperSampleIntegrator(const HeatEquation<T, N>& _system, T _dt, const SmallState& _state = {}, int _sampleRate = 1)
-			: m_system(),
-			m_state{},
+			: m_state{},
 			m_sampleRate(_sampleRate),
 			m_deltaTime(_dt),
-			m_integrator(m_system, _dt / _sampleRate),
+			m_integrator(HeatEquation<T, M>(), _dt / _sampleRate),
 			m_options(c10::CppTypeToScalarType<T>())
 		{
 			reset(_system, _state);
@@ -227,7 +227,7 @@ namespace discretization {
 
 				coefficients[i] = smallCoefs[lower] * (1.0 - t) + smallCoefs[std::min(upper, N - 1)] * t;
 			}
-			m_system = HeatEquation<T, M>(coefficients, _system.radius());
+			auto system = HeatEquation<T, M>(coefficients, _system.radius());
 		/*	torch::Tensor small = nn::arrayToTensor(_system.heatCoefficients(), m_options);
 			small = torch::fft_rfft(small);
 			torch::Tensor large = torch::fft_irfft(small, M);
@@ -238,6 +238,8 @@ namespace discretization {
 			stateSmall = torch::fft_rfft(stateSmall);
 			torch::Tensor stateLarge = torch::fft_irfft(stateSmall, M);
 			m_state = nn::tensorToArray<T, M>(stateLarge);
+
+			m_integrator.reset(system, m_state);
 		}
 
 		SmallState operator()(const SmallState&)
@@ -257,10 +259,10 @@ namespace discretization {
 		}
 
 		T deltaTime() const { return m_deltaTime; }
-		const HeatEquation<T, M>& internalSystem() const { return m_system; }
+		const HeatEquation<T, M>& internalSystem() const { return m_integrator.m_system; }
 		const LargeState& internalState() const { return m_state; }
 	private:
-		HeatEquation<T, M> m_system;
+	//	HeatEquation<T, M> m_system;
 		LargeState m_state;
 		int m_sampleRate;
 		T m_deltaTime;

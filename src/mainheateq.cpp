@@ -126,7 +126,7 @@ void evaluate(
 {
 	disc::AnalyticHeatEq analytic(system, _timeStep, _initialState);
 	disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, _timeStep);
-	disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImplicit(system, _timeStep);
+//	disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImplicit(system, _timeStep);
 	SuperSampleIntegrator superSampleFiniteDifs(system, _timeStep, _initialState, 64);
 
 	auto [referenceIntegrator, otherIntegrator] = [&]() 
@@ -319,13 +319,14 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 128; // 512
-	params["num_epochs"] = USE_LBFGS ? 512 : 1024; // 768
+	params["num_epochs"] = USE_LBFGS ? 1024 : 1024; // 768
 	params["loss_p"] = 2;
 	params["train_gpu"] = true;
+	std::string typeName = typeid(NetType).name();
 	params["net_type"] = std::string(typeid(NetType).name());
 
 	// optimizer
-	params["lr"] = USE_LBFGS ? 0.002 : 0.001;
+	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
 	params["lr_epoch_update"] = 512;
 	params["weight_decay"] = 0.005;//0.005
@@ -371,8 +372,8 @@ int main()
 		constexpr int numTrain = 4;
 		constexpr int numValid = 2;
 #endif
-		auto trainingStates = generateStates(heatEq, numTrain, 0x612FF6AEu); // 20.0
-		auto validStates = generateStates(heatEq, numValid, 0x195A4Cu); // 30.0
+		auto trainingStates = generateStates(heatEq, numTrain, 0x612FF6AEu);
+		auto validStates = generateStates(heatEq, numValid, 0x195A4Cu);
 		auto warmupSteps = std::vector<size_t>{ 0, 64, 384, 256, 16, 4, 128, 2, 128, 64, 384, 256, 16, 512, 0, 0 };
 
 		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
@@ -390,7 +391,6 @@ int main()
 			validSystems.emplace_back(heatCoefs);
 			heatCoefs.fill(3.0);
 			validSystems.emplace_back(heatCoefs);
-		//	validSystems.insert(validSystems.end(), randSystems.begin(), randSystems.end());
 		}
 		else
 		{
@@ -501,7 +501,7 @@ int main()
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
 			auto net = nn::load<NetType, USE_WRAPPER>(params);
-			auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual");
+		//	auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual");
 		/*	for (auto& layer : net->layers)
 			{
 				int yooo = layer->weight.dim();
@@ -548,11 +548,12 @@ int main()
 				states.push_back(state);
 			}
 
-			checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
-			return 0;
+		//	checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
+		//	return 0;
 
 			auto convBase = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero_sym_base");
 			auto convZero = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero");
+			auto convAdam = nn::load<nn::Convolutional, USE_WRAPPER>(params, "ext_residual_sym_adam");
 		/*	auto convWd0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd");
 			auto convWd0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd");
 			auto convWd1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_wd");
@@ -561,9 +562,8 @@ int main()
 			auto convSeed2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "2_conv_seed");
 			auto convSeed3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "3_conv_seed");*/
 			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
-				wrapNetwork<1>(net),
-				wrapNetwork<1>(convBase),
-				wrapNetwork<1>(convZero)
+				net,
+				convAdam
 		/*		wrapNetwork<1>(convWd0),
 				wrapNetwork<1>(convWd1),
 				wrapNetwork<1>(convSeed0),
