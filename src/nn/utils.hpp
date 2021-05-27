@@ -67,8 +67,6 @@ namespace nn {
 	// Shift entries left in a tensor (batch size x time series) and adds _newEntry to the end.
 	torch::Tensor shiftTimeSeries(const torch::Tensor& _old, const torch::Tensor& _newEntry, int _stateSize);
 
-	torch::Tensor lp_loss(const torch::Tensor& input, const torch::Tensor& target, c10::Scalar p);
-
 	// @param _pgfPlotsFormat write explicit row and column index with just one value per line
 	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName, bool _pgfPlotsFormat = false);
 
@@ -139,4 +137,14 @@ namespace nn {
 
 	template<typename Network>
 	using MakeTensor_t = typename InputMakerSelector<Network>::type;
+
+
+	template<typename Network>
+	struct IdentityMap
+	{
+		static torch::Tensor forward(const torch::Tensor& _input)
+		{
+			return _input;
+		}
+	};
 }

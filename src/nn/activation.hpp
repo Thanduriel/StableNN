@@ -12,7 +12,7 @@ namespace nn {
 
 	inline torch::Tensor identity(const torch::Tensor& x) { return x; }
 
-	// odd sigmoid: f(x) = -f(-x)
+	// odd sigmoid: f(x) = -f(-x); this is basically just tanh :)
 	inline torch::Tensor zerosigmoid(const torch::Tensor& x) { return torch::sigmoid(x) - 0.5; }
 
 	// fixed parameters so that it can be serialized

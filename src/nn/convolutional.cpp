@@ -1,4 +1,5 @@
 #include "convolutional.hpp"
+#include "utils.hpp"
 
 namespace nn {
 
@@ -59,9 +60,8 @@ namespace nn {
 		if (x.dim() < 3)
 			x = x.unsqueeze(0);
 
-		using namespace torch::indexing;
 		torch::Tensor extResidual;
-		if(options.ext_residual()) extResidual = x.index({ Slice(), 0, Slice() });
+		if (options.ext_residual()) extResidual = IdentityMap<Convolutional>::forward(x);
 
 		auto& activation = options.activation();
 

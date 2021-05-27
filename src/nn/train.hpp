@@ -6,6 +6,7 @@
 #include "../generator.hpp"
 #include "hyperparam.hpp"
 #include "lrscheduler.hpp"
+#include "loss.hpp"
 #include <torch/torch.h>
 #include <mutex>
 #include <chrono>
@@ -112,11 +113,8 @@ namespace nn {
 				std::cout << "Training network with " << nn::countParams(net) << " parameters.\n";
 
 			// construct loss function
-			const int loss_p = _params.get("loss_p", 2);
-			auto lossFn = [loss_p](const torch::Tensor& self, const torch::Tensor& target)
-			{
-				return nn::lp_loss(self, target, loss_p);
-			};
+			auto lossFnTrain = makeLossFunction(_params, true);
+			auto lossFnValid = makeLossFunction(_params, false);
 
 			// input preprocessing for multi-step forward mode
 			auto nextInput = [](const torch::Tensor& input, const torch::Tensor& output)
@@ -174,13 +172,13 @@ namespace nn {
 					{
 						net->zero_grad();
 						torch::Tensor output;
-						torch::Tensor input = data;
+						torch::Tensor input = data.clone();
 						for (int64_t i = 0; i < NUM_FORWARDS; ++i)
 						{
 							output = net->forward(input);
 							input = nextInput(input, output);
 						}
-						torch::Tensor loss = lossFn(output, target);
+						torch::Tensor loss = lossFnTrain(output, target, IdentityMap<Network>::forward(data));
 						totalLoss += loss.item<double>();
 						++forwardRuns; // count runs to normalize the training error
 
@@ -208,7 +206,7 @@ namespace nn {
 						output = net->forward(input);
 						input = nextInput(input, output);
 					}
-					torch::Tensor loss = lossFn(output, target);
+					torch::Tensor loss = lossFnValid(output, target, input); // last argument should not be used by the validation loss
 					validLoss += loss.item<double>();
 				}
 
