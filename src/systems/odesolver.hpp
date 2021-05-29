@@ -12,12 +12,12 @@ namespace discretization {
 
 		State operator()(const State& _state) const
 		{
-			Method method;
-			return method(m_system, _state, m_dt);
+			return m_method(m_system, _state, m_dt);
 		}
 
 		T deltaTime() const { return m_dt; }
 	protected:
+		Method m_method;
 		const System& m_system;
 		T m_dt;
 	};

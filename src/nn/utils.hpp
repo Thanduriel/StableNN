@@ -54,8 +54,8 @@ namespace nn {
 		const std::string type = nn::sanitizeString(std::string(typeid(NetType).name()));
 		if (storedType != type)
 		{
-			std::cout << "[Warning] Possible model type mismatch. Expected " << type
-				<< " but saved model is of type " << storedType << ".\n";
+			std::cout << "[Warning] Possible model type mismatch. Expected \"" << type
+				<< "\" but saved model is of type \"" << storedType << "\".\n";
 		}
 
 		auto net = nn::makeNetwork<NetType, UseWrapper>(params);

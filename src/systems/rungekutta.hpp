@@ -1,5 +1,6 @@
 #pragma once
 
+#include <utility>
 #include "state.hpp"
 
 namespace systems {
@@ -171,7 +172,8 @@ namespace discretization{
 		template<typename System, typename State, typename T>
 		State operator()(const System& _system, const State& _state, T _dt) const
 		{
-			using Vec = decltype(_system.rhs(_state));
+			return integrate(_system, _state, _dt, std::make_index_sequence<Order>{});
+	/*		using Vec = decltype(_system.rhs(_state));
 
 			std::array<Vec, Order> samples;
 
@@ -189,7 +191,53 @@ namespace discretization{
 			for (int i = 0; i < Order; ++i)
 				sum = sum + weights[i] * samples[i];
 
+			return _state + _dt * sum; */
+		}
+
+	private:
+		template<typename System, typename State, typename T, std::size_t... I>
+		State integrate(const System& _system, const State& _state, T _dt, std::index_sequence<I...>) const
+		{
+			using Vec = decltype(_system.rhs(_state));
+
+			std::array<Vec, Order> samples;
+
+			// comma operator ensures correct sequencing
+			((samples[I] = sample<I>(_system, _state, _dt, samples)), ...);
+
+			const Vec sum = ((weights[I] * samples[I]) + ...);
+
 			return _state + _dt * sum;
+		}
+
+		template<size_t Offset, size_t I, size_t MaxInd, typename Vec>
+		Vec computeSampleLocation(const std::array<Vec, Order>& _samples) const
+		{
+			constexpr size_t Ind = Offset + I;
+			if constexpr (I < MaxInd - 1)
+			{
+				// skip 0 coefficients
+				if constexpr(coefficients[Ind] != 0)
+					return coefficients[Ind] * _samples[I] + computeSampleLocation<Offset, I + 1, MaxInd>(_samples);
+				else
+					return computeSampleLocation<Offset, I + 1, MaxInd>(_samples);
+			}
+			
+			return coefficients[Ind] * _samples[I];
+		}
+
+		template<size_t I, typename System, typename State, typename Vec, typename T>
+		Vec sample(const System& _system, const State& _state, T _dt, const std::array<Vec, Order>& _samples) const
+		{
+			if constexpr (I == 0)
+				return _system.rhs(_state);
+			else // this else is necessary to prevent code from being generated with Offset < 0
+			{
+				constexpr size_t Offset = (I - 1) * (Order - 1);
+				const Vec dir = computeSampleLocation<Offset, 0, I>(_samples);
+
+				return _system.rhs(_state + _dt * dir);
+			}
 		}
 	};
 

@@ -5,34 +5,84 @@
 
 namespace systems {
 
+	template<typename T, size_t N, size_t M>
+	class Matrix : public std::array<T, N * M>
+	{
+	public:
+		constexpr Matrix<T, N, M>& operator+=(const Matrix<T, N, M>& oth)
+		{
+			for (size_t i = 0; i < N * M; ++i)
+				(*this)[i] += oth[i];
+			return *this;
+		}
+
+	//	using std::array<T, N * M>::array;
+	//	constexpr Matrix(std::initializer_list<T> _init) : std::array<T, N * M>{_init} {}
+	};
 
 	// using std::array as a simple mathematical vector
 	template<typename T, std::size_t N>
-	using Vec = std::array<T,N>;
+	using Vec = Matrix<T,N,1>;
 
-	template<typename T, std::size_t N>
-	Vec<T, N> operator+(const Vec<T, N>& a, const Vec<T, N>& b)
+	template<typename T, std::size_t N, std::size_t M>
+	constexpr Matrix<T, N, M> operator+(const Matrix<T, N, M>& a, const Matrix<T, N, M>& b)
 	{
-		Vec<T, N> result;
-		for (size_t i = 0; i < N; ++i)
+		Matrix<T, N, M> result{}; // initialization should not be necessary, but is need for the constexpr case
+		for (size_t i = 0; i < N*M; ++i)
 			result[i] = a[i] + b[i];
 		return result;
 	}
 
-	template<typename T, std::size_t N>
-	Vec<T, N> operator*(const T s, const Vec<T, N>& v)
+	template<typename T, std::size_t N, std::size_t M>
+	constexpr Matrix<T, N, M> operator+=(const Matrix<T, N, M>& a, const Matrix<T, N, M>& b)
 	{
-		Vec<T, N> result;
-		for (size_t i = 0; i < N; ++i)
+		Matrix<T, N, M> result{};
+		for (size_t i = 0; i < N * M; ++i)
+			result[i] = a[i] + b[i];
+		return result;
+	}
+
+	template<typename T, std::size_t N, std::size_t M, size_t K>
+	constexpr Matrix<T, N, K> operator*(const Matrix<T, N, M>& a, const Matrix<T, M, K>& b)
+	{
+		Matrix<T, N, K> result{};
+		for (size_t n = 0; n < N; ++n)
+		{
+			const size_t ind = n * M;
+			for (size_t k = 0; k < K; ++k)
+			{
+				T acc = a[ind] * b[k];
+				for (size_t m = 1; m < M; ++m)
+					acc += a[ind + m] * b[m * K + k];
+				result[n * K + k] = acc;
+			}
+		}
+		return result;
+	}
+
+	template<typename T, std::size_t N, std::size_t M>
+	constexpr Matrix<T, N, M> operator*(const T s, const Matrix<T, N, M>& v)
+	{
+		Matrix<T, N, M> result{};
+		for (size_t i = 0; i < N*M; ++i)
 			result[i] = s * v[i];
 		return result;
 	}
 
-	template<typename T, std::size_t N>
-	Vec<T, N> operator*(const Vec<T, N>& v, const T s)
+	template<typename T, std::size_t N, std::size_t M>
+	constexpr Matrix<T, N, M> operator*(const Matrix<T, N, M>& v, const T s)
 	{
 		return s * v;
 	}
+
+/*	template<typename T, std::size_t N, std::size_t M, typename Pred>
+	constexpr Matrix<T, N, M>& apply(const Matrix<T, N, M>& m, Pred pred)
+	{
+		Matrix<T, N, M> result;
+		for (size_t i = 0; i < N * M; ++i)
+			result[i] = pred(m[i]);
+		return result;
+	}*/
 
 	// Assuming the state only consists of floating point numbers
 	template<typename System>
@@ -46,7 +96,7 @@ namespace systems {
 }
 
 template<typename T, std::size_t Size>
-std::ostream& operator << (std::ostream& out, const systems::Vec<T, Size>& s)
+std::ostream& operator << (std::ostream& out, const std::array<T, Size>& s)
 {
 	for (const T& el : s)
 		std::cout << el << " ";

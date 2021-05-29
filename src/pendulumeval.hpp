@@ -38,6 +38,7 @@ void evaluate(
 	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK2_heun>> rk2(system, _timeStep);
 	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK3_ssp>> rk3(system, _timeStep);
 	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK4>> rk4(system, _timeStep);
+//	discret::ODEIntegrator<System, StaticResNet> resNetBench(system, _timeStep);
 
 	auto referenceIntegrate = [&](const State& _state)
 	{
@@ -88,11 +89,12 @@ void evaluate(
 	eval::evaluate(system,
 		initialState,
 		_options,
-	//	referenceIntegrate,
-	//	leapFrog,
+		referenceIntegrate,
+		leapFrog,
 	//	rk2,
-	//	rk3,
-	//	rk4,
+		rk3,
+		rk4,
+	//	resNetBench,
 		nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
 }
 
@@ -357,6 +359,30 @@ void makeLipschitzData(const nn::HyperParams& _params, TrainFn trainNetwork)
 	}
 }
 
+template<typename... Integrators>
+void makeRuntimeData(const System& _system, double _timeStep, int _numSteps, Integrators&&... _integrators)
+{
+	LeapFrog leapFrog(_system, _timeStep);
+	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK2_midpoint>> rk2(_system, _timeStep);
+	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK2_heun>> rk2Heun(_system, _timeStep);
+	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK3_ssp>> rk3(_system, _timeStep);
+	discret::ODEIntegrator<System, discret::RungeKutta<discret::RK4>> rk4(_system, _timeStep);
+
+	State state{ PI * 3.0 / 4.0, 0.0 };
+
+	eval::measureRunTimes(state, _numSteps, 1, leapFrog, rk2, rk2Heun, rk3, rk4, std::forward<Integrators>(_integrators)...);
+/*	std::cout << "Verlet ";
+	e += eval::measureRunTime(state, leapFrog, _numSteps);
+	std::cout << "RK2-Midpoint ";
+	e += eval::measureRunTime(state, rk2, _numSteps);
+	std::cout << "RK2-Heun ";
+	e += eval::measureRunTime(state, rk2Heun, _numSteps);
+	std::cout << "RK3-SSP ";
+	e += eval::measureRunTime(state, rk3, _numSteps);
+	std::cout << "RK4 ";
+	e += eval::measureRunTime(state, rk4, _numSteps);*/
+}
+
 namespace nn {
 	// implementation of the verlet integrator with torch
 	class VerletPendulumImpl : public torch::nn::Cloneable<VerletPendulumImpl>
@@ -376,3 +402,45 @@ namespace nn {
 
 	TORCH_MODULE(VerletPendulum);
 }
+
+// hard coded network for performance tests
+class StaticResNet
+{
+	using Weights = systems::Matrix<double, 4, 4>;
+
+	constexpr static double Scale = 0.7071067811865475;
+	constexpr static systems::Matrix<double, 4, 2> P1 = { Scale, 0.0, Scale, 0.0, 0.0, Scale, 0.0, Scale };
+	constexpr static systems::Matrix<double, 2, 4> P2 = { Scale, Scale, 0.0, 0.0, 0.0, 0.0, Scale, Scale };
+
+	template<typename T, std::size_t N, std::size_t M>
+	static systems::Matrix<T, N, M> activation(const systems::Matrix<T, N, M>& m)
+	{
+		systems::Matrix<T, N, M> result;
+		for (size_t i = 0; i < N * M; ++i)
+			result[i] = std::tanh(m[i]);
+		return result;
+	}
+public:
+	template<typename System, typename State, typename T>
+	State operator()(const System& _system, const State& _state, T _dt) const
+	{
+		using namespace systems;
+		constexpr Weights W1{ -0.508018846876296170655962,0.107195858590926756948036,0.183575896011169387156414,-0.220792921795074287283356,
+							   0.186493842800449061147816,-0.076538653175044796261872,0.168479382717763415122647,0.028031348908101650502234,
+							  -0.409280792172205476475710,0.494945093695868865157905,-0.232615918539272520382255,0.429333954431309339216938,
+							   0.065267004569061662366813,-0.014283261696808003879400,-0.249809727259388825171271,0.097494080476053818218318};
+		constexpr Weights W2{  0.454166705393713399097066,-0.008810583036501021259035,-0.961461566805976497462893,1.446059018019847819402912,
+							  -0.232844401616651514030920,0.108096189547219098670006,-1.496503608041853228272089,2.406068693990545792615876,
+							  -0.482626986160281379323322,-0.325771970126074505991198,0.063837590603751936946253,-0.146885245430029509616787,
+							   3.639562459815796291451306,-1.986652898162546421190200,1.066143521275290551031389,-0.899613786404198201296367 };
+
+		constexpr auto W1P = W1 * P1;
+
+		Vec<double, 4> s = P1 * static_cast<Vec<double, 2>>(_state);
+	//	s += activation(W1 * s);
+		s += activation(W1P * static_cast<Vec<double, 2>>(_state));
+		s += activation(W2 * s);
+
+		return P2 * s;
+	}
+};

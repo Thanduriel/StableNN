@@ -4,6 +4,7 @@
 #include <fstream>
 #include <array>
 #include <vector>
+#include <chrono>
 #include "../systems/state.hpp"
 
 namespace eval {
@@ -244,6 +245,38 @@ namespace eval {
 					std::cout << _system.energy(state) << ", ";
 				std::cout << "\n";
 			}
+		}
+	}
+
+	template<typename State, typename Integrator>
+	double measureRunTime(const State& _state, int _numSteps, const Integrator& _integrator)
+	{
+		State state = _state;
+		Integrator integrator = _integrator;
+
+		const auto start = std::chrono::high_resolution_clock::now();
+		for (int i = 0; i < _numSteps; ++i)
+		{
+			state = integrator(state);
+		}
+		const auto end = std::chrono::high_resolution_clock::now();
+
+		const double total = std::chrono::duration<double>(end - start).count();
+		//	std::cout << "Final State: " << state << "\n";
+		std::cout << "Total time: " << total << " per step: " << total / _numSteps << "\n";
+		return l2Error(state, _state);
+	}
+
+	template<typename State, typename... Integrators>
+	void measureRunTimes(const State& _state, int _numSteps, int _numRuns, Integrators&&... _integrators)
+	{
+	//	std::array< std::vector<double>, sizeof...(Integrators)> times;
+		for (int i = 0; i < _numRuns; ++i)
+		{
+			double e = 0.0;
+			((e += measureRunTime(_state, _numSteps, _integrators)), ...);
+		//	const double e = (... + (measureRunTime(_state, _numSteps, _integrators)));
+			std::cout << e << "\n\n";
 		}
 	}
 }

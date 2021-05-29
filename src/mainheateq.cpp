@@ -48,6 +48,16 @@ namespace nn {
 			systems::discretization::MakeInputHeatEq<false>,
 			nn::StateToTensor>;
 	};
+
+	using namespace torch::indexing;
+	template<>
+	struct IdentityMap<Convolutional>
+	{
+		static torch::Tensor forward(const torch::Tensor& _input)
+		{
+			return _input.index({ Slice(), 0, Slice() });;
+		}
+	};
 }
 
 namespace disc = systems::discretization;
@@ -303,7 +313,7 @@ int main()
 	System heatEq(heatCoefs, 1.0);
 
 	nn::HyperParams params;
-	params["name"] = std::string("ext_residual_sym");
+	params["name"] = std::string("ext_residual");
 	params["load_net"] = false;
 
 	// simulation
@@ -321,8 +331,8 @@ int main()
 	params["batch_size"] = 128; // 512
 	params["num_epochs"] = USE_LBFGS ? 1024 : 1024; // 768
 	params["loss_p"] = 2;
+	params["loss_energy"] = 1.0;
 	params["train_gpu"] = true;
-	std::string typeName = typeid(NetType).name();
 	params["net_type"] = std::string(typeid(NetType).name());
 
 	// optimizer
@@ -346,7 +356,7 @@ int main()
 	params["kernel_size"] = 5;
 	params["residual"] = true;
 	params["ext_residual"] = true;
-	params["symmetric"] = true;
+	params["symmetric"] = false;
 
 	// tcn
 	params["kernel_size_temp"] = 3; // temporal dim
@@ -360,14 +370,11 @@ int main()
 	params["train_in"] = false;
 	params["train_out"] = false;
 
-	if (!torch::cuda::is_available())
-		params["train_gpu"] = false;
-
 	if constexpr (MODE != Mode::EVALUATE)
 	{
 #ifdef NDEBUG
 		constexpr int numTrain = 128;
-		constexpr int numValid = 16;
+		constexpr int numValid = 32;
 #else
 		constexpr int numTrain = 4;
 		constexpr int numValid = 2;
@@ -398,7 +405,9 @@ int main()
 			validSystems.push_back(heatEq);
 		}
 		
-		if (torch::cuda::is_available() && params.get<bool>("train_gpu", true))
+		if (!torch::cuda::is_available())
+			params["train_gpu"] = false;
+		else if (params.get<bool>("train_gpu", true))
 			std::cout << "Cuda is available. Training on GPU." << "\n";
 
 		nn::TrainNetwork<NetType, System, Integrator, nn::MakeTensor_t<NetType>, OutputMaker, USE_WRAPPER> trainNetwork(
@@ -551,8 +560,9 @@ int main()
 				states.push_back(state);
 			}
 
-		//	checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
-		//	return 0;
+			auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual_sym");
+			checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
+			return 0;
 
 			auto convBase = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero_sym_base");
 			auto convZero = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero");

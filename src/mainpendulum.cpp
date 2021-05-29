@@ -16,7 +16,7 @@
 #include <cmath>
 #include <random>
 
-using NetType = nn::HamiltonianInterleafed;
+using NetType = nn::MultiLayerPerceptron;
 constexpr bool USE_WRAPPER = !std::is_same_v<NetType, nn::TCN>;
 
 std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed)
@@ -84,19 +84,19 @@ int main()
 	params["dampening"] = 0.0;
 
 	params["seed"] = 16708911996216745849ull;//9378341130ull;
-	params["depth"] = 1;
-	params["diffusion"] = 0.025;
+	params["depth"] = 2;
 	params["bias"] = false;
 	params["time"] = 2.0;
 	params["num_inputs"] = NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["state_size"] = systems::sizeOfState<System>();
-	params["hidden_size"] = 8;
+	params["hidden_size"] = 4;
 	params["train_in"] = true;
 	params["train_out"] = true;
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
+	params["diffusion"] = 0.025;
 	params["augment"] = 4;
 	params["symmetric"] = false;
 	params["kernel_size"] = 3;
@@ -157,8 +157,8 @@ int main()
 
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
-		const double timeStep = * params.get<double>("time_step");
-	//	eval::EvalOptions options;
+		const double timeStep = *params.get<double>("time_step");
+		eval::EvalOptions options;
 	//	options.numLongTermRuns = 8;
 
 	/*	auto othNet = nn::load<NetType, USE_WRAPPER>(params);
@@ -203,6 +203,17 @@ int main()
 		auto hamiltonianSym = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonianSym_4_4");*/
 
 		nn::Integrator<System, decltype(mlpIO), NUM_INPUTS> integrator(system, mlpIO);
+		discret::ODEIntegrator<System, StaticResNet> resNetBench(system, timeStep);
+
+	//	evaluate<NUM_INPUTS>(system, system.energyToState(1.02763, 0.0), timeStep, options, mlpIO/*, antisym, hamiltonian*/);
+		while (true)
+		{
+			int numSteps;
+			std::cin >> numSteps;
+
+			makeRuntimeData(system, timeStep, numSteps, integrator, resNetBench);
+		}
+		return 0;
 	/*	auto state = system.energyToState(1.02765, 0.0);
 		double e = 0.0;
 		int n = 100000;
@@ -230,7 +241,7 @@ int main()
 		makeSinglePhasePeriodData<NUM_INPUTS>(system, State{ 1.1309, 0.0 }, timeStep, mlpIO);
 		return 0;
 
-		eval::EvalOptions options;
+	//	eval::EvalOptions options;
 	//	options.numLongTermRuns = 128;
 	//	options.writeGlobalError = true;
 		options.numShortTermSteps = 128;
