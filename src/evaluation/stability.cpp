@@ -3,6 +3,8 @@
 
 namespace eval {
 
+	double g_sideEffect = 0.0;
+
 	template<>
 	void checkLayerStability<torch::nn::Linear>(const torch::nn::Linear& _layer)
 	{

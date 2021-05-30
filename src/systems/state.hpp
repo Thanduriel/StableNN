@@ -33,15 +33,6 @@ namespace systems {
 		return result;
 	}
 
-	template<typename T, std::size_t N, std::size_t M>
-	constexpr Matrix<T, N, M> operator+=(const Matrix<T, N, M>& a, const Matrix<T, N, M>& b)
-	{
-		Matrix<T, N, M> result{};
-		for (size_t i = 0; i < N * M; ++i)
-			result[i] = a[i] + b[i];
-		return result;
-	}
-
 	template<typename T, std::size_t N, std::size_t M, size_t K>
 	constexpr Matrix<T, N, K> operator*(const Matrix<T, N, M>& a, const Matrix<T, M, K>& b)
 	{

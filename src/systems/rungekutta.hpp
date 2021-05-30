@@ -203,9 +203,9 @@ namespace discretization{
 			std::array<Vec, Order> samples;
 
 			// comma operator ensures correct sequencing
-			((samples[I] = sample<I>(_system, _state, _dt, samples)), ...);
+			(..., (samples[I] = sample<I>(_system, _state, _dt, samples)));
 
-			const Vec sum = ((weights[I] * samples[I]) + ...);
+			const Vec sum = (... + (weights[I] * samples[I]));
 
 			return _state + _dt * sum;
 		}

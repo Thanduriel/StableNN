@@ -248,6 +248,8 @@ namespace eval {
 		}
 	}
 
+	extern double g_sideEffect; // defined in stability.cpp
+
 	template<typename State, typename Integrator>
 	double measureRunTime(const State& _state, int _numSteps, const Integrator& _integrator)
 	{
@@ -263,20 +265,39 @@ namespace eval {
 
 		const double total = std::chrono::duration<double>(end - start).count();
 		//	std::cout << "Final State: " << state << "\n";
-		std::cout << "Total time: " << total << " per step: " << total / _numSteps << "\n";
-		return l2Error(state, _state);
+		// std::cout << "Total time: " << total << " per step: " << total / _numSteps << "\n";
+		g_sideEffect += l2Error(state, _state);
+		return total / _numSteps;
+	}
+
+	namespace details {
+		template<typename State, typename... Integrators, size_t... I>
+		void measureRunTimesImpl(const State& _state, int _numSteps, int _numRuns, std::index_sequence<I...>, Integrators&&... _integrators)
+		{
+			std::array<double, sizeof...(Integrators)> times{};
+			for (int i = 0; i < _numRuns; ++i)
+			{
+				((times[I] += measureRunTime(_state, _numSteps, _integrators)), ...);
+			}
+
+			for (double t : times)
+				std::cout << "avg time step: " << t / _numRuns << "\n";
+			std::cout << g_sideEffect << "\n\n";
+		}
 	}
 
 	template<typename State, typename... Integrators>
 	void measureRunTimes(const State& _state, int _numSteps, int _numRuns, Integrators&&... _integrators)
 	{
-	//	std::array< std::vector<double>, sizeof...(Integrators)> times;
+		details::measureRunTimesImpl(_state, _numSteps, _numRuns, 
+			std::index_sequence_for<Integrators...>{}, 
+			std::forward<Integrators>(_integrators)...);
+	/*	std::array< std::vector<double>, sizeof...(Integrators)> times;
 		for (int i = 0; i < _numRuns; ++i)
 		{
 			double e = 0.0;
 			((e += measureRunTime(_state, _numSteps, _integrators)), ...);
-		//	const double e = (... + (measureRunTime(_state, _numSteps, _integrators)));
-			std::cout << e << "\n\n";
 		}
+		std::cout << g_sideEffect << "\n\n";*/
 	}
 }

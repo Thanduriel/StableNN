@@ -19,6 +19,8 @@ namespace nn{
 			m_options(c10::CppTypeToScalarType<T>())
 		{
 			_network->to(c10::CppTypeToScalarType<T>());
+			m_network->train();
+
 			for (size_t i = 1; i < NumStates; ++i)
 				m_states[i] = _initialState[i - 1];
 		}
@@ -34,6 +36,7 @@ namespace nn{
 				m_states[i] = m_states[i + 1];
 			m_states[NumStates - 1] = _state;
 
+			torch::NoGradGuard noGrad;
 			InputMaker inputMaker;
 			torch::Tensor input = inputMaker(m_system, m_states.data(), NumStates, 1, m_options);
 			torch::Tensor next = m_network->forward(input);

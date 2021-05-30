@@ -191,7 +191,7 @@ int main()
 		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlpIO");
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym");
 		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian");*/
-		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
+		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_4_4l");
 	/*	auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4l");
 		auto antisym2 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4");
 		auto antisym3 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_8_2");
@@ -211,7 +211,7 @@ int main()
 			int numSteps;
 			std::cin >> numSteps;
 
-			makeRuntimeData(system, timeStep, numSteps, integrator, resNetBench);
+			makeRuntimeData(system, timeStep, numSteps, resNetBench);
 		}
 		return 0;
 	/*	auto state = system.energyToState(1.02765, 0.0);
@@ -224,13 +224,15 @@ int main()
 		}
 		std::cout << e / n;*/
 
-		std::string netName = "resnet_2_4l";
+		std::string netName = "resnet_4_4l";
 		auto net = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, netName);
 		nn::exportTensor(net->inputLayer->weight, "input_" + netName + ".txt");
 		nn::exportTensor(net->outputLayer->weight, "output_" + netName + ".txt");
+		nn::exportTensor(net->hiddenNet->layers[0]->weight, "layer0_" + netName + ".txt", false);
+		nn::exportTensor(net->hiddenNet->layers[1]->weight, "layer1_" + netName + ".txt", false);
+		nn::exportTensor(net->hiddenNet->layers[2]->weight, "layer2_" + netName + ".txt", false);
+		nn::exportTensor(net->hiddenNet->layers[3]->weight, "layer3_" + netName + ".txt", false);
 		return 0;
-		//	nn::exportTensor(net->hiddenNet->layers[0]->weight, "layer0_" + netName + ".txt", false);
-		//	nn::exportTensor(net->hiddenNet->layers[1]->weight, "layer1_" + netName + ".txt", false);
 
 		discret::ODEIntegrator<System, discret::RungeKutta<discret::RK3_ssp>> rk3(system, timeStep);
 		discret::ODEIntegrator<System, discret::RungeKutta<discret::RK4>> rk4(system, timeStep);
