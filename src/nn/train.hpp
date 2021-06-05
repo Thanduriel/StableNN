@@ -78,7 +78,7 @@ namespace nn {
 				std::cout << "Generating data took " << genTime << "s\n";
 			
 			torch::Device device(torch::kCPU);
-			if (torch::cuda::is_available() && _params.get<bool>("train_gpu", true)) 
+			if (torch::cuda::is_available() && _params.get<bool>("train_gpu", false)) 
 				device = torch::kCUDA;
 
 			// LBFGS does not work with mini batches and random sampling

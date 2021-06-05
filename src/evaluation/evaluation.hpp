@@ -22,6 +22,17 @@ namespace eval {
 	}
 
 	template<typename State>
+	constexpr auto norm(const State& s)
+	{
+		using T = std::remove_cv_t<std::remove_reference_t<decltype(s[0])>>;
+
+		T sum = 0;
+		for (size_t i = 0; i < s.size(); ++i)
+			sum += s[i] * s[i];
+		return std::sqrt(sum);
+	}
+
+	template<typename State>
 	auto l2Error(const State& v, const State& w)
 	{
 		assert(v.size() == w.size());
@@ -46,7 +57,8 @@ namespace eval {
 		bool writeMSE = false;
 		bool addInitialStateMSE = false; // print state in addition to energy in mse file
 		bool append = false; // append to file instead of overwriting it for all write options
-		int downSampleRate = 1; // write only every n-th entry; adds timestep as first column
+		bool relativeError = false;
+		int downSampleRate = 1; // write only every n-th entry; adds time-step as first column
 		int mseAvgWindow = 0; // take average of a number of previous time-steps; if 0 use numShortTermSteps
 		int numShortTermSteps = 256;
 		int numLongTermSteps = 4096;
@@ -57,9 +69,12 @@ namespace eval {
 	struct ExtEvalOptions : public EvalOptions
 	{
 		ExtEvalOptions(const EvalOptions& _options) : EvalOptions(_options) {}
+		ExtEvalOptions() = default;
 
-		using PrintFn = void(std::ostream&, const State&, const State&, int, int);
+		// output stream, current state, reference state, error, time-step, integrator id
+		using PrintFn = void(std::ostream&, const State&, const State&, double, int, int);
 		std::vector<std::function<PrintFn>> customPrintFunctions;
+		std::vector<std::ostream*> streams;
 	};
 	
 	// Simulates the given system with different integrators to observe energy over time.
@@ -100,7 +115,7 @@ namespace eval {
 		}
 
 		// short term simulation
-		const int numShortTermSteps = _options.numShortTermSteps;
+		const size_t numShortTermSteps = _options.numShortTermSteps;
 		stateLog.reserve(numShortTermSteps + 1);
 		for (int i = 0; i < numShortTermSteps; ++i)
 		{
@@ -108,12 +123,12 @@ namespace eval {
 			stateLog.push_back(currentState);
 		}
 
-		const size_t avgWindow = static_cast<size_t>(_options.mseAvgWindow ? _options.mseAvgWindow : numShortTermSteps);
-		const size_t start = static_cast<size_t>(_options.writeGlobalError ? 0 : numShortTermSteps - avgWindow);
+		const size_t avgWindow = _options.mseAvgWindow ? static_cast<size_t>(_options.mseAvgWindow) : numShortTermSteps;
+		const size_t start = _options.writeGlobalError ? static_cast<size_t>(0) : numShortTermSteps - avgWindow;
 		std::vector<std::array<double, numIntegrators>> globalError;
 		globalError.reserve(numShortTermSteps - start);
 
-		for (int i = start; i < numShortTermSteps; ++i)
+		for (size_t i = start; i < numShortTermSteps; ++i)
 		{
 			globalError.push_back({});
 			auto& err = globalError.back();
@@ -122,6 +137,12 @@ namespace eval {
 			{
 				const auto& state = stateLog[i][j];
 				err[j] = l2Error(state, refState);
+				if(_options.relativeError)
+				{
+					const double refLen = norm(refState);
+					if (refLen > 0)
+						err[j] /= refLen;
+				}
 			}
 		}
 
@@ -162,7 +183,7 @@ namespace eval {
 				for (size_t j = 0; j < numIntegrators; ++j)
 				{
 					const State& state = stateLog[i][j];
-					printFn(out, state, refState, i, static_cast<int>(j));
+					printFn(out, state, refState, globalErrorAvg[i][j], i, static_cast<int>(j));
 					out << delim;
 				}
 				out << "\n";
@@ -175,7 +196,7 @@ namespace eval {
 		{
 			std::ofstream energyFile("energy.txt");
 
-			evalSteps(energyFile, [&](std::ostream& out, const State& state, const State&, int, int)
+			evalSteps(energyFile, [&](std::ostream& out, const State& state, const State&, double, int, int)
 				{
 					out << _system.energy(state);
 				});
@@ -185,7 +206,7 @@ namespace eval {
 		{
 			std::ofstream spaceTimeFile("spacetime.txt", fileOptions);
 
-			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state, const State&, int, int)
+			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state, const State&, double, int, int)
 				{
 					out << state;
 				}, ", ");
@@ -195,10 +216,10 @@ namespace eval {
 		{
 			std::ofstream file("globalerror.txt", fileOptions);
 
-			evalSteps(file, [&](std::ostream& out, const State& state, const State& refState, 
-				int step, int integrator)
+			evalSteps(file, [](std::ostream& out, const State& state, const State& refState, 
+				double err, int step, int integrator)
 				{
-					out << globalErrorAvg[step][integrator];
+					out << err;
 				});
 		}
 
@@ -215,9 +236,11 @@ namespace eval {
 			mseFile << "\n";
 		}
 
-		for (auto& printFn : _options.customPrintFunctions)
+		for (size_t i = 0; i < _options.customPrintFunctions.size(); ++i)
 		{
-			evalSteps(std::cout, printFn);
+			auto& printFn = _options.customPrintFunctions[i];
+			std::ostream* stream = _options.streams.size() > i ? _options.streams[i] : &std::cout;
+			evalSteps(*stream, printFn);
 		}
 
 		std::cout.precision(5);
@@ -292,12 +315,29 @@ namespace eval {
 		details::measureRunTimesImpl(_state, _numSteps, _numRuns, 
 			std::index_sequence_for<Integrators...>{}, 
 			std::forward<Integrators>(_integrators)...);
-	/*	std::array< std::vector<double>, sizeof...(Integrators)> times;
-		for (int i = 0; i < _numRuns; ++i)
-		{
-			double e = 0.0;
-			((e += measureRunTime(_state, _numSteps, _integrators)), ...);
-		}
-		std::cout << g_sideEffect << "\n\n";*/
 	}
+
+	
+	template<typename State>
+	struct MultiSimulationError
+	{
+		std::vector<std::vector<double>> integratorErrors;
+		auto accumulateFn(int _simCount = 0)
+		{
+			return [this, _simCount](std::ostream& _out, const State&, const State&, double _err, int _timeStep, int _integrator) 
+			{
+				const size_t integrator = _integrator;
+				if (integrator >= integratorErrors.size())
+					integratorErrors.resize(integrator + 1);
+				auto& errors = integratorErrors[integrator];
+				const size_t timeStep = _timeStep;
+				if (timeStep >= errors.size())
+					errors.resize(timeStep + 1, 0.0);
+
+				errors[timeStep] += _err;
+				if(_simCount > 0)
+					_out << errors[timeStep] / _simCount;
+			};
+		}
+	};
 }

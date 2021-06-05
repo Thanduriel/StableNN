@@ -30,7 +30,7 @@ void evaluate(
 	const System& system,
 	const State& _initialState,
 	double _timeStep,
-	eval::EvalOptions _options,
+	const eval::ExtEvalOptions<State>& _options,
 	Networks&... _networks)
 {
 	LeapFrog leapFrog(system, _timeStep);
@@ -102,7 +102,7 @@ template<size_t NumTimeSteps, typename... Networks>
 void evaluate(const System& _system,
 	const std::vector<State>& _initialStates,
 	double _timeStep,
-	const eval::EvalOptions& _options,
+	const eval::ExtEvalOptions<State>& _options,
 	Networks&... _networks)
 {
 	for (const State& state : _initialStates)
@@ -127,6 +127,43 @@ void makeEnergyErrorData(const System& _system, double _timeStep, int _numSteps,
 		states.push_back({ static_cast<double>(i) / numStates * PI, 0.0 });
 
 	evaluate<NumTimeSteps>(_system, states, _timeStep, options, _networks...);
+}
+
+template<size_t NumTimeSteps, typename... Networks>
+void makeMultiSimAvgErrorData(const System& _system, double _timeStep, int _numSteps, int _avgWindow, double _maxDisplacement, Networks&... _networks)
+{
+	eval::ExtEvalOptions<State> options;
+	options.numLongTermRuns = 0;
+	options.numShortTermSteps = _numSteps;
+	options.mseAvgWindow = _avgWindow;
+	options.downSampleRate = _avgWindow;
+	options.relativeError = true;
+	options.writeGlobalError = true; // needed so that averages are computed for all time steps
+
+	class NullBuffer : public std::streambuf
+	{
+	public:
+		int overflow(int c) { return c; }
+	};
+
+	NullBuffer nullBuffer;
+	std::ostream nullStream(&nullBuffer);
+
+	eval::MultiSimulationError<State> error;
+	options.customPrintFunctions.emplace_back(error.accumulateFn());
+	options.streams.push_back(&nullStream);
+
+	constexpr int numStates = 256;
+	for (int i = 0; i < numStates; ++i)
+	{
+		State state{ static_cast<double>(i) / numStates * _maxDisplacement, 0.0 };
+		evaluate<NumTimeSteps>(_system, state, _timeStep, options, _networks...);
+	}
+	State state{ _maxDisplacement, 0.0 };
+	options.customPrintFunctions.front() = error.accumulateFn(numStates);
+	std::ofstream file("large_nets_avg_error.txt");
+	options.streams.front() = &file;
+	evaluate<NumTimeSteps>(_system, state, _timeStep, options, _networks...);
 }
 
 template<size_t NumTimeSteps, typename... Networks>

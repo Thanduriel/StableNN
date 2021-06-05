@@ -64,7 +64,7 @@ namespace disc = systems::discretization;
 using SuperSampleIntegrator = disc::SuperSampleIntegrator<T, N, N * 32, N == 64 ? 1 : 2>;
 
 
-// convoluted way to store to allow comparison of networks with different NumInputs
+// convoluted way to store the number of inputs to allow comparison of networks with different NumInputs
 template<size_t NumSteps, typename Network>
 struct NetWrapper
 {
@@ -72,6 +72,7 @@ struct NetWrapper
 	Network& network;
 };
 
+// typical make function to simplify creation by determining Network implicitly
 template<size_t NumSteps,  typename Network>
 NetWrapper<NumSteps, Network> wrapNetwork(Network& _network)
 {
@@ -270,7 +271,7 @@ void checkSymmetry(const System& _system, const State& _state, double _timeStep,
 
 	System system(heatCoeffs);
 
-	auto symErr = [](std::ostream& out, const State& s, const State&, int, int)
+	auto symErr = [](std::ostream& out, const State& s, const State&, double, int, int)
 	{
 		double err = 0.0;
 		for (size_t i = 0; i < N / 2; ++i)
@@ -415,7 +416,7 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			constexpr int numSeeds = 8;
+			constexpr int numSeeds = 2;
 			std::mt19937_64 rng;
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
