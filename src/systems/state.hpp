@@ -84,6 +84,21 @@ namespace systems {
 		return sizeof(typename System::State) / sizeof(typename System::ValueT);
 	}
 
+	template<typename T, typename State>
+	State normalizeDistribution(const State& _state, T _mean) // , T _stdDev
+	{
+		T mean = 0.0;
+		for (auto v : _state)
+			mean += v;
+		mean /= _state.size();
+
+		const double shift = mean - _mean;
+		State state = _state;
+		for (auto& v : state)
+			v -= shift;
+
+		return state;
+	}
 }
 
 template<typename T, std::size_t Size>

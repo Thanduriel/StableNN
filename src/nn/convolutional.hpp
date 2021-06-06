@@ -2,6 +2,7 @@
 
 #include "activation.hpp"
 #include "extconv.hpp"
+#include "utils.hpp"
 #include <torch/torch.h>
 
 namespace nn {
@@ -39,7 +40,18 @@ namespace nn {
 
 	TORCH_MODULE(Convolutional);
 
-	// this wrapper makes it possible to compute the Jacobian of just the first the channel with eval::computeJacobian.
+	// specialization for HeatEq with coefficients, only forwards the first channel
+	template<>
+	struct IdentityMap<Convolutional>
+	{
+		static torch::Tensor forward(const torch::Tensor& _input)
+		{
+			using namespace torch::indexing;
+			return _input.index({ Slice(), 0, Slice() });;
+		}
+	};
+
+	// this wrapper makes it possible to compute the Jacobian of just the first channel with eval::computeJacobian.
 	struct FlatConvWrapperImpl : public torch::nn::Module
 	{
 		explicit FlatConvWrapperImpl(Convolutional _net);

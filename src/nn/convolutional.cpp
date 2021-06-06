@@ -1,5 +1,4 @@
 #include "convolutional.hpp"
-#include "utils.hpp"
 
 namespace nn {
 

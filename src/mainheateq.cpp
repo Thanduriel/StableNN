@@ -48,16 +48,6 @@ namespace nn {
 			systems::discretization::MakeInputHeatEq<false>,
 			nn::StateToTensor>;
 	};
-
-	using namespace torch::indexing;
-	template<>
-	struct IdentityMap<Convolutional>
-	{
-		static torch::Tensor forward(const torch::Tensor& _input)
-		{
-			return _input.index({ Slice(), 0, Slice() });;
-		}
-	};
 }
 
 namespace disc = systems::discretization;
@@ -181,10 +171,14 @@ void evaluate(const std::vector<System>& _systems,
 	}
 }
 
-std::vector<State> generateStates(const System& _system, size_t _numStates, uint32_t _seed, 
+// @param _normalize shift _state so that the mean is guaranteed to be _mean.
+std::vector<State> generateStates(const System& _system, 
+	size_t _numStates, 
+	uint32_t _seed, 
 	T _randMeanDev = 0.0,
 	T _mean = MEAN,
-	T _stdDev = STD_DEV)
+	T _stdDev = STD_DEV,
+	bool _normalize = false)
 {
 	std::vector<State> states;
 	states.reserve(_numStates);
@@ -208,13 +202,14 @@ std::vector<State> generateStates(const System& _system, size_t _numStates, uint
 
 		State state;
 		std::generate(state.begin(), state.end(), genEnergy);
-		states.push_back(state);
+		states.push_back(_normalize ? systems::normalizeDistribution(state, _mean): state);
 	}
 
 	return states;
 }
 
 // @param _maxChangeRate maximum difference between neighboring cells
+// @param _expectedAvg expected average of the coefficients, if 0 it is chosen randomly from [0.1,2.5]
 std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed, T _maxChangeRate = 0.05, T _expectedAvg = 0.0)
 {
 	std::vector<System> systems;
@@ -268,6 +263,7 @@ void checkSymmetry(const System& _system, const State& _state, double _timeStep,
 		heatCoeffs[i] = static_cast<double>(i) / N * 4.0;
 		heatCoeffs[N - i - 1] = heatCoeffs[i];
 	}
+	state = systems::normalizeDistribution(state, MEAN);
 
 	System system(heatCoeffs);
 
@@ -562,7 +558,8 @@ int main()
 			}
 
 			auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual_sym");
-			checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
+		//	checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
+			evaluate<NUM_INPUTS>(systems, states, timeStep, options, net, net2);
 			return 0;
 
 			auto convBase = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero_sym_base");
