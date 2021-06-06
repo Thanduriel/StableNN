@@ -68,10 +68,11 @@ int main()
 	TrainNetwork trainNetwork(system, trainingStates, validStates);
 
 	nn::HyperParams params;
+	// data
 	params["train_samples"] = 16;
 	params["valid_samples"] = 16;
 	params["hyper_sample_rate"] = HYPER_SAMPLE_RATE;
-
+	// training
 	params["time_step"] = USE_SIMPLE_SYSTEM ? 0.25 : 0.05;
 	params["lr"] = USE_LBFGS ? 0.1 : 4e-4;//0.001;//4e-4;
 	params["weight_decay"] = 0.0; //4
@@ -82,8 +83,9 @@ int main()
 	params["num_epochs"] = USE_LBFGS ? 512 : 2048;
 	params["momentum"] = 0.9;
 	params["dampening"] = 0.0;
-
 	params["seed"] = 16708911996216745849ull;//9378341130ull;
+
+	// network
 	params["depth"] = 2;
 	params["bias"] = false;
 	params["time"] = 2.0;
@@ -96,10 +98,12 @@ int main()
 	params["in_out_bias"] = false;
 	params["activation"] = nn::ActivationFn(torch::tanh);
 
+	// Antisym and Hamiltonian
 	params["diffusion"] = 0.025;
 	params["augment"] = 4;
 	params["symmetric"] = false;
 	params["kernel_size"] = 3;
+	// TCN
 	params["residual_blocks"] = 2;
 	params["block_size"] = 2;
 	params["average"] = true;
@@ -107,6 +111,7 @@ int main()
 
 	params["name"] = std::string("antisym_4_4");
 	params["load_net"] = false;
+	params["net_type"] = nn::sanitizeString(std::string(typeid(NetType).name()));
 
 /*	std::uniform_int_distribution<uint64_t> dist(std::numeric_limits<uint64_t>::min(), std::numeric_limits<uint64_t>::max());
 	std::default_random_engine rng;
@@ -173,14 +178,14 @@ int main()
 			othNet);
 		return 0;*/
 
+		auto resNet24l = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_4_2l");
+		auto resNet44l = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_4_4l");
+		auto resNet26l = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_6l");
+
+		makeMultiSimAvgErrorData<NUM_INPUTS>(system, timeStep, 2048, 4, 2.8, resNet24l, resNet26l, resNet44l);
+		return 0;
 	//	Integrator integrator(system, *params.get<double>("time_step"));
 	//	std::cout << eval::computePeriodLength(State{ 0.0001, 0.0 }, integrator, 16);
-
-	/*	const double energy = system.energy({ 3.0,0 });
-		const auto state = system.energyToState(energy * 0.75, energy * 0.25);
-		std::cout << state;
-		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
-		makeJacobianData(mlp, { -2.0, -1.0 }, { 2.0, 1.01 }, { 0.05, 0.05 });*/
 
 	/*	auto mlpIORef = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_2_4l");
 		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp_4_4l");
@@ -196,7 +201,7 @@ int main()
 		auto antisym2 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4");
 		auto antisym3 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_8_2");
 		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "HamiltonianInterleafed_2_4l");*/
-		
+
 	/*	auto antisym0d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_0d");
 		auto antisym01d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_01d");
 		auto antisym001d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4");

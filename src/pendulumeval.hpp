@@ -234,8 +234,9 @@ void makeStableFrequencyData(const System& system, const nn::HyperParams& params
 }
 
 // evaluate the Jacobian on a grid
+// @return the largest singular value or Lipschitz constant
 template<typename Network, typename Fn, typename RefNet = int>
-void makeJacobianData(
+double makeJacobianData(
 	Network& _network,
 	const State& _min,
 	const State& _max,
@@ -246,6 +247,7 @@ void makeJacobianData(
 	using namespace torch;
 	std::ofstream file1("spectral_radius.txt");
 	std::ofstream file2("determinant.txt");
+	double lipschitz = 0.0;
 
 	auto computeEigs = [](auto& network, const Tensor& state)
 	{
@@ -260,8 +262,9 @@ void makeJacobianData(
 			if (abs > max) max = abs;
 			det *= eig;
 		}
+		const double norm = torch::linalg_norm(J, 2).item<double>();
 
-		return std::pair<double, double>(max, det.real());
+		return std::tuple<double, double,double>(max, det.real(), norm);
 	};
 
 	const double posStep = (_max.position - _min.position) / _steps[0];
@@ -282,13 +285,14 @@ void makeJacobianData(
 			else
 			{
 				const Tensor z = tensor({ p, v }, c10::TensorOptions(c10::kDouble));
-				auto [max, det] = computeEigs(_network, z);
+				auto [max, det, norm] = computeEigs(_network, z);
 				spectralRad = max;
 				determinant = det;
+				lipschitz = std::max(norm, lipschitz);
 
 				if constexpr(!std::is_same_v<RefNet,int>)
 				{
-					auto [max2, det2] = computeEigs(_refNet, z);
+					auto [max2, det2, norm2] = computeEigs(_refNet, z);
 					spectralRad = spectralRad-max2;
 				//	determinant = determinant-det2;
 				}
@@ -298,6 +302,8 @@ void makeJacobianData(
 		}
 		file1 << "\n";
 		file2 << "\n";
+
+		return lipschitz;
 	}
 }
 
@@ -370,7 +376,7 @@ void makeSinglePhasePeriodData(const System& _system, const State& _state, doubl
 template<typename NetType, typename TrainFn>
 void makeLipschitzData(const nn::HyperParams& _params, TrainFn trainNetwork)
 {
-	std::vector<double> times{ 0.125/2/*, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125*/ };
+	std::vector<double> times{ 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
 	std::vector<nn::HyperParams> bestNets;
 	nn::HyperParams params = _params;
 
@@ -378,7 +384,7 @@ void makeLipschitzData(const nn::HyperParams& _params, TrainFn trainNetwork)
 	for (double time : times)
 	{
 		params["time"] = time;
-		params["name"] = std::string("hamiltonian_lipschitz_") + std::to_string(static_cast<int>(time * 100));
+		params["name"] = std::string("resnet_lipschitz_") + std::to_string(static_cast<int>(time * 100));
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork, {
 		//	{"seed", {93784130ul, 167089119616745849ull, 23423223442167775ull, 168488165347327969ull, 116696928402573611ull, 17932827895858725ull, 51338360522333466ull, 100818424363624464ull}}
 			{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
@@ -390,9 +396,13 @@ void makeLipschitzData(const nn::HyperParams& _params, TrainFn trainNetwork)
 	for (auto& params : bestNets)
 	{
 		auto net = nn::load<NetType, true>(params);
+		auto restrictNone = [&](const State& _state) { return false; };
+		const double lipschitz = makeJacobianData(net, { -PI, -2.0 }, { PI, 2.0 }, { 64, 64 }, restrictNone);
+
 		file << *params.get<double>("time") << " " 
 			<< eval::lipschitz(net) << " " 
-			<< *params.get<double>("validation_loss") << "\n";
+			<< *params.get<double>("validation_loss") / 100.0  << " "
+			<< lipschitz << "\n";
 	}
 }
 
