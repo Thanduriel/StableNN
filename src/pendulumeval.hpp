@@ -11,6 +11,8 @@
 #include "constants.hpp"
 #include "defs.hpp"
 
+//#include "../dependencies/eigen/Eigen/Dense"
+
 #include <iostream>
 #include <type_traits>
 #include <filesystem>
@@ -302,9 +304,9 @@ double makeJacobianData(
 		}
 		file1 << "\n";
 		file2 << "\n";
-
-		return lipschitz;
 	}
+
+	return lipschitz;
 }
 
 void makeVerletPeriodErrorData(const System& _system, double _timeStep, int _refSampleRate);
@@ -376,7 +378,7 @@ void makeSinglePhasePeriodData(const System& _system, const State& _state, doubl
 template<typename NetType, typename TrainFn>
 void makeLipschitzData(const nn::HyperParams& _params, TrainFn trainNetwork)
 {
-	std::vector<double> times{ 8.0, 4.0, 2.0, 1.0, 0.5, 0.25, 0.125 };
+	std::vector<double> times{ /*8.0*/4.0, 2.0, 1.0, 0.5, 0.25, 0.125, 0.125 / 2 };
 	std::vector<nn::HyperParams> bestNets;
 	nn::HyperParams params = _params;
 
@@ -384,25 +386,31 @@ void makeLipschitzData(const nn::HyperParams& _params, TrainFn trainNetwork)
 	for (double time : times)
 	{
 		params["time"] = time;
-		params["name"] = std::string("resnet_lipschitz_") + std::to_string(static_cast<int>(time * 100));
+		params["name"] = std::string("hamiltonian_lipschitz_") + std::to_string(static_cast<int>(time * 100));
 		nn::GridSearchOptimizer hyperOptimizer(trainNetwork, {
 		//	{"seed", {93784130ul, 167089119616745849ull, 23423223442167775ull, 168488165347327969ull, 116696928402573611ull, 17932827895858725ull, 51338360522333466ull, 100818424363624464ull}}
 			{"seed", {9378341130ul, 16708911996216745849ull, 2342493223442167775ull, 16848810653347327969ull, 11664969248402573611ull, 1799302827895858725ull, 5137385360522333466ull, 10088183424363624464ull}}
 			}, params);
 		bestNets.emplace_back(hyperOptimizer.run(8));
 	}
-
+//	params["name"] = std::string("1_hamiltonian_lipschitz_200");
+//	bestNets.push_back(params);
 	std::ofstream file("lipschitz.txt");
 	for (auto& params : bestNets)
 	{
 		auto net = nn::load<NetType, true>(params);
 		auto restrictNone = [&](const State& _state) { return false; };
-		const double lipschitz = makeJacobianData(net, { -PI, -2.0 }, { PI, 2.0 }, { 64, 64 }, restrictNone);
-
+		const double lipschitz = makeJacobianData(net, { -PI, -2.0 }, { PI, 0.0 }, { 64, 64 }, restrictNone);
+		const double lipschitz2 = makeJacobianData(net, { -256.0, -256.0 }, { 256.0, 0.0 }, { 1024, 512 }, restrictNone);
+		const double lipschitzInf = torch::linalg_norm(net->outputLayer->weight.matmul(net->inputLayer->weight), 2).template item<double>();
+		std::cout << lipschitz2 << "\n";
+		std::cout << "infinity: " << lipschitzInf << std::endl;
 		file << *params.get<double>("time") << " " 
 			<< eval::lipschitz(net) << " " 
 			<< *params.get<double>("validation_loss") / 100.0  << " "
-			<< lipschitz << "\n";
+			<< lipschitz << " "
+			<< lipschitz2 << " "
+			<< lipschitzInf << "\n";
 	}
 }
 
@@ -443,6 +451,7 @@ namespace nn {
 // hard coded network for performance tests
 class StaticResNet
 {
+public:
 	using Weights = systems::Matrix<double, 4, 4>;
 
 	constexpr static double Scale = 0.7071067811865475;
@@ -498,8 +507,8 @@ class StaticResNet
 	constexpr static Weights W4{ 0.063006892587312818276857, -0.045374952468251579518199, -0.126225326323202657885503, 0.262967302364347677023915,
 								0.105396932092074832598705, -0.608301939473625652432531, 0.206860585172888133964619, 0.215927431711197020947068,
 								0.180774679944726401892297, 0.055141473447872672852821, -0.143877860776390170682859, -0.246391839971395104624818,
-								-0.057869787801368692548021, -0.504518233255785042423724, 0.241013699806580050655214, 0.284574383622904047985713};*/
-
+								-0.057869787801368692548021, -0.504518233255785042423724, 0.241013699806580050655214, 0.284574383622904047985713};
+*/
 
 	constexpr static auto W1P = W1 * P1;
 
@@ -527,3 +536,46 @@ public:
 		return P2 * s;
 	}
 };
+
+/*
+// hard coded network with Eigen for performance tests
+template<typename T, std::size_t N, std::size_t M>
+static Eigen::Map<Eigen::Matrix<T, N, M, Eigen::RowMajor>> toEigen(const systems::Matrix<T, N, M>& a)
+{
+	return Eigen::Map<Eigen::Matrix<T, N, M, Eigen::RowMajor>>(const_cast<T*>(a.data()));
+}
+
+// ColMajor is significantly faster here for some reason
+static const Eigen::Matrix<double, 4, 2, Eigen::ColMajor> P1 = toEigen(StaticResNet::P1);
+static const Eigen::Matrix<double, 4, 2, Eigen::ColMajor> W1P = toEigen(StaticResNet::W1P);
+static const Eigen::Matrix<double, 4, 4, Eigen::ColMajor> W2 = toEigen(StaticResNet::W2);
+static const Eigen::Matrix<double, 2, 4, Eigen::ColMajor> P2 = toEigen(StaticResNet::P2);
+
+//static const Eigen::Matrix<double, 4, 4, Eigen::ColMajor> W3 = toEigen(StaticResNet::W3);
+//static const Eigen::Matrix<double, 4, 4, Eigen::ColMajor> W4 = toEigen(StaticResNet::W4);
+
+class StaticResNetEig
+{
+public:
+	template<typename System, typename State, typename T>
+	State operator()(const System& _system, const State& _state, T _dt) const
+	{
+		using namespace Eigen;
+
+		auto state = static_cast<systems::Vec<double, 2>>(_state);
+		const auto sIn = Map<Matrix<T, 2, 1>>(state.data());
+
+		Vector4d s = P1 * sIn + tanh((W1P * sIn).array()).matrix();
+
+	//	systems::Vec<double, 4> s2 = StaticResNet::P1 * static_cast<systems::Vec<double, 2>>(_state);
+	//	s2 += StaticResNet::activation(StaticResNet::W1P * static_cast<systems::Vec<double, 2>>(_state));
+
+		s += tanh((W2 * s).array()).matrix();
+	//	s += tanh((W3 * s).array()).matrix();
+	//	s += tanh((W4 * s).array()).matrix();
+
+		const Vector2d res = P2 * s;
+
+		return State{ res(0), res(1) };
+	}
+};*/
