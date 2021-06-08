@@ -290,11 +290,6 @@ void checkSymmetry(const System& _system, const State& _state, double _timeStep,
 	}*/
 }
 
-void runComparison(const nn::HyperParams& _params)
-{
-
-}
-
 int main()
 {
 	std::array<T, N> heatCoefs{};
@@ -330,7 +325,8 @@ int main()
 	params["loss_p"] = 2;
 	params["loss_energy"] = 1.0;
 	params["train_gpu"] = true;
-	params["net_type"] = std::string(typeid(NetType).name());
+	params["seed"] = 7469126240319926998ull;
+	params["net_type"] = nn::sanitizeString(std::string(typeid(NetType).name()));
 
 	// optimizer
 	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
@@ -376,8 +372,8 @@ int main()
 		constexpr int numTrain = 4;
 		constexpr int numValid = 2;
 #endif
-		auto trainingStates = generateStates(heatEq, numTrain, 0x612FF6AEu);
-		auto validStates = generateStates(heatEq, numValid, 0x195A4Cu);
+		auto trainingStates = generateStates(heatEq, numTrain, 0x612FF6AEu, 0.0, MEAN, STD_DEV, true);
+		auto validStates = generateStates(heatEq, numValid, 0x195A4Cu, 0.0, MEAN, STD_DEV, true);
 		auto warmupSteps = std::vector<size_t>{ 0, 64, 384, 256, 16, 4, 128, 2, 128, 64, 384, 256, 16, 512, 0, 0 };
 
 		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
@@ -417,7 +413,7 @@ int main()
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
 
-			params["name"] = std::string("conv_seed");
+			params["name"] = std::string("conv_energy_reg");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {3, 7, 9}},
 				//	{"hidden_channels", {4,6}},
@@ -429,13 +425,15 @@ int main()
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
 				//	{"amsgrad", {false, true}},
 				//	{"lr_decay", {0.25, 0.1}},
-				//	{"weight_decay", {0.001, 0.005, 0.01}}
+					{"weight_decay", {0.01, 0.001, 0.0}},
+					{"loss_energy", {10.0, 1.0, 0.1, 0.0}},
 				//	{"padding_mode_temp", {torch::kZeros, torch::kCircular, torch::kReflect}}
 				//	{"num_epochs", {2048}},
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
 				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
-					{"seed", seeds}
+				//	{"seed", seeds}
+					{"seed", {7469126240319926998ull, 17462938647148434322ull}},
 				}, params);
 
 			hyperOptimizer.run(2);
@@ -447,7 +445,7 @@ int main()
 	if constexpr (MODE == Mode::EVALUATE || MODE == Mode::TRAIN_EVALUATE)
 	{
 		auto validStates = generateStates(heatEq, 4, 0x195A4C);
-		auto& state = validStates[1];
+		auto& state = validStates[0];
 		auto trainingStates = generateStates(heatEq, 32, 0x612FF6AEu);
 
 		auto system = USE_LOCAL_DIFFUSIFITY ? generateSystems(1, 0xE312A41)[0]
@@ -557,14 +555,27 @@ int main()
 				states.push_back(state);
 			}
 
-			auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual_sym");
-		//	checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
-			evaluate<NUM_INPUTS>(systems, states, timeStep, options, net, net2);
-			return 0;
+			// symmetric setup
+			State symState{};
+			for (size_t i = 0; i < N / 2; ++i)
+			{
+				symState[i] = static_cast<double>(i) / N * 4.0;
+				symState[N - i - 1] = symState[i];
+				heatCoefs[i] = static_cast<double>(i) / N * 4.0;
+				heatCoefs[N - i - 1] = heatCoefs[i];
+			}
+			symState = systems::normalizeDistribution(symState, MEAN);
+			systems.emplace_back(heatCoefs);
+			states.push_back(symState);
 
-			auto convBase = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero_sym_base");
+		//	auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual_sym");
+		//	checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
+		//	evaluate<NUM_INPUTS>(systems, states, timeStep, options, net, net2);
+		//	return 0;
+
+		/*	auto convBase = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero_sym_base");
 			auto convZero = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_zero");
-			auto convAdam = nn::load<nn::Convolutional, USE_WRAPPER>(params, "ext_residual_sym_adam");
+			auto convAdam = nn::load<nn::Convolutional, USE_WRAPPER>(params, "ext_residual_sym_adam");*/
 		/*	auto convWd0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd");
 			auto convWd0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "0_conv_wd");
 			auto convWd1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_wd");
@@ -572,15 +583,22 @@ int main()
 			auto convSeed1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "1_conv_seed");
 			auto convSeed2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "2_conv_seed");
 			auto convSeed3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "3_conv_seed");*/
+			auto convSeed0 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "symmetric/5_conv_res_seed");
+			auto convSeed1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "symmetric/7_conv_res_seed");
+			auto convSeed2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "symmetric/8_conv_res_seed");
+			auto convSeed3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "symmetric/3_conv_sym_res_seed");
 			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
-				net,
-				convAdam
+				convSeed0,
+				convSeed1,
+				convSeed2,
+				convSeed3
 		/*		wrapNetwork<1>(convWd0),
 				wrapNetwork<1>(convWd1),
 				wrapNetwork<1>(convSeed0),
 				wrapNetwork<1>(convSeed1),
 				wrapNetwork<1>(convSeed2),
 				wrapNetwork<1>(convSeed3)*/);
+
 			return 0;
 			// networks
 		//	auto tcnInterleaved = nn::load<nn::TCN2d, USE_WRAPPER>(params, "0_tcn_interleaved_lbfgs");

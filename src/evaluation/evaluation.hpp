@@ -117,7 +117,7 @@ namespace eval {
 		// short term simulation
 		const size_t numShortTermSteps = _options.numShortTermSteps;
 		stateLog.reserve(numShortTermSteps + 1);
-		for (int i = 0; i < numShortTermSteps; ++i)
+		for (size_t i = 0; i < numShortTermSteps; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
 			stateLog.push_back(currentState);
@@ -174,7 +174,7 @@ namespace eval {
 		const int downSampleRate = _options.downSampleRate ? _options.downSampleRate : 1;
 		auto evalSteps = [&](std::ostream& out, auto printFn, const std::string& delim = " ")
 		{
-			for (int i = 0; i < numShortTermSteps; i += downSampleRate)
+			for (size_t i = 0; i < numShortTermSteps; i += downSampleRate)
 			{
 				if (downSampleRate > 1)
 					out << i << delim;
@@ -183,7 +183,7 @@ namespace eval {
 				for (size_t j = 0; j < numIntegrators; ++j)
 				{
 					const State& state = stateLog[i][j];
-					printFn(out, state, refState, globalErrorAvg[i][j], i, static_cast<int>(j));
+					printFn(out, state, refState, globalErrorAvg[i][j], static_cast<int>(i), static_cast<int>(j));
 					out << delim;
 				}
 				out << "\n";
