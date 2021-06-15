@@ -23,10 +23,10 @@ using State = typename System::State;
 constexpr T MEAN = ABSOLUTE_ZERO ? 128.0 : 0.0;
 constexpr T STD_DEV = ABSOLUTE_ZERO ? 64.0 : 1.0;
 
-using NetType = nn::Convolutional;
+using NetType = nn::ExtTCN;
 
 using OutputMaker = nn::StateToTensor;
-static_assert((!std::is_same_v<NetType, nn::TCN2d> && !std::is_same_v<NetType, nn::ExtTCNImpl>) || USE_LOCAL_DIFFUSIFITY, 
+static_assert((!std::is_same_v<NetType, nn::TCN2d> && !std::is_same_v<NetType, nn::ExtTCN>) || USE_LOCAL_DIFFUSIFITY, 
 	"input tensor not implemented for this config");
 namespace nn {
 	template<>
@@ -321,7 +321,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 128; // 512
-	params["num_epochs"] = USE_LBFGS ? 1024 : 1024; // 768
+	params["num_epochs"] = USE_LBFGS ? 1024 : 2048; // 768
 	params["loss_p"] = 2;
 	params["loss_energy"] = 1.0;
 	params["train_gpu"] = true;
@@ -331,13 +331,13 @@ int main()
 	// optimizer
 	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
-	params["lr_epoch_update"] = 512;
+	params["lr_epoch_update"] = 768;
 	params["weight_decay"] = 0.005;//0.005
 	params["history_size"] = 100;
 
 	// general
-	params["depth"] = 4;
-	params["bias"] = false;
+	params["depth"] = 3;
+	params["bias"] = true;
 	params["num_inputs"] = std::is_same_v<NetType, nn::Convolutional> ? 1 : NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["hidden_size"] = N;
@@ -352,10 +352,11 @@ int main()
 	params["symmetric"] = false;
 
 	// tcn
-	params["kernel_size_temp"] = 2; // temporal dim
+	params["kernel_size_temp"] = 3; // temporal dim
 	params["residual_blocks"] = 3;
 	params["block_size"] = 2;
-	params["average"] = false;
+	params["average"] = true;
+	params["casual"] = true;
 	params["interleaved"] = true;
 	params["padding_mode"] = torch::nn::detail::conv_padding_mode_t(torch::kCircular);
 	params["padding_mode_temp"] = torch::nn::detail::conv_padding_mode_t(torch::kZeros); // padding in temporal dim; only used when interleaved=true
@@ -409,17 +410,17 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			constexpr int numSeeds = 2;
+			constexpr int numSeeds = 4;
 			std::mt19937_64 rng;
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
 
-			params["name"] = std::string("conv_bias_reg");
+			params["name"] = std::string("tcn_casual");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {3, 7, 9}},
 				//	{"hidden_channels", {4,6}},
 				//	{"residual", {false, true}},
-					{"bias", {false, true}},
+				//	{"bias", {false, true}},
 				//	{"depth", {4,6}},
 				//	{"lr", {0.02, 0.025, 0.03}},
 				//	{"lr", {0.015, 0.01, 0.005}},
@@ -427,14 +428,16 @@ int main()
 				//	{"amsgrad", {false, true}},
 				//	{"lr_decay", {0.25, 0.1}},
 				//	{"weight_decay", {0.01, 0.001, 0.0}},
-					{"loss_energy", {10.0, 100.0, 1000.0}},
+				//	{"loss_energy", {10.0, 100.0, 1000.0}},
 				//	{"padding_mode_temp", {torch::kZeros, torch::kCircular, torch::kReflect}}
 				//	{"num_epochs", {2048}},
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
+				//	{ "average", {false, true}},
+					{"casual", {false, true}},
 				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
-				//	{"seed", seeds}
-					{"seed", {7469126240319926998ull, 17462938647148434322ull}},
+					{"seed", seeds}
+				//	{"seed", {7469126240319926998ull, 17462938647148434322ull}},
 				}, params);
 
 			hyperOptimizer.run(2);

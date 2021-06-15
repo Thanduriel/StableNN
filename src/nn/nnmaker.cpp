@@ -86,6 +86,7 @@ namespace nn {
 			.activation(*_params.get<nn::ActivationFn>("activation"))
 			.block_size(*_params.get<int>("block_size"))
 			.average(*_params.get<bool>("average"))
+			.casual(*_params.get<bool>("casual"))
 			.bias(*_params.get<bool>("bias"))
 			.padding_mode({ *_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode_temp") , *_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode")})
 			.interleaved(*_params.get<bool>("interleaved"));

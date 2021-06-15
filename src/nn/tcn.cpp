@@ -13,7 +13,8 @@ namespace nn {
 
 	template<int64_t D>
 	TemporalConvBlockImpl<D>::TemporalConvBlockImpl(const TemporalConvBlockOptions<D>& _options)
-		: residual(nullptr),
+		: casual_padding(nullptr),
+		residual(nullptr),
 		avg_residual(nullptr),
 		dropout_layer(nullptr),
 		options(_options)
@@ -31,6 +32,7 @@ namespace nn {
 		residual = nullptr;
 		dropout_layer = nullptr;
 		avg_residual = nullptr;
+		casual_padding = nullptr;
 		layers.clear();
 
 		const int64_t stack_size = options.block_size();
@@ -38,21 +40,40 @@ namespace nn {
 		const auto kernel_size = options.kernel_size();
 		const int64_t in_channels = options.in_channels();
 		const int64_t out_channels = options.out_channels();
+		
 		// set padding so that the size is not changed by the convolutions
 		auto padding = kernel_size;
-		assert(kernel_size->front() % 2 == 1 || options.average());
-		padding->front() = options.average() ? kernel_size->front() / 2 - 1 + kernel_size->front() % 2
-			: (kernel_size->front() - 1) * dilation / 2;
+		const int64_t temp_kernel = kernel_size->front();
+		if (options.casual())
+		{
+			padding->front() = 0;
+			int64_t temp_pad = options.average() ? temp_kernel - 2
+				: (temp_kernel - 1) * dilation;
+
+			if (temp_pad)
+			{
+				torch::nn::ConstantPadOptions<D> padOptions({ 0,0,temp_pad,0 }, 0.0);
+				casual_padding = this->register_module("padding", ConstPadding(padOptions));
+			}
+		}
+		else
+		{
+			assert(kernel_size->front() % 2 == 1 || options.average());
+			padding->front() = options.average() ? temp_kernel / 2 - 1 + temp_kernel % 2
+				: (temp_kernel - 1) * dilation / 2;
+		}
 		for (size_t i = 1; i < D; ++i)
 		{
-			padding->at(i) = kernel_size->at(i) / 2;
 			assert(kernel_size->at(i) % 2 == 1);
+			padding->at(i) = kernel_size->at(i) / 2;
 		}
 
 		for (int i = 0; i < stack_size; ++i)
 		{
-			const int in = in_channels + (out_channels - in_channels) * i / stack_size;
-			const int out = in_channels + (out_channels - in_channels) * (i + 1) / stack_size;
+			const int in = i == 0 ? in_channels : out_channels;
+			const int out = out_channels;
+		//	const int in = in_channels + (out_channels - in_channels) * i / stack_size;
+		//	const int out = in_channels + (out_channels - in_channels) * (i + 1) / stack_size;
 			auto convOptions = torch::nn::ConvOptions<D>(in, out, kernel_size)
 				.bias(options.bias())
 				.padding(padding)
@@ -109,6 +130,8 @@ namespace nn {
 		auto activation = options.activation();
 		for (auto& layer : layers)
 		{
+			if (casual_padding && layer->options.kernel_size()->front() != 1)
+				x = casual_padding(x);
 			x = activation(layer->forward(x));
 			if (dropout_layer)
 				x = dropout_layer(x);
@@ -140,6 +163,7 @@ namespace nn {
 			.dropout(options.dropout())
 			.average(options.average())
 			.residual(options.residual())
+			.casual(options.casual())
 			.interleaved(options.interleaved());
 	}
 
