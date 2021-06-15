@@ -82,7 +82,6 @@ namespace discretization {
 	template<typename T>
 	constexpr auto LAPLACE_STENCILS = std::make_tuple(
 		std::array<T, 3>{ 1.0, -2.0, 1.0 },
-	//	std::array<T, 5>{ -1.0, 16.0, -30.0, 16.0, -1.0 });
 		std::array<T, 5>{ -1.0 / 12.0, 4.0 / 3.0, -5.0 / 2.0, 4.0 / 3.0, -1.0 / 12.0 });
 
 	template<typename T, int N, int Order = 1>
@@ -118,9 +117,6 @@ namespace discretization {
 				T dxx = 0.0;
 				for(size_t j = 0; j < stencil.size(); ++j)
 					dxx += stencil[j] * _state[m_system.index(i + j - shift)];
-			/*	const size_t i_0 = m_system.index(i - 1);
-				const size_t i_2 = m_system.index(i + 1);
-				const T dx = _state[i_0] - _state[i_2];*/
 
 				next[i] = _state[i] + m_r * (/*(a[i_0] - a[i_2]) * dx +*/ a[i] * dxx);
 			}

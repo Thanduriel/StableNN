@@ -305,7 +305,7 @@ int main()
 	System heatEq(heatCoefs, 1.0);
 
 	nn::HyperParams params;
-	params["name"] = std::string("ext_residual");
+	params["name"] = std::string("yolo");
 	params["load_net"] = false;
 
 	// simulation
@@ -326,7 +326,7 @@ int main()
 	params["loss_energy"] = 1.0;
 	params["train_gpu"] = true;
 	params["seed"] = 7469126240319926998ull;
-	params["net_type"] = nn::sanitizeString(std::string(typeid(NetType).name()));
+	params["net_type"] = std::string(typeid(NetType).name());
 
 	// optimizer
 	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
@@ -337,7 +337,7 @@ int main()
 
 	// general
 	params["depth"] = 4;
-	params["bias"] = true;
+	params["bias"] = false;
 	params["num_inputs"] = std::is_same_v<NetType, nn::Convolutional> ? 1 : NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["hidden_size"] = N;
@@ -352,8 +352,8 @@ int main()
 	params["symmetric"] = false;
 
 	// tcn
-	params["kernel_size_temp"] = 3; // temporal dim
-	params["residual_blocks"] = 2;
+	params["kernel_size_temp"] = 2; // temporal dim
+	params["residual_blocks"] = 3;
 	params["block_size"] = 2;
 	params["average"] = false;
 	params["interleaved"] = true;
@@ -374,7 +374,8 @@ int main()
 #endif
 		auto trainingStates = generateStates(heatEq, numTrain, 0x612FF6AEu, 0.0, MEAN, STD_DEV, true);
 		auto validStates = generateStates(heatEq, numValid, 0x195A4Cu, 0.0, MEAN, STD_DEV, true);
-		auto warmupSteps = std::vector<size_t>{ 0, 64, 384, 256, 16, 4, 128, 2, 128, 64, 384, 256, 16, 512, 0, 0 };
+		auto warmupSteps = std::vector<size_t>{ 0, 64, 384, 256, 16, 4, 128, 2, 128, 64, 384, 256, 16, 1024, 0, 0 };
+	//	auto warmupSteps = std::vector<size_t>{ 0, 128, 256, 384, 512, 1024, 2048, 4096, 0, 128, 256, 0, 0, 0, 0 };
 
 		using Integrator = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
 			SuperSampleIntegrator,
@@ -413,20 +414,20 @@ int main()
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
 
-			params["name"] = std::string("conv_energy_reg");
+			params["name"] = std::string("conv_bias_reg");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
 				{//	{"kernel_size", {3, 7, 9}},
 				//	{"hidden_channels", {4,6}},
 				//	{"residual", {false, true}},
-				//	{"bias", {false, true}},
+					{"bias", {false, true}},
 				//	{"depth", {4,6}},
 				//	{"lr", {0.02, 0.025, 0.03}},
 				//	{"lr", {0.015, 0.01, 0.005}},
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
 				//	{"amsgrad", {false, true}},
 				//	{"lr_decay", {0.25, 0.1}},
-					{"weight_decay", {0.01, 0.001, 0.0}},
-					{"loss_energy", {10.0, 1.0, 0.1, 0.0}},
+				//	{"weight_decay", {0.01, 0.001, 0.0}},
+					{"loss_energy", {10.0, 100.0, 1000.0}},
 				//	{"padding_mode_temp", {torch::kZeros, torch::kCircular, torch::kReflect}}
 				//	{"num_epochs", {2048}},
 				//	{ "momentum", {0.5, 0.6, 0.7} },
@@ -457,8 +458,8 @@ int main()
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
 		SuperSampleIntegrator superSampleFiniteDifs(system, timeStep, state, 64);
 
-		auto net = nn::load<NetType, USE_WRAPPER>(params);
-		nn::Integrator<System, decltype(net), NUM_INPUTS> nnIntegrator(system, net);
+	//	auto net = nn::load<NetType, USE_WRAPPER>(params);
+	//	nn::Integrator<System, decltype(net), NUM_INPUTS> nnIntegrator(system, net);
 
 	//	nn::exportTensor(analytic.getGreenFn(timeStep, 63), "green.txt");
 	//	eval::checkEnergy(net->layers.front(), 64);
@@ -483,8 +484,8 @@ int main()
 
 		eval::EvalOptions options;
 		options.numShortTermSteps = 128;
-		options.numLongTermRuns = 0;
-		options.numLongTermSteps = 1024;
+		options.numLongTermRuns = 32;
+		options.numLongTermSteps = 4096;
 		options.mseAvgWindow = 0;
 		options.printHeader = false;
 	/*	for(auto& state : trainingStates)
@@ -507,8 +508,6 @@ int main()
 	//	auto tcn = nn::load<nn::TCN2d, USE_WRAPPER>(params, "heateq32_tcn_5_3");
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
-			auto net = nn::load<NetType, USE_WRAPPER>(params);
-		//	auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual");
 		/*	for (auto& layer : net->layers)
 			{
 				int yooo = layer->weight.dim();
@@ -559,14 +558,19 @@ int main()
 			State symState{};
 			for (size_t i = 0; i < N / 2; ++i)
 			{
-				symState[i] = static_cast<double>(i) / N * 4.0;
+				symState[i] = static_cast<double>(2 * i) / N * 2.0;
 				symState[N - i - 1] = symState[i];
-				heatCoefs[i] = static_cast<double>(i) / N * 4.0;
+				heatCoefs[i] = static_cast<double>(2 * i) / N * 0.5 + 0.75;
 				heatCoefs[N - i - 1] = heatCoefs[i];
 			}
-			symState = systems::normalizeDistribution(symState, MEAN);
 			systems.emplace_back(heatCoefs);
 			states.push_back(symState);
+
+			for (auto& state : states )
+				state = systems::normalizeDistribution(state, 0.0);
+
+			systems.erase(systems.begin(), systems.end() - 1);
+			states.erase(states.begin(), states.end() - 1);
 
 		//	auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual_sym");
 		//	checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
@@ -587,17 +591,39 @@ int main()
 			auto convSeed1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "symmetric/7_conv_res_seed");
 			auto convSeed2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "symmetric/8_conv_res_seed");
 			auto convSeed3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "symmetric/3_conv_sym_res_seed");
+			auto convSeed4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "energy_reg/2_1_1_conv_energy_reg");
+			auto convSeed5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "energy_reg/1_3_1_conv_energy_reg");
+			auto convSeed6 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "energy_reg/2_0_1_conv_energy_reg");
+			auto convNoBias1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "bias_reg/0_3_conv_bias_reg");
+			auto convNoBias2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "bias_reg/1_4_conv_bias_reg");
+			auto convReg1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_bias_reg/1_1_1_conv_bias_reg_2");
+			auto convReg2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_bias_reg/0_1_1_conv_bias_reg_2");
+
+		/*	nn::FlatConvWrapper wrapper(convSeed3);
+			nn::FlatConvWrapper wrapper2(convSeed5);
+			std::array<double, N> state;
+			state.fill(0.0);
+			for (auto& system : systems)
+			{
+				wrapper->constantInputs = nn::arrayToTensor(system.heatCoefficients());
+			//	eval::checkEnergy(eval::computeJacobian(wrapper, nn::arrayToTensor(state)));
+			//	eval::checkEnergy(eval::computeJacobian(wrapper2, nn::arrayToTensor(state)));
+			}*/
 			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
 				convSeed0,
-				convSeed1,
-				convSeed2,
-				convSeed3
-		/*		wrapNetwork<1>(convWd0),
-				wrapNetwork<1>(convWd1),
-				wrapNetwork<1>(convSeed0),
-				wrapNetwork<1>(convSeed1),
-				wrapNetwork<1>(convSeed2),
-				wrapNetwork<1>(convSeed3)*/);
+				convSeed6,
+				convReg2);
+
+			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
+				convSeed0,
+				convSeed3,
+			//	convSeed4,
+			//	convSeed5,
+				convSeed6,
+			//	convNoBias1,
+				convNoBias2,
+				convReg1,
+				convReg2);
 
 			return 0;
 			// networks

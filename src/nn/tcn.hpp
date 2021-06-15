@@ -174,4 +174,17 @@ namespace nn {
 		Options options;
 	};
 	TORCH_MODULE(ExtTCN);
+
+	// specialization for HeatEq with coefficients
+	// only forwards the first channel of the last time-step
+	template<>
+	struct IdentityMap<ExtTCN>
+	{
+		static torch::Tensor forward(const torch::Tensor& _input)
+		{
+			using namespace torch::indexing;
+			/* batch size, channels, time, spatial */
+			return _input.index({ Slice(), 0, -1, Slice() });
+		}
+	};
 }

@@ -6,13 +6,14 @@ namespace nn {
 	{
 		assert(input.squeeze().dim() <= 2); // currently no support for multidimensional data
 		torch::Tensor dif = input - target;
-		return (input - target).norm(p, dif.dim() - 1).mean() * 100.0;
+		return (input - target).norm(p, dif.dim() - 1).mean() * 100;
 	}
 
 	torch::Tensor energyLoss(const torch::Tensor& netInput, const torch::Tensor& netOutput)
 	{
-		torch::Tensor energyDif = netOutput.square().sum() - netInput.square().sum();
-		return energyDif.item<double>() > 0.0 ? energyDif : torch::zeros_like(energyDif);
+		torch::Tensor energyDif = (netOutput.square().sum(netInput.dim()-1) 
+			- netInput.square().sum(netOutput.dim()-1));
+		return energyDif.clamp_min(0.0).mean();
 	}
 
 	LossFn makeLossFunction(const HyperParams& _params, bool _train)

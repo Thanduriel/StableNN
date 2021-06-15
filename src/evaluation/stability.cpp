@@ -127,13 +127,13 @@ namespace eval {
 		assert(_netLinear.size(0) == _netLinear.size(1));
 		const int64_t size = _netLinear.sizes().front();
 		const auto mat = torch::eye(size, _netLinear.options()) - _netLinear.transpose(0, 1) * _netLinear;
-		const auto [eigs, _] = torch::eig(mat);
+		const auto eigs = computeEigs(mat);
 	//	std::cout << "eigenvalues of I - A^T A:\n" << eigs << "\n";
 
 		double minEig = std::numeric_limits<double>::max();
 		for (int64_t i = 0; i < size; ++i)
 		{
-			const double eig = eigs.index({ i,0 }).item<double>();
+			const double eig = eigs[i].real();
 			if ( eig < minEig)
 			{
 				minEig = eig;

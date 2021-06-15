@@ -19,7 +19,7 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::EVALUATE;
+constexpr Mode MODE = Mode::TRAIN_MULTI;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
@@ -31,7 +31,7 @@ static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be sav
 constexpr bool LOG_LOSS = false;
 
 // Write training and validation loss after each epoch into a file.
-constexpr bool LOG_LEARNING_LOSS = false;
+constexpr bool LOG_LEARNING_LOSS = true;
 
 enum struct Optimizer {
 	ADAM,
@@ -39,7 +39,7 @@ enum struct Optimizer {
 	RMSPROP,
 	LBFGS
 };
-constexpr Optimizer OPTIMIZER = Optimizer::LBFGS;
+constexpr Optimizer OPTIMIZER = Optimizer::ADAM;
 constexpr bool USE_LBFGS = OPTIMIZER == Optimizer::LBFGS;
 
 // only relevant in TRAIN_MULTI to enforce consistent rng state for all networks during initialization

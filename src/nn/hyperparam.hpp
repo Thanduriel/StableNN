@@ -36,7 +36,6 @@ namespace nn {
 		template<typename T>
 		void printImpl(std::ostream& _out, const std::any& _any)
 		{
-			
 			if constexpr (std::is_same_v<T, std::string>)
 				_out << sanitizeString(std::any_cast<T>(_any));
 			else if constexpr (is_stream_writable<std::ostream, T>::value)

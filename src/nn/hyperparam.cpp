@@ -104,6 +104,7 @@ namespace nn {
 					fileName += std::to_string(ind) + "_";
 				}
 				params["name"] = fileName + m_defaultParams.get<std::string>("name", "");
+				changedParams["name"] = params["name"];
 
 				auto start = std::chrono::high_resolution_clock::now();
 				const double loss = m_trainFunc(params);
