@@ -90,4 +90,11 @@ namespace nn {
 			.padding_mode({ *_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode_temp") , *_params.get<torch::nn::detail::conv_padding_mode_t>("padding_mode")})
 			.interleaved(*_params.get<bool>("interleaved"));
 	}
+
+	template<>
+	ExtTCNOptions makeOptions<ExtTCNOptions>(const HyperParams& _params)
+	{
+		return ExtTCNOptions(makeOptions<TCNOptions<2>>(_params))
+			.ext_residual(*_params.get<bool>("ext_residual"));
+	}
 }
