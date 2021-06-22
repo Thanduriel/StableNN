@@ -18,8 +18,8 @@ namespace nn{
 			m_network(_network),
 			m_options(c10::CppTypeToScalarType<T>())
 		{
-			_network->to(c10::CppTypeToScalarType<T>());
-			m_network->train();
+			m_network->to(c10::CppTypeToScalarType<T>());
+			m_network->eval();
 
 			for (size_t i = 1; i < NumStates; ++i)
 				m_states[i] = _initialState[i - 1];

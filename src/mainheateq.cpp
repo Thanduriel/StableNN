@@ -1,175 +1,16 @@
-#include "systems/heateq.hpp"
-#include "systems/heateqsolver.hpp"
 #include "nn/train.hpp"
 #include "nn/mlp.hpp"
-#include "nn/convolutional.hpp"
-#include "nn/tcn.hpp"
 #include "nn/nnintegrator.hpp"
 #include "evaluation/renderer.hpp"
 #include "evaluation/evaluation.hpp"
 #include "evaluation/stability.hpp"
+#include "heateqeval.hpp"
 #include <random>
 #include <chrono>
 
-constexpr bool USE_WRAPPER = false;
-constexpr bool USE_LOCAL_DIFFUSIFITY = true;
-constexpr bool ABSOLUTE_ZERO = false;
-constexpr size_t N = 32;
-
-using T = double;
-using System = systems::HeatEquation<T, N>;
-using State = typename System::State;
-
-constexpr T MEAN = ABSOLUTE_ZERO ? 128.0 : 0.0;
-constexpr T STD_DEV = ABSOLUTE_ZERO ? 64.0 : 1.0;
-
 using NetType = nn::ExtTCN;
-
-using OutputMaker = nn::StateToTensor;
 static_assert((!std::is_same_v<NetType, nn::TCN2d> && !std::is_same_v<NetType, nn::ExtTCN>) || USE_LOCAL_DIFFUSIFITY, 
 	"input tensor not implemented for this config");
-namespace nn {
-	template<>
-	struct InputMakerSelector<nn::TCN2d>
-	{
-		using type = systems::discretization::MakeInputHeatEq<true>;
-	};
-
-	template<>
-	struct InputMakerSelector<nn::ExtTCN>
-	{
-		using type = systems::discretization::MakeInputHeatEq<true>;
-	};
-
-	template<>
-	struct InputMakerSelector<nn::Convolutional>
-	{
-		using type = std::conditional_t<USE_LOCAL_DIFFUSIFITY,
-			systems::discretization::MakeInputHeatEq<false>,
-			nn::StateToTensor>;
-	};
-}
-
-namespace disc = systems::discretization;
-using SuperSampleIntegrator = disc::SuperSampleIntegrator<T, N, N * 32, N == 64 ? 1 : 2>;
-
-
-// convoluted way to store the number of inputs to allow comparison of networks with different NumInputs
-template<size_t NumSteps, typename Network>
-struct NetWrapper
-{
-	NetWrapper(Network& _network) : network(_network) {}
-	Network& network;
-};
-
-// typical make function to simplify creation by determining Network implicitly
-template<size_t NumSteps,  typename Network>
-NetWrapper<NumSteps, Network> wrapNetwork(Network& _network)
-{
-	return NetWrapper<NumSteps,Network>(_network);
-}
-
-template<size_t NumSteps, size_t MaxSteps>
-std::array<State, NumSteps> arrayView(const std::array<State, MaxSteps>& _array)
-{
-	static_assert(NumSteps <= MaxSteps);
-
-	std::array<State, NumSteps> arr{};
-	constexpr size_t off = MaxSteps - NumSteps;
-	for (size_t i = 0; i < NumSteps; ++i)
-		arr[i] = _array[i + off];
-
-	return arr;
-}
-
-template<typename T>
-struct Unwrap
-{
-	constexpr static size_t numSteps = 1;
-	using ContainedType = T;
-
-	Unwrap(T& _contained) : contained(_contained) {};
-	T& contained;
-};
-
-template<size_t NumSteps, typename Network>
-struct Unwrap<NetWrapper<NumSteps, Network>> 
-{ 
-	constexpr static size_t numSteps = NumSteps; 
-	using ContainedType = Network; 
-
-	Unwrap(const NetWrapper<NumSteps, Network>& _wrapper) : contained(_wrapper.network) {};
-	Network& contained;
-};
-
-template<typename Network, typename System, size_t MaxSteps>
-auto makeNNIntegrator(const System& _system,
-	Network&& _network,
-	const std::array<State, MaxSteps>& _initialStates)
-{
-	using UnwrapT = Unwrap<std::remove_reference_t<Network>>;
-	auto& net = UnwrapT(_network).contained;
-	constexpr size_t numSteps = UnwrapT::numSteps;
-	return nn::Integrator<System, typename UnwrapT::ContainedType, numSteps>(
-		_system, 
-		net,
-		arrayView<numSteps - 1>(_initialStates));
-}
-
-
-template<size_t NumTimeSteps, typename... Networks>
-void evaluate(
-	const System& system,
-	const State& _initialState,
-	double _timeStep,
-	const eval::ExtEvalOptions<State>& _options,
-	Networks&&... _networks)
-{
-	disc::AnalyticHeatEq analytic(system, _timeStep, _initialState);
-	disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, _timeStep);
-//	disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImplicit(system, _timeStep);
-	SuperSampleIntegrator superSampleFiniteDifs(system, _timeStep, _initialState, 64);
-
-	auto [referenceIntegrator, otherIntegrator] = [&]() 
-	{
-		if constexpr (USE_LOCAL_DIFFUSIFITY)
-			return std::make_pair(&superSampleFiniteDifs, &analytic);
-		else
-			return std::make_pair(&analytic, &superSampleFiniteDifs);
-	}();
-
-	// prepare initial time series
-	const auto& [initialStates, initialState] = nn::computeTimeSeries<NumTimeSteps>(*referenceIntegrator, _initialState);
-	referenceIntegrator->reset(system, initialState);
-	otherIntegrator->reset(system, initialState);
-
-	eval::evaluate(system,
-		initialState,
-		_options,
-		*referenceIntegrator,
-		*otherIntegrator,
-		finiteDiffs,
-		makeNNIntegrator(system, _networks, initialStates)...);
-}
-
-template<size_t NumTimeSteps, typename... Networks>
-void evaluate(const std::vector<System>& _systems,
-	const std::vector<State>& _initialStates,
-	double _timeStep,
-	const eval::ExtEvalOptions<State>& _options,
-	Networks&&... _networks)
-{
-	for (size_t i = 0; i < _systems.size(); ++i)
-	{
-		if (_systems[i].radius() == 0.0)
-		{
-			std::cout << "######################################################\n";
-			continue;
-		}
-		std::cout << "Num" << i << "\n";
-		evaluate<NumTimeSteps>(_systems[i], _initialStates[i], _timeStep, _options, std::forward<Networks>(_networks)...);
-	}
-}
 
 // @param _normalize shift _state so that the mean is guaranteed to be _mean.
 std::vector<State> generateStates(const System& _system, 
@@ -246,50 +87,6 @@ std::vector<System> generateSystems(size_t _numSystems, uint32_t _seed, T _maxCh
 	return systems;
 }
 
-template<typename... Networks>
-void checkSymmetry(const System& _system, const State& _state, double _timeStep,
-	const eval::EvalOptions& _options,
-	Networks&&... _networks)
-{
-
-	State state{};
-	System::HeatCoefficients heatCoeffs;
-	for (size_t i = 0; i < N/2; ++i)
-	{
-	//	state[i] = _state[i];
-		state[i] = static_cast<double>(i) / N * 4.0;
-		state[N - i - 1] = state[i];
-	//	heatCoeffs[i] = _system.heatCoefficients()[i];
-		heatCoeffs[i] = static_cast<double>(i) / N * 4.0;
-		heatCoeffs[N - i - 1] = heatCoeffs[i];
-	}
-	state = systems::normalizeDistribution(state, MEAN);
-
-	System system(heatCoeffs);
-
-	auto symErr = [](std::ostream& out, const State& s, const State&, double, int, int)
-	{
-		double err = 0.0;
-		for (size_t i = 0; i < N / 2; ++i)
-		{
-			const double dif = s[i] - s[N - i - 1];
-			err += dif * dif;
-		}
-		out << err;
-	};
-
-	eval::ExtEvalOptions<State> options(_options);
-	options.customPrintFunctions.emplace_back(symErr);
-
-	evaluate<NUM_INPUTS>(system, state, _timeStep, options, std::forward<Networks>(_networks)...);
-
-/*	for (int i = 0; i < 64; ++i)
-	{
-		std::cout << i << "   " << symErr(state) << "\n";
-		state = integrator(state);
-	}*/
-}
-
 int main()
 {
 	std::array<T, N> heatCoefs{};
@@ -305,7 +102,7 @@ int main()
 	System heatEq(heatCoefs, 1.0);
 
 	nn::HyperParams params;
-	params["name"] = std::string("yolo");
+	params["name"] = std::string("linear_5");
 	params["load_net"] = false;
 
 	// simulation
@@ -323,7 +120,7 @@ int main()
 	params["batch_size"] = 128; // 512
 	params["num_epochs"] = USE_LBFGS ? 1024 : 2048; // 768
 	params["loss_p"] = 2;
-	params["loss_energy"] = 1.0;
+	params["loss_energy"] = 100.0;
 	params["train_gpu"] = true;
 	params["seed"] = 7469126240319926998ull;
 	params["net_type"] = std::string(typeid(NetType).name());
@@ -336,7 +133,7 @@ int main()
 	params["history_size"] = 100;
 
 	// general
-	params["depth"] = 3;
+	params["depth"] = 4;
 	params["bias"] = true;
 	params["num_inputs"] = std::is_same_v<NetType, nn::Convolutional> ? 1 : NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
@@ -352,7 +149,7 @@ int main()
 	params["symmetric"] = false;
 
 	// tcn
-	params["kernel_size_temp"] = 3; // temporal dim
+	params["kernel_size_temp"] = 2; // temporal dim
 	params["residual_blocks"] = 3;
 	params["block_size"] = 2;
 	params["average"] = true;
@@ -410,14 +207,14 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			constexpr int numSeeds = 4;
+			constexpr int numSeeds = 8;
 			std::mt19937_64 rng;
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
 
-			params["name"] = std::string("tcn_casual");
+			params["name"] = std::string("linear_kernel");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-				{//	{"kernel_size", {3, 7, 9}},
+				{	{"kernel_size", {5, 7, 9, 11, 13}},
 				//	{"hidden_channels", {4,6}},
 				//	{"residual", {false, true}},
 				//	{"bias", {false, true}},
@@ -434,9 +231,9 @@ int main()
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
 				//	{ "average", {false, true}},
-					{"casual", {false, true}},
+				//	{"casual", {false, true}},
 				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
-					{"seed", seeds}
+				//	{"seed", seeds}
 				//	{"seed", {7469126240319926998ull, 17462938647148434322ull}},
 				}, params);
 
@@ -464,12 +261,12 @@ int main()
 	//	auto net = nn::load<NetType, USE_WRAPPER>(params);
 	//	nn::Integrator<System, decltype(net), NUM_INPUTS> nnIntegrator(system, net);
 
-	//	nn::exportTensor(analytic.getGreenFn(timeStep, 63), "green.txt");
+	//nn::exportTensor(analytic.getGreenFn(timeStep, 31), "green.txt");
 	//	eval::checkEnergy(net->layers.front(), 64);
 	//	for (size_t i = 0; i < net->layers.size(); ++i)
 	//		nn::exportTensor(net->layers[i]->weight, "heateq_adam2" + std::to_string(i) + ".txt");
 
-		if constexpr (SHOW_VISUAL)
+	/*	if constexpr (SHOW_VISUAL)
 		{
 			auto systems = generateSystems(36, 0x6341241);
 			for (int i = 0; i < 4; ++i) 
@@ -483,14 +280,17 @@ int main()
 				});
 				renderer.run();
 			}
-		}
+		}*/
 
 		eval::EvalOptions options;
 		options.numShortTermSteps = 128;
-		options.numLongTermRuns = 32;
-		options.numLongTermSteps = 4096;
-		options.mseAvgWindow = 0;
+		options.numLongTermRuns = 0;
+		options.numLongTermSteps = 1024;
+		options.mseAvgWindow = 1;
 		options.printHeader = false;
+	//	options.writeGlobalError = true;
+	//	options.writeMSE = true;
+	//	options.append = true;
 	/*	for(auto& state : trainingStates)
 		{
 			disc::AnalyticHeatEq analytic(system, timeStep, state);
@@ -519,12 +319,14 @@ int main()
 			}*/
 			// magnitude
 			std::vector<System> systems;
-		/*	std::array<T, N> heatCoefs{};
-			for (double i = 0.05; i < 3.0; i += 0.05)
+			std::array<T, N> heatCoefs{};
+	/*		for (double i = 0.05; i < 3.0; i += 0.05)
 			{
 				heatCoefs.fill(i);
 				systems.emplace_back(heatCoefs);
-			}*/
+			}
+
+			std::vector<State> states(systems.size(), state);*/
 
 			heatCoefs.fill(0.1);
 			systems.emplace_back(heatCoefs);
@@ -572,8 +374,14 @@ int main()
 			for (auto& state : states )
 				state = systems::normalizeDistribution(state, 0.0);
 
+		/*	systems.pop_back();
+			states.pop_back();
 			systems.erase(systems.begin(), systems.end() - 1);
-			states.erase(states.begin(), states.end() - 1);
+			states.erase(states.begin(), states.end() - 1);*/
+		/*	systems.clear();
+			states.clear();*/
+		/*	systems.push_back(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0]);
+			states.push_back(state);*/
 
 		//	auto net2 = nn::load<NetType, USE_WRAPPER>(params, "ext_residual_sym");
 		//	checkSymmetry(generateSystems(1, 0xFBB4F, 0.1, 1.0)[0], states.back(), timeStep, options, net, net2);
@@ -602,7 +410,39 @@ int main()
 			auto convReg1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_bias_reg/1_1_1_conv_bias_reg_2");
 			auto convReg2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_bias_reg/0_1_1_conv_bias_reg_2");
 
-		/*	nn::FlatConvWrapper wrapper(convSeed3);
+			auto convRegNew1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/1_1_1_conv_bias_reg");
+			auto convRegNew2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/0_0_1_conv_bias_reg");
+			auto convRegNew3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/0_1_0_conv_bias_reg");
+			auto convRegNew4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/1_2_0_conv_bias_reg");
+			auto convRegNew5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/0_2_0_conv_bias_reg");
+
+			auto tcnFull = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn/0_5_tcn");
+			auto tcnAvg = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn/1_4_tcn");
+			auto tcnAvgNoRes = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn/0_tcn_no_res");
+
+			auto tcnReg0 = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn_reg/0_tcn_reg");
+			auto tcnReg1 = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn_reg/1_tcn_reg");
+			auto tcnReg2 = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn_reg/2_tcn_reg");
+
+			auto cnnRepeat1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/1_7_conv_repeat");
+			auto cnnRepeat2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/1_1_conv_repeat");
+
+			auto cnnRepeat3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/4_conv_repeat_sym");
+			auto cnnRepeat4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/7_conv_repeat_sym");
+			auto cnnRepeat5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/0_6_conv_repeat");
+			
+			makeFourierCoefsData<1>(systems[8], *(states.end() - 3), timeStep,
+				cnnRepeat2);
+		/*	makeRelativeErrorData<8>(systems[7], *(states.end() - 3), timeStep,
+				cnnRepeat2,
+				cnnRepeat5,
+				cnnRepeat4,
+				wrapNetwork<8>(tcnFull),
+				wrapNetwork<8>(tcnAvg),
+				wrapNetwork<8>(tcnAvgNoRes));*/
+
+			return 0;
+			/*	nn::FlatConvWrapper wrapper(convSeed3);
 			nn::FlatConvWrapper wrapper2(convSeed5);
 			std::array<double, N> state;
 			state.fill(0.0);
@@ -612,21 +452,38 @@ int main()
 			//	eval::checkEnergy(eval::computeJacobian(wrapper, nn::arrayToTensor(state)));
 			//	eval::checkEnergy(eval::computeJacobian(wrapper2, nn::arrayToTensor(state)));
 			}*/
-			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
+		/*	evaluate<NUM_INPUTS>(systems, states, timeStep, options,
 				convSeed0,
 				convSeed6,
-				convReg2);
-
+				convRegNew1,
+				convRegNew2,
+				convRegNew3
+				convRegNew4,
+				convRegNew5);
+			return 0;*/
+			
 			evaluate<NUM_INPUTS>(systems, states, timeStep, options,
 				convSeed0,
-				convSeed3,
+			//	cnnRepeat1,
+			//	cnnRepeat2,
+			//	convSeed3,
 			//	convSeed4,
 			//	convSeed5,
-				convSeed6,
+			//	convSeed6,
 			//	convNoBias1,
-				convNoBias2,
-				convReg1,
-				convReg2);
+			//	convNoBias2,
+			//	convRegNew1,
+			//	convRegNew2,
+			//	convRegNew3,
+				cnnRepeat3,
+				cnnRepeat4,
+				cnnRepeat5/*
+				wrapNetwork<8>(tcnFull),
+				wrapNetwork<8>(tcnAvg),
+				wrapNetwork<8>(tcnAvgNoRes),
+				wrapNetwork<8>(tcnReg0),
+				wrapNetwork<8>(tcnReg1),
+				wrapNetwork<8>(tcnReg2)*/);
 
 			return 0;
 			// networks

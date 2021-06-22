@@ -17,6 +17,7 @@ list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainpendulum.cpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/pendulumeval.cpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/pendulumeval.hpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainheateq.cpp")
+list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/heateqeval.hpp")
 
 if(NOT USE_GRAPHICS)
 	list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/evaluation/renderer.cpp")
@@ -52,7 +53,7 @@ set_target_properties(pendulum PROPERTIES
 )
 target_link_libraries(pendulum stableNN)
 
-add_executable(heateq "src/mainheateq.cpp")
+add_executable(heateq "src/mainheateq.cpp" "src/heateqeval.hpp")
 set_target_properties(heateq PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED YES

@@ -29,19 +29,25 @@ namespace eval {
 
 	torch::Tensor toMatrix(const torch::nn::Conv1d& _conv, int64_t _size)
 	{
+		assert(c10::holds_alternative<torch::enumtype::kCircular>(_conv->options.padding_mode()));
+
+		return _conv->weight;
+	}
+
+	torch::Tensor toMatrix(const torch::Tensor& _kernel, int64_t _size)
+	{
 		using namespace torch::indexing;
 
 		// layer weight requiring a gradient would otherwise spread to mat
 		torch::NoGradGuard guard;
 
-		const int64_t filterSize = _conv->options.kernel_size()->front();
+		const torch::Tensor filter = _kernel.squeeze();
+		const int64_t filterSize = filter.sizes().front();
 		const int64_t halfSize = filterSize / 2;
-		const torch::Tensor filter = _conv->weight.squeeze();
-		
-		assert(c10::holds_alternative<torch::enumtype::kCircular>(_conv->options.padding_mode()));
+
 		assert(filterSize <= _size);
 
-		auto options = _conv->weight.options();
+		auto options = _kernel.options();
 		torch::Tensor mat = torch::zeros({ _size, _size }, options.requires_grad(false));
 
 		for (int64_t i = 0; i < _size; ++i)

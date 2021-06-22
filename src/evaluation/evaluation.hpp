@@ -21,6 +21,7 @@ namespace eval {
 
 	}
 
+	// L2 norm
 	template<typename State>
 	constexpr auto norm(const State& s)
 	{
@@ -271,6 +272,41 @@ namespace eval {
 		}
 	}
 
+	// additional print functions for ExtOptions
+
+	template<typename State>
+	struct MultiSimulationError
+	{
+		std::vector<std::vector<double>> integratorErrors;
+		auto accumulateFn(int _simCount = 0)
+		{
+			return [this, _simCount](std::ostream& _out, const State&, const State&, double _err, int _timeStep, int _integrator)
+			{
+				const size_t integrator = _integrator;
+				if (integrator >= integratorErrors.size())
+					integratorErrors.resize(integrator + 1);
+				auto& errors = integratorErrors[integrator];
+				const size_t timeStep = _timeStep;
+				if (timeStep >= errors.size())
+					errors.resize(timeStep + 1, 0.0);
+
+				errors[timeStep] += _err;
+				if (_simCount > 0)
+					_out << errors[timeStep] / _simCount;
+			};
+		}
+	};
+	
+	template<typename State>
+	struct RelativeError 
+	{
+		void operator()(std::ostream& out, const State& s, const State& ref, double err, int, int)
+		{
+			out << err / eval::norm(s);
+		};
+	};
+
+	// performance related
 	extern double g_sideEffect; // defined in stability.cpp
 
 	template<typename State, typename Integrator>
@@ -316,28 +352,4 @@ namespace eval {
 			std::index_sequence_for<Integrators...>{}, 
 			std::forward<Integrators>(_integrators)...);
 	}
-
-	
-	template<typename State>
-	struct MultiSimulationError
-	{
-		std::vector<std::vector<double>> integratorErrors;
-		auto accumulateFn(int _simCount = 0)
-		{
-			return [this, _simCount](std::ostream& _out, const State&, const State&, double _err, int _timeStep, int _integrator) 
-			{
-				const size_t integrator = _integrator;
-				if (integrator >= integratorErrors.size())
-					integratorErrors.resize(integrator + 1);
-				auto& errors = integratorErrors[integrator];
-				const size_t timeStep = _timeStep;
-				if (timeStep >= errors.size())
-					errors.resize(timeStep + 1, 0.0);
-
-				errors[timeStep] += _err;
-				if(_simCount > 0)
-					_out << errors[timeStep] / _simCount;
-			};
-		}
-	};
 }
