@@ -57,6 +57,7 @@ namespace eval {
 		bool writeGlobalError = false;
 		bool writeMSE = false;
 		bool addInitialStateMSE = false; // print state in addition to energy in mse file
+		double customValueMSE = std::numeric_limits<double>::quiet_NaN();
 		bool append = false; // append to file instead of overwriting it for all write options
 		bool relativeError = false;
 		int downSampleRate = 1; // write only every n-th entry; adds time-step as first column
@@ -227,9 +228,13 @@ namespace eval {
 		if (_options.writeMSE)
 		{
 			std::ofstream mseFile("mse.txt", fileOptions);
-			mseFile << initialEnergy << ", ";
+
+			mseFile << (!std::isnan(_options.customValueMSE) ? _options.customValueMSE 
+				: initialEnergy) << ", ";
 			if (_options.addInitialStateMSE)
 				mseFile << _initialState << ", ";
+
+		//	const double len = norm(stateLog.back().back());
 			for (double err : cumulativeError)
 			{
 				mseFile << err << ", ";

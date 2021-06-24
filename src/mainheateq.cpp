@@ -184,6 +184,13 @@ int main()
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
 			trainSystems = generateSystems(trainingStates.size(), 0x6341241u);
+		/*	for (auto& sys : trainSystems)
+			{
+				double sum = 0.0;
+				for (auto d : sys.heatCoefficients())
+					sum += d;
+				std::cout << sum / 32 << "\n";
+			}*/
 			validSystems = generateSystems(validStates.size()-2, 0xBE0691u);
 			std::array<T, N> heatCoefs{};
 			heatCoefs.fill(0.1);
@@ -320,13 +327,6 @@ int main()
 			// magnitude
 			std::vector<System> systems;
 			std::array<T, N> heatCoefs{};
-	/*		for (double i = 0.05; i < 3.0; i += 0.05)
-			{
-				heatCoefs.fill(i);
-				systems.emplace_back(heatCoefs);
-			}
-
-			std::vector<State> states(systems.size(), state);*/
 
 			heatCoefs.fill(0.1);
 			systems.emplace_back(heatCoefs);
@@ -363,7 +363,7 @@ int main()
 			State symState{};
 			for (size_t i = 0; i < N / 2; ++i)
 			{
-				symState[i] = static_cast<double>(2 * i) / N * 2.0;
+				symState[i] = static_cast<double>(2 * i) / N * 4.0;
 				symState[N - i - 1] = symState[i];
 				heatCoefs[i] = static_cast<double>(2 * i) / N * 0.5 + 0.75;
 				heatCoefs[N - i - 1] = heatCoefs[i];
@@ -431,9 +431,32 @@ int main()
 			auto cnnRepeat4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/7_conv_repeat_sym");
 			auto cnnRepeat5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/0_6_conv_repeat");
 			
-			makeFourierCoefsData<1>(systems[8], *(states.end() - 3), timeStep,
-				cnnRepeat2);
-		/*	makeRelativeErrorData<8>(systems[7], *(states.end() - 3), timeStep,
+			// systems[8], *(states.end() - 3)
+		//	makeFourierCoefsData<8>(systems.back(), states.back(), timeStep,
+		//		wrapNetwork<8>(tcnAvg));
+		//	makeRelativeErrorData<8>(*(systems.end() - 4), *(states.end() - 4), timeStep,
+			auto validStates = generateStates(heatEq, 32, 0x195A4Cu, 0.0, MEAN, STD_DEV, true);
+			auto validSystems = generateSystems(validStates.size() - 2, 0xBE0691u);
+			heatCoefs.fill(0.1);
+			validSystems.emplace_back(heatCoefs);
+			heatCoefs.fill(3.0);
+			validSystems.emplace_back(heatCoefs);
+		//	makeMultiSimAvgErrorData<8>(validSystems, validStates, timeStep,
+		//	makeDiffusionRoughnessData<8>(*(states.end() - 2), timeStep,
+			State peakState;
+			peakState.fill(0.0);
+			peakState[11] = 4.0;
+			peakState[22] = -4.0;
+			makeStateData<8>(*(systems.end() - 4), *(states.end() - 4), timeStep, 512,
+		//	makeRelativeErrorData<8>(*(systems.end() - 3), peakState, timeStep,
+				cnnRepeat2
+			/*	cnnRepeat5,
+				cnnRepeat4,
+				wrapNetwork<8>(tcnFull),
+				wrapNetwork<8>(tcnAvg),
+				wrapNetwork<8>(tcnAvgNoRes)*/);
+
+		/*	makeConstDiffusionData<8>(validStates[3], timeStep,
 				cnnRepeat2,
 				cnnRepeat5,
 				cnnRepeat4,

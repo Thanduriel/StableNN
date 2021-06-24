@@ -11,16 +11,16 @@ data = np.genfromtxt(fname="../build/mse.txt",
                        skip_header=0)
 
 end = 4096
-energy = data[1:end,0]
-errors = data[1:end,3:]
+energy = data[0:end,0]
+errors = data[0:end,2:]
 num = errors.shape[1]
 
-diffusion = np.linspace(0.05,3.0, 59)
+diffusion = np.linspace(0.05,3.0, 60)
 
 for i in range(0, num):
-	plt.semilogy( diffusion, errors[:,i])
+	plt.semilogy( energy, errors[:,i])
 plt.xlabel('diffusion coefficient'), plt.ylabel('error')
-plt.legend( ["Finite Difs", "Conv1", "conv2", "conv3", "conv4", "TCN", "TCN Avg", "TCN No Res"])
+plt.legend( ["Base","Finite Difs", "CNN", "CNNnoB", "CNNsym", "TCN", "TCN Avg", "TCN No Res"])
 
 axes = plt.gca()
 #axes.set_xlim([xmin,xmax])
