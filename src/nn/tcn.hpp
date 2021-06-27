@@ -105,11 +105,11 @@ namespace nn {
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 		TORCH_ARG(int64_t, block_size) = 2;
 		TORCH_ARG(double, dropout) = 0.0;
-		TORCH_ARG(bool, average) = false;
-		TORCH_ARG(bool, residual) = true;
-		TORCH_ARG(bool, casual) = false;
 		using padding_mode_t = torch::ExpandingArray<D, torch::nn::detail::conv_padding_mode_t>;
 		TORCH_ARG(padding_mode_t, padding_mode) = padding_mode_t(torch::kZeros);
+		TORCH_ARG(bool, casual) = false;
+		TORCH_ARG(bool, average) = false;
+		TORCH_ARG(bool, residual) = true;
 		TORCH_ARG(bool, interleaved) = false;
 	};
 

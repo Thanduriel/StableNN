@@ -52,7 +52,7 @@ namespace nn {
 
 			if (temp_pad)
 			{
-				torch::nn::ConstantPadOptions<D> padOptions({ 0,0,temp_pad,0 }, 0.0);
+				torch::nn::ConstantPadOptions<D> padOptions(makeExpandingArray<2 * D>(temp_pad, 0, 2 * D - 2), 0.0);
 				casual_padding = this->register_module("padding", ConstPadding(padOptions));
 			}
 		}
@@ -161,9 +161,9 @@ namespace nn {
 			.bias(options.bias())
 			.activation(options.activation())
 			.dropout(options.dropout())
+			.casual(options.casual())
 			.average(options.average())
 			.residual(options.residual())
-			.casual(options.casual())
 			.interleaved(options.interleaved());
 	}
 
