@@ -2,6 +2,7 @@ cmake_minimum_required (VERSION 3.12)
 project (StableNN)
 
 OPTION(USE_GRAPHICS "link SFML for visualisations" OFF)
+OPTION(USE_EIGEN "add eigen for network performance comparisons" OFF)
 
 if(CMAKE_CONFIGURATION_TYPES)      
 	set(CMAKE_CONFIGURATION_TYPES Debug Release)
@@ -81,6 +82,7 @@ endif (MSVC)
 
 find_package(Torch REQUIRED)
 target_link_libraries(stableNN PUBLIC "${TORCH_LIBRARIES}")
+#target_include_directories(pendulum PRIVATE "dependencies/eigen")
 
 if (USE_GRAPHICS)
 	find_package(SFML COMPONENTS system graphics window QUIET)

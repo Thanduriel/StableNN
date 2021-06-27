@@ -38,7 +38,7 @@ namespace nn {
 			}
 			else
 			{
-				this->register_parameter("weight", convolution->weight, true);
+				weight = this->register_parameter("weight", convolution->weight, true);
 			}
 		}
 
