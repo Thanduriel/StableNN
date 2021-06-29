@@ -183,14 +183,21 @@ int main()
 		std::vector<System> validSystems;
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
+			double min = 5.0;
+			double max = 0.0;
 			trainSystems = generateSystems(trainingStates.size(), 0x6341241u);
-		/*	for (auto& sys : trainSystems)
+			for (auto& sys : trainSystems)
 			{
 				double sum = 0.0;
 				for (auto d : sys.heatCoefficients())
 					sum += d;
-				std::cout << sum / 32 << "\n";
-			}*/
+				sum /= 32;
+				if (sum < min) min = sum;
+				if (sum > max) max = sum;
+				std::cout << sum << "\n";
+			}
+			std::cout << min << " | " << max;
+			return 0;
 			validSystems = generateSystems(validStates.size()-2, 0xBE0691u);
 			std::array<T, N> heatCoefs{};
 			heatCoefs.fill(0.1);
@@ -290,11 +297,13 @@ int main()
 		}*/
 
 		eval::EvalOptions options;
-		options.numShortTermSteps = 128;
-		options.numLongTermRuns = 0;
+		options.numShortTermSteps = 1;
+		options.numLongTermRuns = 32;
 		options.numLongTermSteps = 1024;
 		options.mseAvgWindow = 1;
+		options.downSampleRate = 1;
 		options.printHeader = false;
+		options.relativeError = false;
 	//	options.writeGlobalError = true;
 	//	options.writeMSE = true;
 	//	options.append = true;
@@ -374,6 +383,10 @@ int main()
 			for (auto& state : states )
 				state = systems::normalizeDistribution(state, 0.0);
 
+			System randSys = generateSystems(1, 0xACAB, 0.1, 1.5)[0]; // *(states.end() - 3)
+			systems.emplace_back(randSys);
+			states.emplace_back(*(states.end() - 3));
+
 		/*	systems.pop_back();
 			states.pop_back();
 			systems.erase(systems.begin(), systems.end() - 1);
@@ -415,6 +428,7 @@ int main()
 			auto convRegNew3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/0_1_0_conv_bias_reg");
 			auto convRegNew4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/1_2_0_conv_bias_reg");
 			auto convRegNew5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/0_2_0_conv_bias_reg");
+			auto convRegNew6 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "con_bias_reg_new/0_2_1_conv_bias_reg");
 
 			auto tcnFull = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn/0_5_tcn");
 			auto tcnAvg = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "tcn/1_4_tcn");
@@ -432,8 +446,6 @@ int main()
 			auto cnnRepeat5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/0_6_conv_repeat");
 			
 			// systems[8], *(states.end() - 3)
-		//	makeFourierCoefsData<8>(systems.back(), states.back(), timeStep,
-		//		wrapNetwork<8>(tcnAvg));
 		//	makeRelativeErrorData<8>(*(systems.end() - 4), *(states.end() - 4), timeStep,
 			auto validStates = generateStates(heatEq, 32, 0x195A4Cu, 0.0, MEAN, STD_DEV, true);
 			auto validSystems = generateSystems(validStates.size() - 2, 0xBE0691u);
@@ -443,18 +455,25 @@ int main()
 			validSystems.emplace_back(heatCoefs);
 		//	makeMultiSimAvgErrorData<8>(validSystems, validStates, timeStep,
 		//	makeDiffusionRoughnessData<8>(*(states.end() - 2), timeStep,
-			State peakState;
-			peakState.fill(0.0);
-			peakState[11] = 4.0;
-			peakState[22] = -4.0;
-			makeStateData<8>(*(systems.end() - 4), *(states.end() - 4), timeStep, 512,
-		//	makeRelativeErrorData<8>(*(systems.end() - 3), peakState, timeStep,
-				cnnRepeat2
-			/*	cnnRepeat5,
+		//	makeFourierCoefsData<8>(systems.back(), states.back(), timeStep,
+		//		wrapNetwork<8>(tcnFull));
+			states.pop_back();
+			systems.pop_back();
+			makeStateData<1>(systems.back(), states.back(), timeStep, {1, 7500, 60000},
+		//	checkSymmetry(systems.back(), states.back(), timeStep, options,
+				cnnRepeat2);
+			return 0;
+		//	for (auto d : randSys.heatCoefficients())
+		//		std::cout << d << "\n";
+		//	makeRelativeErrorData<8>(systems.back(), states.back(), timeStep,
+			makeEnergyData<NUM_INPUTS>(systems[0], states[0], timeStep,
+		//	evaluate<NUM_INPUTS>(systems, states, timeStep, options,
+				cnnRepeat2,
+				cnnRepeat5,
 				cnnRepeat4,
 				wrapNetwork<8>(tcnFull),
 				wrapNetwork<8>(tcnAvg),
-				wrapNetwork<8>(tcnAvgNoRes)*/);
+				wrapNetwork<8>(tcnAvgNoRes));
 
 		/*	makeConstDiffusionData<8>(validStates[3], timeStep,
 				cnnRepeat2,

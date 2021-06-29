@@ -78,6 +78,10 @@ namespace eval {
 		std::vector<std::function<PrintFn>> customPrintFunctions;
 		std::vector<std::ostream*> streams;
 	};
+
+	// stream to use if output should be discarded
+	// defined in stablity.cpp
+	extern std::ostream g_nullStream;
 	
 	// Simulates the given system with different integrators to observe energy over time.
 	// For error computations the first integrator is used as reference.
@@ -103,6 +107,8 @@ namespace eval {
 		using StateArray = std::array<State, numIntegrators>;
 		StateArray currentState;
 		std::vector<StateArray> stateLog;
+		const size_t numShortTermSteps = _options.numShortTermSteps;
+		stateLog.reserve(numShortTermSteps + 1);
 
 		for (auto& state : currentState) state = _initialState;
 
@@ -117,8 +123,6 @@ namespace eval {
 		}
 
 		// short term simulation
-		const size_t numShortTermSteps = _options.numShortTermSteps;
-		stateLog.reserve(numShortTermSteps + 1);
 		for (size_t i = 0; i < numShortTermSteps; ++i)
 		{
 			details::evaluateStep<0>(currentState, _integrators...);
@@ -181,11 +185,13 @@ namespace eval {
 				if (downSampleRate > 1)
 					out << i << delim;
 
+				auto& globalErrorAvgStep = globalErrorAvg[i < globalErrorAvg.size() ? i : 0];
+
 				const State& refState = stateLog[i][0];
 				for (size_t j = 0; j < numIntegrators; ++j)
 				{
 					const State& state = stateLog[i][j];
-					printFn(out, state, refState, globalErrorAvg[i][j], static_cast<int>(i), static_cast<int>(j));
+					printFn(out, state, refState, globalErrorAvgStep[j], static_cast<int>(i), static_cast<int>(j));
 					out << delim;
 				}
 				out << "\n";

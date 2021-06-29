@@ -5,6 +5,8 @@
 #include "nn/convolutional.hpp"
 #include "nn/tcn.hpp"
 
+#include <filesystem>
+
 constexpr bool USE_WRAPPER = false;
 constexpr bool USE_LOCAL_DIFFUSIFITY = true;
 constexpr bool ABSOLUTE_ZERO = false;
@@ -183,11 +185,9 @@ void checkSymmetry(const System& _system, const State& _state, double _timeStep,
 	System::HeatCoefficients heatCoeffs;
 	for (size_t i = 0; i < N / 2; ++i)
 	{
-		//	state[i] = _state[i];
-		state[i] = static_cast<double>(i) / N * 4.0;
+		state[i] = static_cast<double>(2 * i) / N * 4.0;
 		state[N - i - 1] = state[i];
-		//	heatCoeffs[i] = _system.heatCoefficients()[i];
-		heatCoeffs[i] = static_cast<double>(i) / N * 4.0;
+		heatCoeffs[i] = static_cast<double>(2 * i) / N * 0.5 + 0.75;
 		heatCoeffs[N - i - 1] = heatCoeffs[i];
 	}
 	state = systems::normalizeDistribution(state, MEAN);
@@ -202,19 +202,13 @@ void checkSymmetry(const System& _system, const State& _state, double _timeStep,
 			const double dif = s[i] - s[N - i - 1];
 			err += dif * dif;
 		}
-		out << err;
+		out << std::sqrt(err);
 	};
 
 	eval::ExtEvalOptions<State> options(_options);
 	options.customPrintFunctions.emplace_back(symErr);
 
 	evaluate<NUM_INPUTS>(system, state, _timeStep, options, std::forward<Networks>(_networks)...);
-
-	/*	for (int i = 0; i < 64; ++i)
-		{
-			std::cout << i << "   " << symErr(state) << "\n";
-			state = integrator(state);
-		}*/
 }
 
 template<size_t NumTimeSteps, typename... Networks>
@@ -234,7 +228,6 @@ void makeRelativeErrorData(
 
 	std::ofstream file("relative_error.txt");
 	options.streams.push_back(&file);
-
 	evaluate<NumTimeSteps>(_system, _initialState, _timeStep, options, std::forward<Networks>(_networks)...);
 }
 
@@ -248,6 +241,7 @@ void makeFourierCoefsData(
 	eval::ExtEvalOptions<State> options;
 	options.numShortTermSteps = 1024;
 	options.numLongTermRuns = 0;
+	options.downSampleRate = 4;
 	options.printHeader = false;
 
 	auto printDFT = [](std::ostream& out, const State& s, const State& ref, double err, int, int)
@@ -352,18 +346,9 @@ void makeMultiSimAvgErrorData(const std::vector<System>& _systems,
 	options.relativeError = true;
 	options.writeGlobalError = true; // needed so that averages are computed for all time steps
 
-	class NullBuffer : public std::streambuf
-	{
-	public:
-		int overflow(int c) { return c; }
-	};
-
-	NullBuffer nullBuffer;
-	std::ostream nullStream(&nullBuffer);
-
 	eval::MultiSimulationError<State> error;
 	options.customPrintFunctions.emplace_back(error.accumulateFn());
-	options.streams.push_back(&nullStream);
+	options.streams.push_back(&eval::g_nullStream);
 
 	for (size_t i = 0; i < _systems.size()-1; ++i)
 	{
@@ -386,34 +371,81 @@ void exportSystemState(const System& _system, const State& _state)
 
 template<size_t NumTimeSteps, typename... Networks>
 void makeStateData(const System& _system, const State& _state, double _timeStep,
-	int _steps, Networks&... _networks)
+	std::vector<int> _steps, Networks&... _networks)
 {
 	eval::ExtEvalOptions<State> options;
 	options.numLongTermRuns = 0;
-	options.numShortTermSteps = _steps;
-	options.mseAvgWindow = 0;
+	options.mseAvgWindow = 1;
+	options.numShortTermSteps = _steps.back()+1;
 	options.downSampleRate = 0;
 	options.printHeader = false;
 
-	std::vector<State> states;
+	std::unordered_map<int, std::vector<State>> states;
+	for (int step : _steps)
+		states.emplace(step, std::vector<State>(sizeof...(Networks) + 3));
 
 	auto printState = [&](std::ostream& out, const State& s, const State& ref, double err, 
 		int _timeStep, int _integrator)
 	{
-		if (_integrator >= states.size())
-			states.resize(_integrator + 1);
-		states[_integrator] = s;
+		auto it = states.find(_timeStep);
+		if(it != states.end())
+			it->second[_integrator] = s;
 	};
-
 	options.customPrintFunctions.emplace_back(printState);
+	options.streams.push_back(&eval::g_nullStream);
+
 	evaluate<NumTimeSteps>(_system, _state, _timeStep, options, _networks...);
 
 	std::ofstream file("state.txt");
 	for (size_t i = 0; i < _state.size(); ++i)
 	{
 		file << _system.heatCoefficients()[i] << " ";
-		for(auto& s : states)
-			file << s[i] << " ";
+		for (auto& [step, integratorStates] : states)
+		{
+			for (auto& s : integratorStates)
+				file << s[i] << " ";
+		}
 		file << "\n";
+	}
+}
+
+template<size_t NumTimeSteps, typename... Networks>
+void makeEnergyData(const System& _system, const State& _state, double _timeStep, Networks&... _networks)
+{
+	constexpr int maxSamples = 256;
+	eval::ExtEvalOptions<State> options;
+	options.numLongTermRuns = 0;
+	options.numShortTermSteps = 1024 * 128;
+	options.mseAvgWindow = 1;
+	options.downSampleRate = options.numShortTermSteps / maxSamples;
+	options.printHeader = false;
+	options.writeEnergy = true;
+
+	evaluate<NumTimeSteps>(_system, _state, _timeStep, options, _networks...);
+}
+
+template<size_t NumTimeSteps, typename... Networks>
+void makeEnergyDataMulti(
+	const State& _initialState,
+	double _timeStep, Networks&... _networks)
+{
+	constexpr int maxSamples = 256;
+	eval::ExtEvalOptions<State> options;
+	options.numLongTermRuns = 0;
+	options.numShortTermSteps = 1024 * 128;
+	options.mseAvgWindow = 1;
+	options.downSampleRate = options.numShortTermSteps / maxSamples;
+	options.printHeader = false;
+	options.writeEnergy = true;
+
+	std::vector<double> coeffs{ 0.1,0.5,1.0,1.5,2.0,2.5,3.0,3.5 };
+	std::array<T, N> heatCoefs{};
+
+	for (size_t i = 0; i < coeffs.size(); ++i)
+	{
+		heatCoefs.fill(coeffs[i]);
+		evaluate<NumTimeSteps>(System(heatCoefs), _initialState, _timeStep, options, _networks...);
+		std::filesystem::path file = "energy.txt";
+		std::filesystem::rename(file, "energy_" + std::to_string(i) + ".txt");
 	}
 }

@@ -5,6 +5,15 @@ namespace eval {
 
 	double g_sideEffect = 0.0;
 
+	class NullBuffer : public std::streambuf
+	{
+	public:
+		int overflow(int c) { return c; }
+	};
+
+	NullBuffer nullBuffer;
+	std::ostream g_nullStream(&nullBuffer);
+
 	template<>
 	void checkLayerStability<torch::nn::Linear>(const torch::nn::Linear& _layer)
 	{
