@@ -102,7 +102,7 @@ int main()
 	System heatEq(heatCoefs, 1.0);
 
 	nn::HyperParams params;
-	params["name"] = std::string("linear_5");
+	params["name"] = std::string("linear_tcn");
 	params["load_net"] = false;
 
 	// simulation
@@ -118,7 +118,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 128; // 512
-	params["num_epochs"] = USE_LBFGS ? 1024 : 2048; // 768
+	params["num_epochs"] = USE_LBFGS ? 1024 : 768; // 768
 	params["loss_p"] = 2;
 	params["loss_energy"] = 100.0;
 	params["train_gpu"] = true;
@@ -128,20 +128,20 @@ int main()
 	// optimizer
 	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
-	params["lr_epoch_update"] = 768;
+	params["lr_epoch_update"] = 350;
 	params["weight_decay"] = 0.005;//0.005
 	params["history_size"] = 100;
 
 	// general
 	params["depth"] = 4;
-	params["bias"] = true;
+	params["bias"] = false;
 	params["num_inputs"] = std::is_same_v<NetType, nn::Convolutional> ? 1 : NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["hidden_size"] = N;
 	// makeNetwork uses this but does not handle the spatial dimension correctly
 	params["state_size"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
-	params["activation"] = nn::ActivationFn(torch::tanh);
+	params["activation"] = nn::ActivationFn(nn::identity); // torch::tanh
 	params["hidden_channels"] = 4;
 	params["kernel_size"] = 5;
 	params["residual"] = true;
@@ -152,7 +152,7 @@ int main()
 	params["kernel_size_temp"] = 2; // temporal dim
 	params["residual_blocks"] = 3;
 	params["block_size"] = 2;
-	params["average"] = true;
+	params["average"] = false;
 	params["casual"] = true;
 	params["interleaved"] = true;
 	params["padding_mode"] = torch::nn::detail::conv_padding_mode_t(torch::kCircular);
@@ -186,7 +186,7 @@ int main()
 			double min = 5.0;
 			double max = 0.0;
 			trainSystems = generateSystems(trainingStates.size(), 0x6341241u);
-			for (auto& sys : trainSystems)
+		/*	for (auto& sys : trainSystems)
 			{
 				double sum = 0.0;
 				for (auto d : sys.heatCoefficients())
@@ -197,7 +197,7 @@ int main()
 				std::cout << sum << "\n";
 			}
 			std::cout << min << " | " << max;
-			return 0;
+			return 0;*/
 			validSystems = generateSystems(validStates.size()-2, 0xBE0691u);
 			std::array<T, N> heatCoefs{};
 			heatCoefs.fill(0.1);
@@ -226,9 +226,9 @@ int main()
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
 
-			params["name"] = std::string("linear_kernel");
+			params["name"] = std::string("linear_tcn");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-				{	{"kernel_size", {5, 7, 9, 11, 13}},
+				{//	{"kernel_size", {5, 7, 9, 11, 13}},
 				//	{"hidden_channels", {4,6}},
 				//	{"residual", {false, true}},
 				//	{"bias", {false, true}},
@@ -251,7 +251,7 @@ int main()
 				//	{"seed", {7469126240319926998ull, 17462938647148434322ull}},
 				}, params);
 
-			hyperOptimizer.run(2);
+			hyperOptimizer.run(1);
 		}
 		if constexpr (MODE == Mode::TRAIN || MODE == Mode::TRAIN_EVALUATE)
 			std::cout << trainNetwork(params) << "\n";
@@ -457,11 +457,9 @@ int main()
 		//	makeDiffusionRoughnessData<8>(*(states.end() - 2), timeStep,
 		//	makeFourierCoefsData<8>(systems.back(), states.back(), timeStep,
 		//		wrapNetwork<8>(tcnFull));
-			states.pop_back();
-			systems.pop_back();
-			makeStateData<1>(systems.back(), states.back(), timeStep, {1, 7500, 60000},
+			makeStateData<1>(systems.back(), states.back(), timeStep, { 1, 20000, 60000 },
 		//	checkSymmetry(systems.back(), states.back(), timeStep, options,
-				cnnRepeat2);
+				cnnRepeat5);
 			return 0;
 		//	for (auto d : randSys.heatCoefficients())
 		//		std::cout << d << "\n";

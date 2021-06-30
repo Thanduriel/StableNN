@@ -51,15 +51,23 @@ namespace nn {
 		}
 	};
 
+	enum struct FlatConvMode
+	{
+		ConstDiffusion,
+		ConstTemp,
+		Stack // temperature and diffusion are expected a single dimension
+	};
+
 	// this wrapper makes it possible to compute the Jacobian of just the first channel with eval::computeJacobian.
 	struct FlatConvWrapperImpl : public torch::nn::Module
 	{
-		explicit FlatConvWrapperImpl(Convolutional _net);
+		explicit FlatConvWrapperImpl(Convolutional _net, FlatConvMode _mode = FlatConvMode::ConstDiffusion);
 
 		torch::Tensor forward(torch::Tensor _input);
 
 		Convolutional net;
-		torch::Tensor constantInputs;
+		FlatConvMode mode;
+		torch::Tensor constantInputs; // either diffusion, temperature or none based on mode
 	};
 
 	TORCH_MODULE(FlatConvWrapper);

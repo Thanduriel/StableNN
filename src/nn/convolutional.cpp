@@ -87,16 +87,44 @@ namespace nn {
 	}
 
 	// ******************************************************************** //
-	FlatConvWrapperImpl::FlatConvWrapperImpl(Convolutional _net)
-		: net(_net)
+	FlatConvWrapperImpl::FlatConvWrapperImpl(Convolutional _net, FlatConvMode _mode)
+		: net(_net),
+		mode(_mode)
 	{
 	//	net = register_module("net", Convolutional(_options));
 	}
 
 	torch::Tensor FlatConvWrapperImpl::forward(torch::Tensor _input)
 	{
-		torch::Tensor constants = constantInputs.repeat({ _input.size(0), 1 });
-		torch::Tensor tensor = torch::cat({ _input.unsqueeze(1), constants.unsqueeze(1) }, 1);
-		return net->forward(tensor);
+		using namespace torch::indexing;
+
+		torch::Tensor constants;
+		torch::Tensor inputs;
+		switch (mode)
+		{
+		case FlatConvMode::ConstDiffusion:
+		{
+			// repeat to batch size
+			torch::Tensor constants = constantInputs.repeat({ _input.size(0), 1 });
+			// stack along newly created channel dimension
+			inputs = torch::cat({ _input.unsqueeze(1), constants.unsqueeze(1) }, 1);
+			break;
+		}
+		case FlatConvMode::ConstTemp:
+		{
+			torch::Tensor constants = constantInputs.repeat({ _input.size(0), 1 });
+			inputs = torch::cat({ constants.unsqueeze(1), _input.unsqueeze(1) }, 1);
+			break;
+		}
+		case FlatConvMode::Stack:
+		{
+			const int64_t stateSize = _input.size(1);
+			torch::Tensor temperature = _input.index({ Slice(), Slice(0, stateSize) });
+			torch::Tensor diffusion = _input.index({ Slice(), Slice(stateSize) });
+			inputs = torch::cat({ temperature.unsqueeze(1), diffusion.unsqueeze(1) }, 1);
+			break;
+		}
+		};
+		return net->forward(inputs);
 	}
 }
