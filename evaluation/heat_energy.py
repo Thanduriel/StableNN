@@ -6,9 +6,9 @@ import math
 matplotlib.style.use('seaborn')
 
 files = []
-names = []
-for i in range(2,4):
-	names.append("../build/energy_{}.txt".format(i))
+names = ["../build/energy_s_01_long.txt", "../build/energy_-1_1.txt", "../build/energy_rand_1m.txt", "../build/energy_sym_long.txt", "../build/energy.txt"]
+#for i in range(2,4):
+#	names.append("../build/energy_{}.txt".format(i))
 #names = ["../build/energy_0_1.txt", "../build/energy_0_5.txt", "../build/energy_1_0.txt", "../build/energy_2_0.txt", "../build/energy_2_5.txt", "../build/energy_3_0.txt"]
 for name in names:
 	files.append(np.genfromtxt(fname=name,

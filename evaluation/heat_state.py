@@ -5,7 +5,7 @@ import math
 
 matplotlib.style.use('seaborn')
 
-data = np.genfromtxt(fname="../build/state_cnn_sym.txt",
+data = np.genfromtxt(fname="../build/state.txt",
                        dtype=np.float32,
                        delimiter=' ',
                        skip_header=0)

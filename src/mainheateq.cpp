@@ -8,7 +8,7 @@
 #include <random>
 #include <chrono>
 
-using NetType = nn::ExtTCN;
+using NetType = nn::Convolutional;
 static_assert((!std::is_same_v<NetType, nn::TCN2d> && !std::is_same_v<NetType, nn::ExtTCN>) || USE_LOCAL_DIFFUSIFITY, 
 	"input tensor not implemented for this config");
 
@@ -102,7 +102,7 @@ int main()
 	System heatEq(heatCoefs, 1.0);
 
 	nn::HyperParams params;
-	params["name"] = std::string("linear_tcn");
+	params["name"] = std::string("linear_cnn");
 	params["load_net"] = false;
 
 	// simulation
@@ -118,7 +118,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 128; // 512
-	params["num_epochs"] = USE_LBFGS ? 1024 : 768; // 768
+	params["num_epochs"] = USE_LBFGS ? 1024 : 512; // 768
 	params["loss_p"] = 2;
 	params["loss_energy"] = 100.0;
 	params["train_gpu"] = true;
@@ -128,7 +128,7 @@ int main()
 	// optimizer
 	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
-	params["lr_epoch_update"] = 350;
+	params["lr_epoch_update"] = 256;
 	params["weight_decay"] = 0.005;//0.005
 	params["history_size"] = 100;
 
@@ -183,10 +183,10 @@ int main()
 		std::vector<System> validSystems;
 		if constexpr (USE_LOCAL_DIFFUSIFITY)
 		{
-			double min = 5.0;
-			double max = 0.0;
 			trainSystems = generateSystems(trainingStates.size(), 0x6341241u);
-		/*	for (auto& sys : trainSystems)
+			/*	double min = 5.0;
+			double max = 0.0;
+			for (auto& sys : trainSystems)
 			{
 				double sum = 0.0;
 				for (auto d : sys.heatCoefficients())
@@ -297,8 +297,8 @@ int main()
 		}*/
 
 		eval::EvalOptions options;
-		options.numShortTermSteps = 1;
-		options.numLongTermRuns = 32;
+		options.numShortTermSteps = 128;
+		options.numLongTermRuns = 0;
 		options.numLongTermSteps = 1024;
 		options.mseAvgWindow = 1;
 		options.downSampleRate = 1;
@@ -445,33 +445,43 @@ int main()
 			auto cnnRepeat4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/7_conv_repeat_sym");
 			auto cnnRepeat5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "conv_repeat/0_6_conv_repeat");
 			
-			// systems[8], *(states.end() - 3)
-		//	makeRelativeErrorData<8>(*(systems.end() - 4), *(states.end() - 4), timeStep,
+			auto tcnLinear = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "linear_tcn/linear_tcn");
+			
 			auto validStates = generateStates(heatEq, 32, 0x195A4Cu, 0.0, MEAN, STD_DEV, true);
 			auto validSystems = generateSystems(validStates.size() - 2, 0xBE0691u);
 			heatCoefs.fill(0.1);
 			validSystems.emplace_back(heatCoefs);
 			heatCoefs.fill(3.0);
 			validSystems.emplace_back(heatCoefs);
+
+			state.fill(0.0);
+			makeStabilityData<1>(state, timeStep, convRegNew3);
+		
+
+			// systems[8], *(states.end() - 3)
+		//	makeRelativeErrorData<8>(*(systems.end() - 4), *(states.end() - 4), timeStep,
 		//	makeMultiSimAvgErrorData<8>(validSystems, validStates, timeStep,
 		//	makeDiffusionRoughnessData<8>(*(states.end() - 2), timeStep,
 		//	makeFourierCoefsData<8>(systems.back(), states.back(), timeStep,
 		//		wrapNetwork<8>(tcnFull));
-			makeStateData<1>(systems.back(), states.back(), timeStep, { 1, 20000, 60000 },
+		//	makeStateData<1>(systems.back(), states.back(), timeStep, { 1, 20000, 60000 },
 		//	checkSymmetry(systems.back(), states.back(), timeStep, options,
-				cnnRepeat5);
-			return 0;
+		//		cnnRepeat5);
+		//	return 0;
 		//	for (auto d : randSys.heatCoefficients())
 		//		std::cout << d << "\n";
 		//	makeRelativeErrorData<8>(systems.back(), states.back(), timeStep,
-			makeEnergyData<NUM_INPUTS>(systems[0], states[0], timeStep,
+		//	makeEnergyData<NUM_INPUTS>(systems[0], states[0], timeStep
+			heatCoefs.fill(0.02);
+			checkZeroStability<8>({ System(heatCoefs) }, timeStep,
 		//	evaluate<NUM_INPUTS>(systems, states, timeStep, options,
 				cnnRepeat2,
 				cnnRepeat5,
 				cnnRepeat4,
 				wrapNetwork<8>(tcnFull),
 				wrapNetwork<8>(tcnAvg),
-				wrapNetwork<8>(tcnAvgNoRes));
+				wrapNetwork<8>(tcnAvgNoRes),
+				wrapNetwork<8>(tcnLinear));
 
 		/*	makeConstDiffusionData<8>(validStates[3], timeStep,
 				cnnRepeat2,
@@ -584,6 +594,8 @@ int main()
 				wrapNetwork<1>(conv4));
 		}
 		else
+		{
 			eval::evaluate(system, state, options, analytic, superSampleFiniteDifs, finiteDiffs, finiteDiffsImpl); //nn
+		}
 	}
 }

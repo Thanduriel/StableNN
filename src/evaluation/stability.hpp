@@ -25,7 +25,8 @@ namespace eval {
 		torch::Tensor x = _inputs.squeeze().repeat({ n,1 });
 		x.requires_grad_(true);
 		torch::Tensor y = _module->forward(x);
-		y.backward(torch::eye(n));
+		const int64_t m = y.sizes().back();
+		y.backward(torch::eye(n,m));
 
 		return x.grad();
 	}
@@ -40,6 +41,7 @@ namespace eval {
 	torch::Tensor eigs(const torch::nn::Conv1d& _conv, int64_t _size);
 
 	// Checks that this convolution reduces the amount of total energy.
+	// @return eigenvalues of A^T A - diag(0,I)
 	void checkEnergy(const torch::nn::Conv1d& _conv, int64_t _size);
-	void checkEnergy(const torch::Tensor& _netLinear);
+	std::vector<double> checkEnergy(const torch::Tensor& _netLinear, int64_t _stateSize = 0);
 }

@@ -415,7 +415,7 @@ void makeEnergyData(const System& _system, const State& _state, double _timeStep
 	constexpr int maxSamples = 256;
 	eval::ExtEvalOptions<State> options;
 	options.numLongTermRuns = 0;
-	options.numShortTermSteps = 1024 * 128;
+	options.numShortTermSteps = 1024 * 1024;
 	options.mseAvgWindow = 1;
 	options.downSampleRate = options.numShortTermSteps / maxSamples;
 	options.printHeader = false;
@@ -449,3 +449,116 @@ void makeEnergyDataMulti(
 		std::filesystem::rename(file, "energy_" + std::to_string(i) + ".txt");
 	}
 }
+
+template<size_t NumTimeSteps, typename... Networks>
+void checkZeroStability(
+	const std::vector<System>& _systems,
+	double _timeStep, Networks&... _networks)
+{
+	eval::ExtEvalOptions<State> options;
+	options.numLongTermRuns = 256;
+	options.numLongTermSteps = 4;
+	options.printHeader = false;
+
+	std::vector<State> states(_systems.size(), State{});
+	evaluate<NumTimeSteps>(_systems, states, _timeStep, options, _networks...);
+}
+
+template<size_t NumTimeSteps, typename... Networks>
+void makeStabilityData(
+	const State& _state,
+	double _timeStep, const nn::Convolutional& _network)
+{
+	nn::FlatConvWrapper wrapper(_network, nn::FlatConvMode::Stack);
+	nn::FlatConvWrapper wrapper2(_network, nn::FlatConvMode::ConstDiffusion);
+
+	const double min = 0.025;
+	const double max = 3.5;
+	const double stepSize = 0.025;
+	std::array<T, N> heatCoefs{};
+
+	const torch::Tensor zeros = torch::zeros({ N }, c10::TensorOptions(c10::kDouble));
+	std::ofstream file("eigs_coef.txt");
+
+	for (double i = min; i <= max; i += stepSize)
+	{
+		heatCoefs.fill(i);
+		const torch::Tensor coefs = nn::arrayToTensor(heatCoefs);
+		wrapper2->constantInputs = coefs;
+		auto eigsJ = eval::computeEigs(eval::computeJacobian(wrapper2,
+			zeros));
+
+		auto eigsM = eval::checkEnergy(eval::computeJacobian(wrapper,
+			torch::cat({ coefs, zeros })), N);
+
+		double maxEigJ = std::numeric_limits<double>::min();
+		double maxEigM = std::numeric_limits<double>::min();
+		for (size_t i = 0; i < N; ++i)
+		{
+			const double v = std::abs(eigsJ[i]);
+			if (v > maxEigJ) maxEigJ = v;
+			if (eigsM[i] > maxEigM) maxEigM = eigsM[i];
+		}
+
+		file << i << " " << maxEigJ << " " << maxEigM << "\n";
+
+	/*	//	makeEnergyDataMulti<8>(states.back(), timeStep, convRegNew3);
+		//	auto eigs = eval::computeEigs(eval::toMatrix(analytic.getGreenFn(timeStep), 32));
+		nn::FlatConvWrapper wrapper(convRegNew3, nn::FlatConvMode::Stack);
+		nn::FlatConvWrapper wrapper2(convRegNew3, nn::FlatConvMode::ConstDiffusion);
+		heatCoefs.fill(0.0);
+		wrapper2->constantInputs = nn::arrayToTensor(heatCoefs);
+		auto eigs = eval::computeEigs(eval::computeJacobian(wrapper2,
+			torch::zeros({ N }, c10::TensorOptions(c10::kDouble))));
+		//	auto eigs = eval::checkEnergy(eval::computeJacobian(wrapper, 
+		//		torch::zeros({ 2 * N }, c10::TensorOptions(c10::kDouble))), N);
+		for (auto eig : eigs)
+			std::cout << std::abs(eig) << "\n";
+		heatCoefs.fill(0.0);
+		state = *(states.end() - 2);
+		//	state.fill(1.0);
+		//	state.fill(1.0);
+		//	for (size_t i = 0; i < 32; ++i)
+		//		state[i] = i % 2 ? -1.0 : 1.0;
+		makeEnergyData<1>({ System(heatCoefs) }, state, timeStep, convRegNew3);
+		return 0;*/
+	}
+}
+
+
+// just copied from mainheateq so it will not work here
+/*void checkEigsLinear()
+{
+	std::vector<double> realParts;
+	std::vector<double> othOnes;
+	for (size_t i = 0; i < 15; ++i)
+	{
+		std::cout << i << "\n";
+		std::string name = "linear_cnn/";
+		if (i < 7) name += std::to_string(i) + "_linear_kernel";
+		else name += std::to_string(i - 7) + "_linear_kernel_2";
+		auto linear1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, name);
+		auto eigs = eval::computeEigs(eval::toMatrix(linear1->layers.back()->weight, 32));
+
+		double max = 0.0;
+		for (const auto& eig : eigs)
+		{
+			if (eig.imag() > max)
+			{
+				max = eig.imag();
+			}
+			if (eig.real() > 1.0)
+				othOnes.push_back(eig.real());
+		}
+		realParts.push_back(max);
+	}
+
+	std::cout << std::setprecision(std::numeric_limits<long double>::digits10 - 8);
+	for (size_t i = 0; i < realParts.size(); ++i)
+	{
+		std::cout << i * 2 + 3 << " " << realParts[i] << "\n";
+	}
+
+	for (double d : othOnes)
+		std::cout << d << "\n";
+}*/

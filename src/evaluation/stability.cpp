@@ -40,7 +40,7 @@ namespace eval {
 	{
 		assert(c10::holds_alternative<torch::enumtype::kCircular>(_conv->options.padding_mode()));
 
-		return _conv->weight;
+		return toMatrix(_conv->weight, _size);
 	}
 
 	torch::Tensor toMatrix(const torch::Tensor& _kernel, int64_t _size)
@@ -136,26 +136,40 @@ namespace eval {
 		//	std::cout << "Holds for any size: " << (sum < filter[halfSize].item<double>()) << std::endl;
 	}
 
-	void checkEnergy(const torch::Tensor& _netLinear)
+	std::vector<double> checkEnergy(const torch::Tensor& _netLinear, int64_t _stateSize)
 	{
 		assert(_netLinear.dim() == 2);
 		assert(_netLinear.size(0) == _netLinear.size(1));
-		const int64_t size = _netLinear.sizes().front();
-		const auto mat = torch::eye(size, _netLinear.options()) - _netLinear.transpose(0, 1) * _netLinear;
-		const auto eigs = computeEigs(mat);
-	//	std::cout << "eigenvalues of I - A^T A:\n" << eigs << "\n";
 
-		double minEig = std::numeric_limits<double>::max();
-		for (int64_t i = 0; i < size; ++i)
+		using namespace torch::indexing;
+
+		if (!_stateSize)
+			_stateSize = _netLinear.size(0);
+		const int64_t n = _netLinear.size(0);
+	//	const torch::Tensor id = torch::eye(_stateSize, _netLinear.options());
+		torch::Tensor id = torch::zeros_like(_netLinear);
+		id.index_put_({ Slice(n - _stateSize), Slice(n - _stateSize) }, 
+			torch::eye(_stateSize, _netLinear.options()));
+		const auto mat = _netLinear.transpose(0, 1) * _netLinear - id;
+		const auto eigs = computeEigs(mat);
+		std::vector<double> eigsReal;
+		for (auto eig : eigs)
+			eigsReal.push_back(eig.real());
+	//	std::cout << "eigenvalues of A^T A - I:\n" << eigs << "\n";
+
+		double maxEig = std::numeric_limits<double>::min();
+		for (int64_t i = 0; i < n; ++i)
 		{
-			const double eig = eigs[i].real();
-			if ( eig < minEig)
+			const double eig = eigsReal[i];
+			if ( eig > maxEig)
 			{
-				minEig = eig;
+				maxEig = eig;
 			}
 		}
-		//const bool isPositiveDefinite = minEig > 0;
+		//const bool isPositiveDefinite = maxEig <= 0;
 		//std::cout << "Energy does not increase: " << isPositiveDefinite << std::endl;
-		std::cout << minEig << "\n";
+		std::cout << maxEig << "\n";
+
+		return eigsReal;
 	}
 }

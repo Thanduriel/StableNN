@@ -118,9 +118,9 @@ namespace nn {
 		}
 		case FlatConvMode::Stack:
 		{
-			const int64_t stateSize = _input.size(1);
-			torch::Tensor temperature = _input.index({ Slice(), Slice(0, stateSize) });
-			torch::Tensor diffusion = _input.index({ Slice(), Slice(stateSize) });
+			const int64_t stateSize = _input.size(1) / 2;
+			torch::Tensor diffusion = _input.index({ Slice(), Slice(0, stateSize) });
+			torch::Tensor temperature = _input.index({ Slice(), Slice(stateSize) });
 			inputs = torch::cat({ temperature.unsqueeze(1), diffusion.unsqueeze(1) }, 1);
 			break;
 		}
