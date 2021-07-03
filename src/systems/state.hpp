@@ -84,13 +84,23 @@ namespace systems {
 		return sizeof(typename System::State) / sizeof(typename System::ValueT);
 	}
 
+	template<typename State>
+	using ValueType = std::remove_cv_t<std::remove_reference_t<decltype(std::declval<State>()[0])>>;
+
+	template<typename State>
+	auto average(const State& _state)
+	{
+		using T = ValueType<State>;
+		T sum = 0.0;
+		for (auto v : _state)
+			sum += v;
+		return sum / _state.size();
+	}
+
 	template<typename T, typename State>
 	State normalizeDistribution(const State& _state, T _mean) // , T _stdDev
 	{
-		T mean = 0.0;
-		for (auto v : _state)
-			mean += v;
-		mean /= _state.size();
+		const T mean = average(_state);
 
 		const double shift = mean - _mean;
 		State state = _state;

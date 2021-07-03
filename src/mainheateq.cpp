@@ -95,8 +95,8 @@ int main()
 	{
 		for (size_t i = 0; i < N / 2; ++i)
 		{
-			heatCoefs[i] = 0.75 + static_cast<double>(i) / N;
-			heatCoefs[N-i-1] = 0.75 + static_cast<double>(i) / N;
+		//	heatCoefs[i] = 0.75 + static_cast<double>(i) / N;
+		//	heatCoefs[N-i-1] = 0.75 + static_cast<double>(i) / N;
 		}
 	}
 	System heatEq(heatCoefs, 1.0);
@@ -447,12 +447,17 @@ int main()
 			
 			auto tcnLinear = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "linear_tcn/linear_tcn");
 			
+			auto trainingStates = generateStates(heatEq, 128, 0x612FF6AEu, 0.0, MEAN, STD_DEV, true);
+			auto trainSystems = generateSystems(trainingStates.size(), 0x6341241u);
 			auto validStates = generateStates(heatEq, 32, 0x195A4Cu, 0.0, MEAN, STD_DEV, true);
 			auto validSystems = generateSystems(validStates.size() - 2, 0xBE0691u);
 			heatCoefs.fill(0.1);
 			validSystems.emplace_back(heatCoefs);
 			heatCoefs.fill(3.0);
 			validSystems.emplace_back(heatCoefs);
+
+			checkSteadyState(trainSystems, trainingStates, timeStep);
+			return 0;
 
 			state.fill(0.0);
 			makeStabilityData<1>(state, timeStep, convRegNew3);

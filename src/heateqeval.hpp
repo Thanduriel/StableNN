@@ -6,6 +6,7 @@
 #include "nn/tcn.hpp"
 
 #include <filesystem>
+#include <thread>
 
 constexpr bool USE_WRAPPER = false;
 constexpr bool USE_LOCAL_DIFFUSIFITY = true;
@@ -496,7 +497,7 @@ void makeStabilityData(
 		for (size_t i = 0; i < N; ++i)
 		{
 			const double v = std::abs(eigsJ[i]);
-			if (v > maxEigJ) maxEigJ = v;
+			if (v > maxEigJ) maxEigJ = v; 
 			if (eigsM[i] > maxEigM) maxEigM = eigsM[i];
 		}
 
@@ -523,6 +524,61 @@ void makeStabilityData(
 		makeEnergyData<1>({ System(heatCoefs) }, state, timeStep, convRegNew3);
 		return 0;*/
 	}
+}
+
+template<typename It, typename Fn>
+void runMultiThreaded(It _begin, It _end, Fn _fn, size_t _numThreads = 1)
+{
+	if (_numThreads == 1)
+		_fn(_begin, _end);
+	else
+	{
+		std::vector<std::thread> threads;
+		threads.reserve(_numThreads - 1);
+
+		using DistanceType = decltype(_end - _begin);
+		const DistanceType n = static_cast<DistanceType>(_numThreads);
+		const DistanceType rows = (_end - _begin) / n;
+		for (DistanceType i = 0; i < n - 1; ++i)
+			threads.emplace_back(_fn, i * rows, (i + 1) * rows);
+		_fn((n - 1) * rows, _end);
+
+		for (auto& thread : threads)
+			thread.join();
+	}
+}
+
+void checkSteadyState(const std::vector<System>& _systems, 
+	const std::vector<State>& _states,
+	double _timestep)
+{
+	std::mutex printMutex;
+	auto execute = [&](size_t begin, size_t end)
+	{
+		for (size_t i = begin; i < end; ++i)
+		{
+			const System& system = _systems[i];
+			State state = _states[i];
+			SuperSampleIntegrator superSampleFiniteDifs(system, _timestep, state, 64);
+			const double initialAvg = systems::average(state);
+			double energy = system.energy(state);
+			double oldEnergy;
+			do {
+				for (size_t i = 0; i < 128; ++i) {
+					state = superSampleFiniteDifs(state);
+				}
+				oldEnergy = energy;
+				energy = system.energy(state);
+			} while (std::abs(oldEnergy - energy) / oldEnergy > 0.00001);
+
+			std::unique_lock<std::mutex> lock(printMutex);
+			std::cout << initialAvg << " " 
+				<< systems::average(state) << " "
+				<< energy << "\n";
+		}
+	};
+
+	runMultiThreaded(static_cast<size_t>(0), _systems.size(), execute, 4);
 }
 
 
