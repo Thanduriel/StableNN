@@ -118,7 +118,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 128; // 512
-	params["num_epochs"] = USE_LBFGS ? 1024 : 512; // 768
+	params["num_epochs"] = USE_LBFGS ? 1024 : 2; // 768
 	params["loss_p"] = 2;
 	params["loss_energy"] = 100.0;
 	params["train_gpu"] = true;
@@ -128,7 +128,7 @@ int main()
 	// optimizer
 	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
 	params["lr_decay"] = USE_LBFGS ? 1.0 : 0.1;
-	params["lr_epoch_update"] = 256;
+	params["lr_epoch_update"] = 512;
 	params["weight_decay"] = 0.005;//0.005
 	params["history_size"] = 100;
 
@@ -225,14 +225,15 @@ int main()
 			std::mt19937_64 rng;
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
+			seeds.erase(seeds.begin(), seeds.begin() + 4);
 
-			params["name"] = std::string("linear_tcn");
+			params["name"] = std::string("cnn_size");
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-				{//	{"kernel_size", {5, 7, 9, 11, 13}},
-				//	{"hidden_channels", {4,6}},
+				{	{"kernel_size", {3, 5, 7}},
+					{"hidden_channels", {2,4,6}},
 				//	{"residual", {false, true}},
 				//	{"bias", {false, true}},
-				//	{"depth", {4,6}},
+					{"depth", {3,4,5}},
 				//	{"lr", {0.02, 0.025, 0.03}},
 				//	{"lr", {0.015, 0.01, 0.005}},
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
@@ -247,7 +248,7 @@ int main()
 				//	{ "average", {false, true}},
 				//	{"casual", {false, true}},
 				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
-				//	{"seed", seeds}
+					{"seed", seeds}
 				//	{"seed", {7469126240319926998ull, 17462938647148434322ull}},
 				}, params);
 

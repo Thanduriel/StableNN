@@ -81,11 +81,12 @@ namespace nn {
 		}
 
 		std::vector<double> results(numOptions);
+		std::vector<std::string> names(numOptions);
 		double bestResult = std::numeric_limits<double>::max();
 		HyperParams bestParams;
 		std::mutex mutex;
 
-		auto work = [&mutex, &bestResult, &bestParams, &results, this](size_t begin, size_t end) 
+		auto work = [&mutex, &bestResult, &bestParams, &results, &names, this](size_t begin, size_t end) 
 		{
 			for (size_t i = begin; i < end; ++i)
 			{
@@ -111,6 +112,7 @@ namespace nn {
 				auto end = std::chrono::high_resolution_clock::now();
 				const float time = std::chrono::duration<float>(end - start).count();
 				results[i] = loss;
+				names[i] = *params.get<std::string>("name");
 
 				const std::lock_guard<std::mutex> guard(mutex);
 				std::cout << "training with " << changedParams << "\n";
@@ -225,6 +227,29 @@ namespace nn {
 
 		std::cout << "\nbest result:\n" << bestParams << "\n"
 			<< "loss: " << bestResult << std::endl;
+
+		// best result per seed
+		for (size_t k = 0; k < m_hyperGrid.size(); ++k)
+		{
+			const auto& [name, values] = m_hyperGrid[k];
+			if (name == "seed")
+			{
+				std::vector<size_t> bestIndex(numOptions / values.size(), std::numeric_limits<size_t>::max());
+				for (size_t i = 0; i < numOptions; ++i)
+				{
+					const auto& [indK, indOth] = decomposeFlatIndex(i, k);
+					if (bestIndex[indOth] > numOptions || results[i] < results[bestIndex[indOth]]) {
+						bestIndex[indOth] = i;
+					}
+				}
+
+				for (size_t ind : bestIndex)
+				{
+					std::cout << names[ind] << " " << results[ind] << "\n";
+				}
+				break;
+			}
+		}
 
 		bestParams["validation_loss"] = bestResult;
 		return bestParams;

@@ -7,7 +7,7 @@
 
 // number of time-steps given as inputs
 // This value only needs to be available at compile-time for evaluation.
-constexpr size_t NUM_INPUTS = 8;
+constexpr size_t NUM_INPUTS = 1;
 
 // expect only the next time-step
 constexpr bool USE_SINGLE_OUTPUT = true;
@@ -19,7 +19,7 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN;
+constexpr Mode MODE = Mode::TRAIN_MULTI;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
