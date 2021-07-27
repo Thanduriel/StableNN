@@ -1,12 +1,14 @@
 #pragma once
 
 #include "../systems/state.hpp"
+
 #include <iostream>
 #include <fstream>
 #include <array>
 #include <vector>
 #include <chrono>
 #include <functional>
+#include <cmath>
 
 namespace eval {
 

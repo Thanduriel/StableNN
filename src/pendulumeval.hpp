@@ -51,15 +51,7 @@ void evaluate(
 		return state;
 	};
 
-	/*	eval::PendulumRenderer renderer(0.05);
-		renderer.addIntegrator([drawIntegrator = rk2, state = _initialState]() mutable
-		{
-			state = drawIntegrator(state);
-			return state.position;
-		});
-		renderer.run();*/
-
-		// prepare initial time series
+	// prepare initial time series
 	const auto& [initialStates, initialState] = nn::computeTimeSeries<NumTimeSteps>(referenceIntegrate, _initialState);
 
 	if constexpr (SHOW_VISUAL)
@@ -73,8 +65,7 @@ void evaluate(
 			visState = std::get<0>(integrators)(visState);
 		}
 
-		eval::PendulumRenderer renderer(_timeStep);
-		renderer.addIntegrator([drawIntegrator = std::get<0>(integrators), state = visState]() mutable
+		eval::PendulumRenderer renderer(_timeStep, [drawIntegrator = std::get<0>(integrators), state = visState]() mutable
 		{
 			state = drawIntegrator(state);
 			return state.position;

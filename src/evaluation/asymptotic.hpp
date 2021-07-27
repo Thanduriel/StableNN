@@ -2,16 +2,16 @@
 
 namespace eval {
 
+	// energy level indicating that the simulation grows unbounded
+	constexpr double INF_ENERGY = 4.0;
+	constexpr double THRESHOLD = 0.02;
+
 	// @return energy of attractors and intervals bounding the position 
 	//         of possible initial states for bifurcation points
 	template<typename System, typename Integrator>
 	auto findAttractors(const System& _system, const Integrator& _integrator, bool computeBifurcations = true)
 		-> std::pair<std::vector<double>, std::vector<std::pair<double,double>>>
 	{
-		// energy level indicating that the simulation grows unbounded
-		constexpr double INF_ENERGY = 4.0;
-		constexpr double THRESHOLD = 0.02;
-
 		using State = typename System::State;
 		System system(_system);
 		Integrator integrator(_integrator);

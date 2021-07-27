@@ -336,7 +336,7 @@ void makeDiffusionRoughnessData(
 template<size_t NumTimeSteps, typename... Networks>
 void makeMultiSimAvgErrorData(const std::vector<System>& _systems,
 	const std::vector<State>& _states,
-	double _timeStep, Networks&... _networks)
+	double _timeStep, Networks&&... _networks)
 {
 	eval::ExtEvalOptions<State> options;
 	options.numLongTermRuns = 0;
@@ -372,7 +372,7 @@ void exportSystemState(const System& _system, const State& _state)
 
 template<size_t NumTimeSteps, typename... Networks>
 void makeStateData(const System& _system, const State& _state, double _timeStep,
-	std::vector<int> _steps, Networks&... _networks)
+	std::vector<int> _steps, Networks&&... _networks)
 {
 	eval::ExtEvalOptions<State> options;
 	options.numLongTermRuns = 0;
@@ -411,7 +411,7 @@ void makeStateData(const System& _system, const State& _state, double _timeStep,
 }
 
 template<size_t NumTimeSteps, typename... Networks>
-void makeEnergyData(const System& _system, const State& _state, double _timeStep, Networks&... _networks)
+void makeEnergyData(const System& _system, const State& _state, double _timeStep, Networks&&... _networks)
 {
 	constexpr int maxSamples = 256;
 	eval::ExtEvalOptions<State> options;
@@ -428,7 +428,7 @@ void makeEnergyData(const System& _system, const State& _state, double _timeStep
 template<size_t NumTimeSteps, typename... Networks>
 void makeEnergyDataMulti(
 	const State& _initialState,
-	double _timeStep, Networks&... _networks)
+	double _timeStep, Networks&&... _networks)
 {
 	constexpr int maxSamples = 256;
 	eval::ExtEvalOptions<State> options;
@@ -454,7 +454,7 @@ void makeEnergyDataMulti(
 template<size_t NumTimeSteps, typename... Networks>
 void checkZeroStability(
 	const std::vector<System>& _systems,
-	double _timeStep, Networks&... _networks)
+	double _timeStep, Networks&&... _networks)
 {
 	eval::ExtEvalOptions<State> options;
 	options.numLongTermRuns = 256;
@@ -569,7 +569,7 @@ void checkSteadyState(const std::vector<System>& _systems,
 				}
 				oldEnergy = energy;
 				energy = system.energy(state);
-			} while (std::abs(oldEnergy - energy) / oldEnergy > 0.00001);
+			} while (std::abs(oldEnergy - energy) / oldEnergy > 0.000001);
 
 			std::unique_lock<std::mutex> lock(printMutex);
 			std::cout << initialAvg << " " 
@@ -578,11 +578,11 @@ void checkSteadyState(const std::vector<System>& _systems,
 		}
 	};
 
-	runMultiThreaded(static_cast<size_t>(0), _systems.size(), execute, 4);
+	runMultiThreaded(static_cast<size_t>(0), _systems.size(), execute, 8);
 }
 
 
-// just copied from mainheateq so it will not work here
+// just copied from mainheateq so it will need some changes before compiling
 /*void checkEigsLinear()
 {
 	std::vector<double> realParts;

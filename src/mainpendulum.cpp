@@ -55,8 +55,7 @@ int main()
 /*	for (auto& state : trainingStates)
 	{
 		LeapFrog integrator(system, USE_SIMPLE_SYSTEM ? 0.25 : 0.05);
-		eval::PendulumRenderer renderer(0.5);
-		renderer.addIntegrator([&integrator, s=state] () mutable
+		eval::PendulumRenderer renderer(0.5, [&integrator, s=state] () mutable
 			{
 				s = integrator(s);
 				return s.position;
