@@ -6,7 +6,7 @@
 
 namespace nn {
 	class MultiLayerPerceptron;
-	class HamiltonianInterleafed;
+	class HamiltonianInterleaved;
 	class AntiSymmetric;
 }
 
@@ -16,7 +16,7 @@ namespace eval {
 		template<typename Layer>
 		torch::Tensor getSystemMatrix(const Layer& _layer)
 		{
-			return _layer.system_matrix();
+			return _layer.systemMatrix();
 		}
 
 		template<>
@@ -33,7 +33,7 @@ namespace eval {
 	}
 
 	double lipschitz(const nn::MultiLayerPerceptron& _net);
-	double lipschitz(const nn::HamiltonianInterleafed& _net);
+	double lipschitz(const nn::HamiltonianInterleaved& _net);
 	double lipschitz(const nn::AntiSymmetric& _net);
 
 	template<typename HiddenNet>
@@ -48,6 +48,7 @@ namespace eval {
 
 	// from "Parseval Networks: Improving Robustness to Adversarial Examples"
 	// expects ResNet using activations with lipschitz constant <= 1
+	// this is the same as the lipschitz() routines from above
 	template<typename Layer>
 	double lipschitzParseval(const std::vector<Layer>& _layers)
 	{

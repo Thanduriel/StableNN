@@ -191,21 +191,21 @@ int main()
 		auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp_4_4l");
 		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp_4_4l_t2");
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4l");
-		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian_4_4l");*/
+		auto hamiltonian = nn::load<nn::HamiltonianInterleaved, USE_WRAPPER>(params, "hamiltonian_4_4l");*/
 	/*	auto mlp = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlp");
 		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "mlpIO");
 		auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym");
-		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonian");*/
+		auto hamiltonian = nn::load<nn::HamiltonianInterleaved, USE_WRAPPER>(params, "hamiltonian");*/
 		auto mlpIO = nn::load<nn::MultiLayerPerceptron, USE_WRAPPER>(params, "resnet_4_4l");
 	/*	auto antisym = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4l");
 		auto antisym2 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_2_4");
 		auto antisym3 = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_8_2");
-		auto hamiltonian = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "HamiltonianInterleafed_2_4l");*/
+		auto hamiltonian = nn::load<nn::HamiltonianInterleaved, USE_WRAPPER>(params, "HamiltonianInterleaved_2_4l");*/
 
 	/*	auto antisym0d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_0d");
 		auto antisym01d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4_01d");
 		auto antisym001d = nn::load<nn::AntiSymmetric, USE_WRAPPER>(params, "antisym_4_4");
-		auto hamiltonianSym = nn::load<nn::HamiltonianInterleafed, USE_WRAPPER>(params, "hamiltonianSym_4_4");*/
+		auto hamiltonianSym = nn::load<nn::HamiltonianInterleaved, USE_WRAPPER>(params, "hamiltonianSym_4_4");*/
 
 		nn::Integrator<System, decltype(mlpIO), NUM_INPUTS> integrator(system, mlpIO);
 		discret::ODEIntegrator<System, StaticResNet> resNetBench(system, timeStep);
@@ -283,8 +283,8 @@ int main()
 			<< eval::details::norm(net->outputLayer->weight, 2) << "\n";
 		for (size_t i = 0; i < net->hiddenNet->layers.size(); ++i)
 		{
-			std::cout << eval::details::norm(net->hiddenNet->layers[i]->system_matrix(), 2);
-			auto eigs = eval::computeEigs(antisym3->hiddenNet->layers[i]->system_matrix());
+			std::cout << eval::details::norm(net->hiddenNet->layers[i]->systemMatrix(), 2);
+			auto eigs = eval::computeEigs(antisym3->hiddenNet->layers[i]->systemMatrix());
 			for (auto eig : eigs)
 				std::cout << eig << "\n";
 			std::cout << "\n";

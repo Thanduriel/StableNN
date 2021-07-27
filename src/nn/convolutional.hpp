@@ -15,7 +15,7 @@ namespace nn {
 		TORCH_ARG(int64_t, num_channels);
 		TORCH_ARG(int64_t, hidden_channels);
 		TORCH_ARG(int64_t, filter_size);
-		TORCH_ARG(int64_t, num_layers) = 1;
+		TORCH_ARG(int64_t, num_layers) = 1; // if > 1 the last layer is 1x1 conv to reduce dimensions
 		TORCH_ARG(bool, bias) = false;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
 		TORCH_ARG(bool, residual) = false;
@@ -33,7 +33,7 @@ namespace nn {
 		torch::Tensor forward(torch::Tensor _input);
 
 		Options options;
-		using Conv = ExtConv1d; // torch::nn::Conv1d
+		using Conv = ExtConv1d;
 		std::vector<Conv> layers;
 		torch::nn::Conv1d residual;
 	};
@@ -55,10 +55,10 @@ namespace nn {
 	{
 		ConstDiffusion,
 		ConstTemp,
-		Stack // temperature and diffusion are expected a single dimension
+		Stack // temperature and diffusion are expected as a single dimension
 	};
 
-	// this wrapper makes it possible to compute the Jacobian of just the first channel with eval::computeJacobian.
+	// This wrapper makes it possible to compute the Jacobian with eval::computeJacobian.
 	struct FlatConvWrapperImpl : public torch::nn::Module
 	{
 		explicit FlatConvWrapperImpl(Convolutional _net, FlatConvMode _mode = FlatConvMode::ConstDiffusion);
@@ -67,7 +67,7 @@ namespace nn {
 
 		Convolutional net;
 		FlatConvMode mode;
-		torch::Tensor constantInputs; // either diffusion, temperature or none based on mode
+		torch::Tensor constantInputs; //< either diffusion, temperature or none based on mode
 	};
 
 	TORCH_MODULE(FlatConvWrapper);

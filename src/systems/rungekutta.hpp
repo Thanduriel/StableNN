@@ -6,12 +6,17 @@
 namespace systems {
 namespace discretization{
 
+	// Butcher tableaus for p-stage methods ( fo the listed methods Order == Stage ) 
+	// see https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods#Explicit_Runge.E2.80.93Kutta_methods
 	template<int Order>
 	using RKMatrix = std::array<double, (Order - 1)* (Order - 1)>;
 	template<int Order>
 	using RKWeights = std::array<double, Order>;
 	template<int Order>
 	using RKNodes = std::array<double, Order - 1>;
+
+	// common Runge Kutta methods
+	// see https://en.wikipedia.org/wiki/List_of_Runge%E2%80%93Kutta_methods
 
 	struct RK2_midpoint
 	{
@@ -158,7 +163,8 @@ namespace discretization{
 		}
 	};
 
-
+	// Generic Runge Kutta implementation without loops and 
+	// explicit skipping of 0 valued coefficients
 	template<typename Params>
 	class RungeKutta
 	{
@@ -173,25 +179,6 @@ namespace discretization{
 		State operator()(const System& _system, const State& _state, T _dt) const
 		{
 			return integrate(_system, _state, _dt, std::make_index_sequence<Order>{});
-	/*		using Vec = decltype(_system.rhs(_state));
-
-			std::array<Vec, Order> samples;
-
-			for (int i = 0; i < Order; ++i)
-			{
-				const int offset = (i-1) * (Order - 1);
-				Vec dir{};
-
-				for (int j = 0; j < i; ++j)
-					dir = dir + coefficients[offset + j] * samples[j];
-				samples[i] = _system.rhs(_state + _dt * dir);
-			}
-
-			Vec sum{};
-			for (int i = 0; i < Order; ++i)
-				sum = sum + weights[i] * samples[i];
-
-			return _state + _dt * sum; */
 		}
 
 	private:
@@ -230,7 +217,9 @@ namespace discretization{
 		Vec sample(const System& _system, const State& _state, T _dt, const std::array<Vec, Order>& _samples) const
 		{
 			if constexpr (I == 0)
+			{
 				return _system.rhs(_state);
+			}
 			else // this else is necessary to prevent code from being generated with Offset < 0
 			{
 				constexpr size_t Offset = (I - 1) * (Order - 1);

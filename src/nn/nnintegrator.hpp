@@ -7,6 +7,7 @@
 
 namespace nn{
 
+	// Neural network based numeric integrator
 	template<typename System, typename Network, size_t NumStates = 1, typename InputMaker = MakeTensor_t<Network>>
 	class Integrator
 	{

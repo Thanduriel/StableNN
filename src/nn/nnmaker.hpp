@@ -5,9 +5,13 @@
 
 namespace nn {
 
+	// Construct an Options struct from HyperParams.
+	// A linking error here indicates that no implementation exists in nnmaker.cpp.
 	template<typename Options>
 	Options makeOptions(const HyperParams& _params);
 
+	// construct a network from HyperParams
+	// @param UseWrapper use input output wrapper; will return a nn::InOutWrapper<Net>
 	template<typename Net, bool UseWrapper>
 	auto makeNetwork(const nn::HyperParams& _params, torch::Device _device = torch::kCPU)
 	{

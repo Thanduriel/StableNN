@@ -36,6 +36,5 @@ namespace nn {
 			}
 			file << "\n";
 		}
-	//	file << content;
 	}
 }

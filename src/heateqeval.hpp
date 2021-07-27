@@ -618,3 +618,34 @@ void checkSteadyState(const std::vector<System>& _systems,
 	for (double d : othOnes)
 		std::cout << d << "\n";
 }*/
+
+void processSizeData(const nn::HyperParams& _params, const std::string& _file) 
+{
+	std::ifstream file(_file);
+	std::ofstream outputFile("cnn_weights.txt");
+	while (!file.eof())
+	{
+		std::string name;
+		double loss = 0.0;
+
+		file >> name >> loss;
+		auto net = nn::load<nn::Convolutional, USE_WRAPPER>(_params, 
+			"cnn_scale_size/" + name);
+
+		outputFile /*<< name << " "*/ << loss << " " << nn::countParams(net) << "\n";
+	}
+}
+
+void toyExample()
+{
+	constexpr size_t EXAMPLE_N = 4;
+	std::array<T, EXAMPLE_N> heatCoefs{ 1.1,1.1,1.0,1.0 };
+	systems::HeatEquation<T, EXAMPLE_N> example(heatCoefs);
+	disc::FiniteDifferencesExplicit<T, EXAMPLE_N, 1> fdm(example, 0.1);
+	std::array<T, EXAMPLE_N> exState{ 1.0,1.0,-1.0,-1.0 };
+	for (size_t i = 0; i < 300; ++i)
+	{
+		exState = fdm(exState);
+		std::cout << systems::average(exState) << " " << example.energy(exState) << "\n";
+	}
+}

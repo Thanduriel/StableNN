@@ -32,7 +32,7 @@ namespace nn {
 
 		// use one sided padding in temporal dimension
 		// currently only compatible with zero padding
-		TORCH_ARG(bool, casual) = false;
+		TORCH_ARG(bool, causal) = false;
 
 		// amount of dropout after convolution layers
 		TORCH_ARG(double, dropout) = 0.0;
@@ -65,7 +65,7 @@ namespace nn {
 		using ConstPadding = std::conditional_t<D == 1, torch::nn::ConstantPad1d, torch::nn::ConstantPad2d>;
 
 		std::vector<Conv> layers;
-		ConstPadding casual_padding;
+		ConstPadding causal_padding;
 		Conv residual;
 		AvgPool avg_residual;
 		torch::nn::Dropout dropout_layer; // todo: also consider Dropout2D ?
@@ -107,7 +107,7 @@ namespace nn {
 		TORCH_ARG(double, dropout) = 0.0;
 		using padding_mode_t = torch::ExpandingArray<D, torch::nn::detail::conv_padding_mode_t>;
 		TORCH_ARG(padding_mode_t, padding_mode) = padding_mode_t(torch::kZeros);
-		TORCH_ARG(bool, casual) = false;
+		TORCH_ARG(bool, causal) = false;
 		TORCH_ARG(bool, average) = false;
 		TORCH_ARG(bool, residual) = true;
 		TORCH_ARG(bool, interleaved) = false;

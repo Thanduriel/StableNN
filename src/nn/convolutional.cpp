@@ -39,13 +39,14 @@ namespace nn {
 				layers.emplace_back(convOptions);
 				register_module("layer" + std::to_string(i), layers.back());
 			}
+
+			// final layer only reduces the number of channels
+			convOptions.kernel_size(1);
+			convOptions.padding(0);
+			convOptions.symmetric(false);
 		}
 
-		// final layer only reduces the number of channels
 		convOptions.out_channels(1);
-		convOptions.kernel_size(1);
-		convOptions.padding(0);
-		convOptions.symmetric(false);
 		layers.emplace_back(convOptions);
 		register_module("layer" + std::to_string(options.num_layers()-1), layers.back());
 	}

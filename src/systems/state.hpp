@@ -84,9 +84,11 @@ namespace systems {
 		return sizeof(typename System::State) / sizeof(typename System::ValueT);
 	}
 
+	// get underlying value type of a state
 	template<typename State>
 	using ValueType = std::remove_cv_t<std::remove_reference_t<decltype(std::declval<State>()[0])>>;
 
+	// average value of a state
 	template<typename State>
 	auto average(const State& _state)
 	{
@@ -97,6 +99,7 @@ namespace systems {
 		return sum / _state.size();
 	}
 
+	// shift and scale a state such that it has mean _mean
 	template<typename T, typename State>
 	State normalizeDistribution(const State& _state, T _mean) // , T _stdDev
 	{

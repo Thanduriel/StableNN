@@ -9,33 +9,31 @@
 
 namespace eval {
 
-	struct HSV 
+	struct HSV
 	{
-		float h;       // angle in degrees
-		float s;       // a fraction between 0 and 1
-		float v;       // a fraction between 0 and 1
+		float h;	// hue - angle in degrees
+		float s;	// saturation - a fraction between 0 and 1
+		float v;	// brightness - a fraction between 0 and 1
 	};
 
-	sf::Color HSVtoRGB(HSV in)
+	sf::Color HSVtoRGB(const HSV& in)
 	{
 		sf::Color out;
 		if (in.s <= 0.0) // < is bogus, just shuts up warnings
 		{
-			out.r = in.v * 255;
-			out.g = in.v * 255;
-			out.b = in.v * 255;
+			out.r = static_cast<sf::Uint8>(in.v / 360.f);
+			out.g = static_cast<sf::Uint8>(in.v * 255);
+			out.b = static_cast<sf::Uint8>(in.v * 255);
 			return out;
 		}
-		double hh = in.h;
-		if (hh >= 360.0) hh = 0.0;
-		hh /= 60.0;
-		int i = hh;
-		double ff = hh - i;
+		const float hh = std::fmod(in.h, 360.f) / 60.f;
+		const int i = static_cast<int>(hh);
+		const float ff = hh - i;
 
-		const sf::Uint8 v = in.v * 255;
-		const sf::Uint8 p = in.v * (1.0 - in.s) * 255;
-		const sf::Uint8 q = in.v * (1.0 - (in.s * ff)) * 255;
-		const sf::Uint8 t = in.v * (1.0 - (in.s * (1.0 - ff))) * 255;
+		const sf::Uint8 v = static_cast<sf::Uint8>(in.v * 255);
+		const sf::Uint8 p = static_cast<sf::Uint8>(in.v * (1.f - in.s) * 255);
+		const sf::Uint8 q = static_cast<sf::Uint8>(in.v * (1.f - (in.s * ff)) * 255);
+		const sf::Uint8 t = static_cast<sf::Uint8>(in.v * (1.f - (in.s * (1.f - ff))) * 255);
 
 		switch (i) {
 		case 0:
@@ -75,14 +73,11 @@ namespace eval {
 		return out;
 	}
 
-	PendulumRenderer::PendulumRenderer(double _deltaTime)
-		: m_deltaTime(_deltaTime)
+	// ************************************************************* //
+	PendulumRenderer::PendulumRenderer(double _deltaTime, Integrator _integrator)
+		: m_deltaTime(_deltaTime),
+		m_integrator(_integrator)
 	{
-	}
-
-	void PendulumRenderer::addIntegrator(std::function<double()> _integrator)
-	{
-		m_integrator = _integrator;
 	}
 
 	void PendulumRenderer::run()
@@ -123,6 +118,7 @@ namespace eval {
 		}
 	}
 
+	// ************************************************************* //
 	HeatRenderer::HeatRenderer(double _deltaTime, size_t _domainSize, const double* _diffusivity, Integrator _integrator)
 		: m_deltaTime(_deltaTime),
 		m_domainSize(_domainSize),
@@ -140,9 +136,9 @@ namespace eval {
 	}
 
 	constexpr int WINDOW_SIZE = 512;
-	const float HALF_SIZE = WINDOW_SIZE * 0.5f;
-	const float MEAN_RADIUS = WINDOW_SIZE * 0.25f;
-	const float MIN_RADIUS = 8.f;
+	constexpr float HALF_SIZE = WINDOW_SIZE * 0.5f;
+	constexpr float MEAN_RADIUS = WINDOW_SIZE * 0.25f;
+	constexpr float MIN_RADIUS = 8.f;
 
 	void HeatRenderer::run()
 	{

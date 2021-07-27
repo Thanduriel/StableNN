@@ -19,10 +19,11 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN_MULTI;
+constexpr Mode MODE = Mode::TRAIN;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
+// This is untested for HeatEq and probably does not work without tweaks.
 constexpr int64_t NUM_FORWARDS = 1;
 constexpr bool SAVE_NET = true || MODE == Mode::EVALUATE;
 static_assert(MODE != Mode::TRAIN_EVALUATE || SAVE_NET, "Network needs to be saved in order to be evaluated.");

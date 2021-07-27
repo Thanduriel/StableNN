@@ -258,7 +258,6 @@ namespace discretization {
 		const HeatEquation<T, M>& internalSystem() const { return m_integrator.m_system; }
 		const LargeState& internalState() const { return m_state; }
 	private:
-	//	HeatEquation<T, M> m_system;
 		LargeState m_state;
 		int m_sampleRate;
 		T m_deltaTime;
@@ -267,7 +266,7 @@ namespace discretization {
 	};
 
 	// input maker for nn::Integrator
-	// Combines both state and system infos (heat coefficients).
+	// Combines both state and system parameters (heat coefficients).
 	// @param TimeDim Make the time dimension explicit.
 	template<bool TimeDim = false>
 	struct MakeInputHeatEq

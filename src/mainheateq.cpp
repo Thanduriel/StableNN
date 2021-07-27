@@ -95,8 +95,8 @@ int main()
 	{
 		for (size_t i = 0; i < N / 2; ++i)
 		{
-		//	heatCoefs[i] = 0.75 + static_cast<double>(i) / N;
-		//	heatCoefs[N-i-1] = 0.75 + static_cast<double>(i) / N;
+			heatCoefs[i] = 0.75 + static_cast<double>(i) / N;
+			heatCoefs[N-i-1] = 0.75 + static_cast<double>(i) / N;
 		}
 	}
 	System heatEq(heatCoefs, 1.0);
@@ -118,7 +118,7 @@ int main()
 	params["valid_samples"] = 1;
 #endif
 	params["batch_size"] = 128; // 512
-	params["num_epochs"] = USE_LBFGS ? 1024 : 2; // 768
+	params["num_epochs"] = USE_LBFGS ? 1024 : 1024; // 768
 	params["loss_p"] = 2;
 	params["loss_energy"] = 100.0;
 	params["train_gpu"] = true;
@@ -134,14 +134,14 @@ int main()
 
 	// general
 	params["depth"] = 4;
-	params["bias"] = false;
+	params["bias"] = true;
 	params["num_inputs"] = std::is_same_v<NetType, nn::Convolutional> ? 1 : NUM_INPUTS;
 	params["num_outputs"] = USE_SINGLE_OUTPUT ? 1 : NUM_INPUTS;
 	params["hidden_size"] = N;
 	// makeNetwork uses this but does not handle the spatial dimension correctly
 	params["state_size"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
 	params["num_channels"] = USE_LOCAL_DIFFUSIFITY ? 2 : 1;
-	params["activation"] = nn::ActivationFn(nn::identity); // torch::tanh
+	params["activation"] = nn::ActivationFn(torch::tanh); // torch::tanh
 	params["hidden_channels"] = 4;
 	params["kernel_size"] = 5;
 	params["residual"] = true;
@@ -153,7 +153,7 @@ int main()
 	params["residual_blocks"] = 3;
 	params["block_size"] = 2;
 	params["average"] = false;
-	params["casual"] = true;
+	params["causal"] = true;
 	params["interleaved"] = true;
 	params["padding_mode"] = torch::nn::detail::conv_padding_mode_t(torch::kCircular);
 	params["padding_mode_temp"] = torch::nn::detail::conv_padding_mode_t(torch::kZeros); // padding in temporal dim; only used when interleaved=true
@@ -246,7 +246,7 @@ int main()
 				//	{ "momentum", {0.5, 0.6, 0.7} },
 				//	{ "dampening", {0.5, 0.4, 0.3} },
 				//	{ "average", {false, true}},
-				//	{"casual", {false, true}},
+				//	{"causal", {false, true}},
 				//	{"activation", {nn::ActivationFn(torch::tanh), nn::ActivationFn(nn::elu), nn::ActivationFn(torch::relu)}}
 					{"seed", seeds}
 				//	{"seed", {7469126240319926998ull, 17462938647148434322ull}},
@@ -272,6 +272,8 @@ int main()
 		disc::FiniteDifferencesExplicit<T, N, 2> finiteDiffs(system, timeStep);
 		disc::FiniteDifferencesImplicit<T, N, 2> finiteDiffsImpl(system, timeStep);
 		SuperSampleIntegrator superSampleFiniteDifs(system, timeStep, state, 64);
+
+	//	processSizeData(params, "cnn_scale_size/cnn_size.txt");
 
 	//	auto net = nn::load<NetType, USE_WRAPPER>(params);
 	//	nn::Integrator<System, decltype(net), NUM_INPUTS> nnIntegrator(system, net);
@@ -448,6 +450,14 @@ int main()
 			
 			auto tcnLinear = nn::load<nn::ExtTCN, USE_WRAPPER>(params, "linear_tcn/linear_tcn");
 			
+			auto cnnSize1 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "cnn_scale_size/0_0_0_2_cnn_size");
+			auto cnnSize2 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "cnn_scale_size/1_1_1_3_cnn_size");
+			auto cnnSize3 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "cnn_scale_size/2_2_2_2_cnn_size");
+			auto cnnSize4 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "cnn_scale_size/2_1_1_2_cnn_size");
+			auto cnnSize5 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "cnn_scale_size/1_2_1_3_cnn_size");
+			auto cnnSize6 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "cnn_scale_size/1_1_2_0_cnn_size");
+			auto cnnSize7 = nn::load<nn::Convolutional, USE_WRAPPER>(params, "cnn_scale_size/2_1_2_0_cnn_size");
+			
 			auto trainingStates = generateStates(heatEq, 128, 0x612FF6AEu, 0.0, MEAN, STD_DEV, true);
 			auto trainSystems = generateSystems(trainingStates.size(), 0x6341241u);
 			auto validStates = generateStates(heatEq, 32, 0x195A4Cu, 0.0, MEAN, STD_DEV, true);
@@ -456,6 +466,16 @@ int main()
 			validSystems.emplace_back(heatCoefs);
 			heatCoefs.fill(3.0);
 			validSystems.emplace_back(heatCoefs);
+
+			makeMultiSimAvgErrorData<1>(validSystems, validStates, timeStep,
+				cnnSize1,
+				cnnSize2,
+				cnnSize3,
+				cnnSize4,
+				cnnSize5,
+				cnnSize6,
+				cnnSize7);
+			return 0;
 
 			checkSteadyState(trainSystems, trainingStates, timeStep);
 			return 0;

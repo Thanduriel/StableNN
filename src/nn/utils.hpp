@@ -9,6 +9,7 @@
 
 namespace nn {
 
+	// Make a deep copy of a module.
 	template<typename Module>
 	Module clone(const Module& _module)
 	{
@@ -16,6 +17,7 @@ namespace nn {
 		return Module(std::dynamic_pointer_cast<ModuleImpl>(_module->clone()));
 	}
 
+	// Count trainable parameters.
 	template<typename Module>
 	int64_t countParams(const Module& _module)
 	{
@@ -29,6 +31,7 @@ namespace nn {
 		return numParams;
 	}
 
+	// Save a network and its params.
 	template<typename Module>
 	void save(const Module& _module, const HyperParams& _params)
 	{
@@ -38,9 +41,11 @@ namespace nn {
 		file << _params;
 	}
 
+	// Load a network with a param file.
 	// @param _name File name without ending.
 	template<typename NetType, bool UseWrapper>
-	auto load(const HyperParams& _params, const std::string& _name = "", torch::Device _device = torch::kCPU,
+	auto load(const HyperParams& _params, const std::string& _name = "", 
+		torch::Device _device = torch::kCPU,
 		HyperParams* _outParams = nullptr)
 	{
 		const std::string& name = _name.empty() ? *_params.get<std::string>("name") : _name;
@@ -64,18 +69,26 @@ namespace nn {
 		return net;
 	}
 
-	// Shift entries left in a tensor (batch size x time series) and adds _newEntry to the end.
-	torch::Tensor shiftTimeSeries(const torch::Tensor& _old, const torch::Tensor& _newEntry, int _stateSize);
+	// Shift entries left in a tensor (batch size x time series) and 
+	// adds _newEntry to the end.
+	torch::Tensor shiftTimeSeries(const torch::Tensor& _old, 
+		const torch::Tensor& _newEntry, 
+		int _stateSize);
 
-	// @param _pgfPlotsFormat write explicit row and column index with just one value per line
-	void exportTensor(const torch::Tensor& _tensor, const std::string& _fileName, bool _pgfPlotsFormat = false);
+	// Write a 1d or 2d tensor to a text file.
+	// @param _pgfPlotsFormat Write explicit row and column index with just 
+	//                        one value per line.
+	void exportTensor(const torch::Tensor& _tensor, 
+		const std::string& _fileName, 
+		bool _pgfPlotsFormat = false);
 
 	template<typename T, size_t N>
-	torch::Tensor arrayToTensor(const std::array<T, N>& _data, const c10::TensorOptions& _options = c10::TensorOptions(c10::CppTypeToScalarType<T>()))
+	torch::Tensor arrayToTensor(const std::array<T, N>& _data, 
+		const c10::TensorOptions& _options = c10::TensorOptions(c10::CppTypeToScalarType<T>()))
 	{
 		return torch::from_blob(const_cast<T*>(_data.data()),
 			{ static_cast<int64_t>(N) },
-			_options).clone();
+			_options).clone(); // from blob just creates a view
 	}
 
 	template<typename T, size_t N>
@@ -84,7 +97,7 @@ namespace nn {
 		return *reinterpret_cast<std::array<T, N>*>(_tensor.data_ptr<T>());
 	}
 
-	// Functor which converts an array of system states into a 2-d tensor
+	// Functor which converts an array of system states into a 2-d tensor.
 	struct StateToTensor
 	{
 		template<typename System>
@@ -103,7 +116,7 @@ namespace nn {
 		}
 	};
 
-	// Similar to StateToTensor, but introduces an explicit time dimension
+	// Similar to StateToTensor, but introduces an explicit time dimension.
 	// @param TimeLast if true, the last dimension is time, otherwise it is the state
 	template<bool TimeLast = true>
 	struct StateToTensorTimeseries

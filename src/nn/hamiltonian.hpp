@@ -11,7 +11,7 @@ namespace nn {
 		TORCH_ARG(int64_t, input_size);
 		TORCH_ARG(int64_t, num_layers) = 1;
 		TORCH_ARG(bool, bias) = true;
-		TORCH_ARG(bool, symmetric) = false; // only used in HamiltonianInterleafed
+		TORCH_ARG(bool, symmetric) = false; // only used in HamiltonianInterleaved
 		TORCH_ARG(int64_t, augment_size) = 1; // only used in HamiltonianAugmented
 		TORCH_ARG(double, total_time) = 1.0;
 		TORCH_ARG(ActivationFn, activation) = torch::tanh;
@@ -51,9 +51,9 @@ namespace nn {
 		torch::Tensor forwardY(const torch::Tensor& input);
 		torch::Tensor forwardZ(const torch::Tensor& input);
 		// anti symmetric matrix that represents both steps
-		torch::Tensor system_matrix(bool y) const;
+		torch::Tensor systemMatrix(bool y) const;
 		// only the weight matrix, could be parameterized
-		torch::Tensor system_matrix() const;
+		torch::Tensor systemMatrix() const;
 
 		torch::Tensor weight;
 		torch::Tensor biasY;
@@ -87,12 +87,12 @@ namespace nn {
 	TORCH_MODULE(HamiltonianAugmented);
 
 	// Layers like HamiltonianAugmented but the actual state is split evenly between position and momentum.
-	class HamiltonianInterleafedImpl : public torch::nn::Cloneable<HamiltonianInterleafedImpl>
+	class HamiltonianInterleavedImpl : public torch::nn::Cloneable<HamiltonianInterleavedImpl>
 	{
 	public:
 		using Options = HamiltonianOptions;
-		HamiltonianInterleafedImpl(int64_t _inputs = 2) : HamiltonianInterleafedImpl(HamiltonianOptions(_inputs)) {}
-		explicit HamiltonianInterleafedImpl(const HamiltonianOptions& _options);
+		HamiltonianInterleavedImpl(int64_t _inputs = 2) : HamiltonianInterleavedImpl(HamiltonianOptions(_inputs)) {}
+		explicit HamiltonianInterleavedImpl(const HamiltonianOptions& _options);
 
 		void reset() override;
 
@@ -103,5 +103,5 @@ namespace nn {
 		std::vector<HamiltonianCell> layers;
 	};
 
-	TORCH_MODULE(HamiltonianInterleafed);
+	TORCH_MODULE(HamiltonianInterleaved);
 }

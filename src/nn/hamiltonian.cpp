@@ -90,15 +90,15 @@ namespace nn {
 
 	Tensor HamiltonianCellImpl::forwardY(const Tensor& input)
 	{
-		return torch::nn::functional::linear(input, system_matrix().t(), biasZ);
+		return torch::nn::functional::linear(input, systemMatrix().t(), biasZ);
 	}
 
 	Tensor HamiltonianCellImpl::forwardZ(const Tensor& input)
 	{
-		return torch::nn::functional::linear(input, system_matrix(), biasY);
+		return torch::nn::functional::linear(input, systemMatrix(), biasY);
 	}
 
-	Tensor HamiltonianCellImpl::system_matrix(bool y) const
+	Tensor HamiltonianCellImpl::systemMatrix(bool y) const
 	{
 		using namespace torch::indexing;
 		const int64_t n = size + augmentSize;
@@ -111,7 +111,7 @@ namespace nn {
 		return mat;
 	}
 
-	Tensor HamiltonianCellImpl::system_matrix() const
+	Tensor HamiltonianCellImpl::systemMatrix() const
 	{
 		return symmetric ? 0.5 * (weight + weight.t()) : weight;
 	}
@@ -155,13 +155,13 @@ namespace nn {
 	}
 
 	// ****************************************************************** //
-	HamiltonianInterleafedImpl::HamiltonianInterleafedImpl(const HamiltonianOptions& _options)
+	HamiltonianInterleavedImpl::HamiltonianInterleavedImpl(const HamiltonianOptions& _options)
 		: options(_options)
 	{
 		reset();
 	}
 
-	void HamiltonianInterleafedImpl::reset()
+	void HamiltonianInterleavedImpl::reset()
 	{
 		layers.clear();
 		layers.reserve(options.num_layers());
@@ -176,7 +176,7 @@ namespace nn {
 		}
 	}
 
-	torch::Tensor HamiltonianInterleafedImpl::forward(const Tensor& _input)
+	torch::Tensor HamiltonianInterleavedImpl::forward(const Tensor& _input)
 	{
 		using namespace torch::indexing;
 		const int64_t halfSize = options.input_size() / 2;

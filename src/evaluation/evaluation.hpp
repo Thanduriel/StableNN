@@ -1,11 +1,12 @@
 #pragma once
 
+#include "../systems/state.hpp"
 #include <iostream>
 #include <fstream>
 #include <array>
 #include <vector>
 #include <chrono>
-#include "../systems/state.hpp"
+#include <functional>
 
 namespace eval {
 
@@ -25,7 +26,7 @@ namespace eval {
 	template<typename State>
 	constexpr auto norm(const State& s)
 	{
-		using T = std::remove_cv_t<std::remove_reference_t<decltype(s[0])>>;
+		using T = systems::ValueType<State>;
 
 		T sum = 0;
 		for (size_t i = 0; i < s.size(); ++i)
@@ -38,7 +39,7 @@ namespace eval {
 	{
 		assert(v.size() == w.size());
 
-		using T = std::remove_cv_t<std::remove_reference_t<decltype(v[0])>>;
+		using T = systems::ValueType<State>;
 
 		T sum = 0.0;
 		for (size_t k = 0; k < v.size(); ++k)
@@ -51,18 +52,21 @@ namespace eval {
 
 	struct EvalOptions
 	{
-		bool printHeader = true;
+		bool printHeader = true; // print header consisting of the initial state
 		bool writeEnergy = false;
 		bool writeState = false;
 		bool writeGlobalError = false;
 		bool writeMSE = false;
 		bool addInitialStateMSE = false; // print state in addition to energy in mse file
+		// if not nan this is written instead of the energy in the mse file
 		double customValueMSE = std::numeric_limits<double>::quiet_NaN();
 		bool append = false; // append to file instead of overwriting it for all write options
-		bool relativeError = false;
+		bool relativeError = false; // divide error by the L2 length of the reference state
 		int downSampleRate = 1; // write only every n-th entry; adds time-step as first column
 		int mseAvgWindow = 0; // take average of a number of previous time-steps; if 0 use numShortTermSteps
 		int numShortTermSteps = 256;
+
+		// long term simulation 
 		int numLongTermSteps = 4096;
 		int numLongTermRuns = 4;
 	};
@@ -79,8 +83,7 @@ namespace eval {
 		std::vector<std::ostream*> streams;
 	};
 
-	// stream to use if output should be discarded
-	// defined in stablity.cpp
+	// A stream to use if output should be discarded.
 	extern std::ostream g_nullStream;
 	
 	// Simulates the given system with different integrators to observe energy over time.
@@ -317,8 +320,8 @@ namespace eval {
 		};
 	};
 
-	// performance related
-	extern double g_sideEffect; // defined in stability.cpp
+	// side effect for performance measures to ensure that the results are used
+	extern double g_sideEffect;
 
 	template<typename State, typename Integrator>
 	double measureRunTime(const State& _state, int _numSteps, const Integrator& _integrator)

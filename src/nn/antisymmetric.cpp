@@ -45,10 +45,10 @@ namespace nn {
 
 	Tensor AntiSymmetricCellImpl::forward(const Tensor& input)
 	{
-		return torch::nn::functional::linear(input, system_matrix(), bias);
+		return torch::nn::functional::linear(input, systemMatrix(), bias);
 	}
 
-	Tensor AntiSymmetricCellImpl::system_matrix() const
+	Tensor AntiSymmetricCellImpl::systemMatrix() const
 	{
 		return 0.5 * (weight - weight.t() - diffusion);
 	}

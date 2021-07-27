@@ -4,6 +4,7 @@
 
 namespace nn {
 
+	// extendend convolution which allows for a symmetric parameterization
 	template<size_t D>
 	struct ExtConvOptions : public torch::nn::ConvOptions<D>
 	{
@@ -49,7 +50,7 @@ namespace nn {
 			return convolution(x);
 		}
 
-		torch::Tensor weight;
+		torch::Tensor weight; //< weights that are trained 
 		Conv convolution;
 		Options options;
 	};

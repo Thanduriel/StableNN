@@ -7,9 +7,8 @@ namespace eval {
 	class PendulumRenderer
 	{
 	public:
-		PendulumRenderer(double _deltaTime);
-
-		void addIntegrator(std::function<double()> _integrator);
+		using Integrator = std::function<double()>;
+		PendulumRenderer(double _deltaTime, Integrator _integrator);
 		void run();
 	private:
 		double m_deltaTime;

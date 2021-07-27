@@ -3,24 +3,6 @@
 
 namespace eval {
 
-	double g_sideEffect = 0.0;
-
-	class NullBuffer : public std::streambuf
-	{
-	public:
-		int overflow(int c) { return c; }
-	};
-
-	NullBuffer nullBuffer;
-	std::ostream g_nullStream(&nullBuffer);
-
-	template<>
-	void checkLayerStability<torch::nn::Linear>(const torch::nn::Linear& _layer)
-	{
-		const auto& [eigenvalues, _] = torch::eig(_layer->weight);
-		std::cout << eigenvalues << "\n";
-	}
-
 	std::vector<std::complex<double>> computeEigs(const torch::Tensor& _tensor)
 	{
 		const auto& [eigenvalues, _] = torch::eig(_tensor);
@@ -73,7 +55,7 @@ namespace eval {
 	}
 
 	template<typename T>
-	T power(const T& a, int p)
+	static T power(const T& a, int p)
 	{
 		if (p == 0) return 1.0;
 		T x = a;

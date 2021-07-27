@@ -13,6 +13,7 @@
 
 namespace nn {
 
+	// Functor that handles data generation, network creation and training. 
 	// @param UseWrapper Use a wrapper network to increase the number of inputs or reduce the number of outputs.
 	//					 Currently does not work with convolutional networks,
 	template<typename Network, 
@@ -26,12 +27,20 @@ namespace nn {
 		using State = typename System::State;
 		using ValueT = typename System::ValueT;
 
-		TrainNetwork(const System& _system, std::vector<State> _trainStates, std::vector<State> _validStates, std::vector<size_t> _warmupSteps = {})
-			: TrainNetwork(std::vector{ _system }, std::vector{ _system }, std::move(_trainStates), std::move(_validStates), std::move(_warmupSteps))
+		TrainNetwork(const System& _system, 
+			std::vector<State> _trainStates, 
+			std::vector<State> _validStates,
+			std::vector<size_t> _warmupSteps = {})
+			: TrainNetwork(std::vector{ _system }, 
+				std::vector{ _system }, 
+				std::move(_trainStates), 
+				std::move(_validStates), 
+				std::move(_warmupSteps))
 		{
 		}
 
-		TrainNetwork(std::vector<System> _trainSystems, std::vector<System> _validSystems,
+		TrainNetwork(std::vector<System> _trainSystems, 
+			std::vector<System> _validSystems,
 			std::vector<State> _trainStates, std::vector<State> _validStates, 
 			std::vector<size_t> _warmupSteps = {})
 			: m_trainSystems(std::move(_trainSystems)),
@@ -42,8 +51,11 @@ namespace nn {
 		{
 		}
 
+		// Run training with hyper params _params.
 		double operator()(const nn::HyperParams& _params) const
 		{
+			namespace dat = torch::data;
+
 			int64_t hyperSampleRate = *_params.get<int>("hyper_sample_rate");
 			// system is just a placeholder
 			auto makeIntegrator = [&]()
@@ -64,7 +76,6 @@ namespace nn {
 			DataGenerator<System, Integrator, InputMaker, OutputMaker> validGenerator(m_validSystems, referenceIntegrator);
 
 			auto start = std::chrono::high_resolution_clock::now();
-			namespace dat = torch::data;
 			const size_t numInputs = _params.get<size_t>("num_inputs", NUM_INPUTS);
 			auto dataset = trainGenerator.generate(m_trainStates, *_params.get<int>("train_samples"), hyperSampleRate, numInputs, USE_SINGLE_OUTPUT, NUM_FORWARDS, m_warmupSteps)
 				.map(dat::transforms::Stack<>());
@@ -163,7 +174,7 @@ namespace nn {
 				double totalLoss = 0.0;
 				int forwardRuns = 0;
 
-				for (torch::data::Example<>& batch : *data_loader)
+				for (dat::Example<>& batch : *data_loader)
 				{
 					torch::Tensor data = batch.data.to(device);
 					torch::Tensor target = batch.target.to(device);
@@ -195,7 +206,7 @@ namespace nn {
 				torch::NoGradGuard gradGuard;
 				net->eval();
 				double validLoss = 0.0;
-				for (torch::data::Example<>& batch : *validationLoader)
+				for (dat::Example<>& batch : *validationLoader)
 				{
 					torch::Tensor input = batch.data.to(device);
 					torch::Tensor target = batch.target.to(device);
@@ -206,7 +217,8 @@ namespace nn {
 						output = net->forward(input);
 						input = nextInput(input, output);
 					}
-					torch::Tensor loss = lossFnValid(output, target, input); // last argument should not be used by the validation loss
+					// last argument should not be used by the validation loss
+					torch::Tensor loss = lossFnValid(output, target, input);
 					validLoss += loss.item<double>();
 				}
 
@@ -228,12 +240,12 @@ namespace nn {
 				{
 					if (epoch % 16 == 0)
 					{
-						constexpr int intervals = 20;
-						const int progress = static_cast<int>(static_cast<float>(epoch * intervals) / numEpochs);
+						constexpr int INTERVALS = 20;
+						const int progress = static_cast<int>(static_cast<float>(epoch * INTERVALS) / numEpochs);
 						std::cout << "<";
 						for (int k = 0; k < progress; ++k)
 							std::cout << "#";
-						for (int k = progress; k < intervals; ++k)
+						for (int k = progress; k < INTERVALS; ++k)
 							std::cout << " ";
 						std::cout << "> [" << epoch << "/" << numEpochs << "] train loss: " << trainLoss << "\n";
 					}

@@ -5,9 +5,6 @@
 
 namespace eval {
 
-	template<typename LayerT>
-	void checkLayerStability(const LayerT& _layer);
-
 	template<typename Module>
 	void checkModuleStability(Module& _module)
 	{
@@ -31,6 +28,7 @@ namespace eval {
 		return x.grad();
 	}
 
+	// Compute eigenvalues of a square matrix.
 	std::vector<std::complex<double>> computeEigs(const torch::Tensor& _tensor);
 
 	// Returns a matrix A such that A*x is equivalent to the application of _conv.

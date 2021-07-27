@@ -13,7 +13,7 @@ namespace nn {
 
 	template<int64_t D>
 	TemporalConvBlockImpl<D>::TemporalConvBlockImpl(const TemporalConvBlockOptions<D>& _options)
-		: casual_padding(nullptr),
+		: causal_padding(nullptr),
 		residual(nullptr),
 		avg_residual(nullptr),
 		dropout_layer(nullptr),
@@ -32,7 +32,7 @@ namespace nn {
 		residual = nullptr;
 		dropout_layer = nullptr;
 		avg_residual = nullptr;
-		casual_padding = nullptr;
+		causal_padding = nullptr;
 		layers.clear();
 
 		const int64_t stack_size = options.block_size();
@@ -44,7 +44,7 @@ namespace nn {
 		// set padding so that the size is not changed by the convolutions
 		auto padding = kernel_size;
 		const int64_t temp_kernel = kernel_size->front();
-		if (options.casual())
+		if (options.causal())
 		{
 			padding->front() = 0;
 			int64_t temp_pad = options.average() ? temp_kernel - 2
@@ -53,7 +53,7 @@ namespace nn {
 			if (temp_pad)
 			{
 				torch::nn::ConstantPadOptions<D> padOptions(makeExpandingArray<2 * D>(temp_pad, 0, 2 * D - 2), 0.0);
-				casual_padding = this->register_module("padding", ConstPadding(padOptions));
+				causal_padding = this->register_module("padding", ConstPadding(padOptions));
 			}
 		}
 		else
@@ -130,8 +130,8 @@ namespace nn {
 		auto activation = options.activation();
 		for (auto& layer : layers)
 		{
-			if (casual_padding && layer->options.kernel_size()->front() != 1)
-				x = casual_padding(x);
+			if (causal_padding && layer->options.kernel_size()->front() != 1)
+				x = causal_padding(x);
 			x = activation(layer->forward(x));
 			if (dropout_layer)
 				x = dropout_layer(x);
@@ -161,7 +161,7 @@ namespace nn {
 			.bias(options.bias())
 			.activation(options.activation())
 			.dropout(options.dropout())
-			.casual(options.casual())
+			.causal(options.causal())
 			.average(options.average())
 			.residual(options.residual())
 			.interleaved(options.interleaved());

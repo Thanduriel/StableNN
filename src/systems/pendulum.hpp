@@ -60,6 +60,8 @@ namespace systems {
 				+ m_mass * m_gravity * m_length * (1.0 - std::cos(_state.position));
 		}
 
+		// construct a state with the specified amount of energy
+		// the values will always be nonnegative
 		State energyToState(T _potentialEnergy, T _kineticEnergy) const
 		{
 			const T p = std::acos(1.0 - _potentialEnergy / (m_mass * m_gravity * m_length));

@@ -70,10 +70,6 @@ public:
 			SysState* outData = _useSingleOutput ? (results.data() + _numInputSteps + _inOutShift - 1) 
 				: (timeSeries.data() + _numInputSteps * _inOutShift);
 			torch::Tensor out = outputMaker(system, outData, _useSingleOutput ? batchSize : batchSize * _numInputSteps, batchSize, m_tensorOptions);
-		/*	torch::from_blob(
-				_useSingleOutput ? (results.data() + _numInputSteps + _inOutShift - 1) : (timeSeries.data() + _numInputSteps * _inOutShift),
-				{ numSamples, outputSize },
-				m_tensorOptions);*/
 
 			if (!inputs.defined())
 			{

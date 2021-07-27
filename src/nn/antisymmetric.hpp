@@ -16,7 +16,9 @@ namespace nn {
 		void pretty_print(std::ostream& stream) const override;
 
 		torch::Tensor forward(const torch::Tensor& input);
-		torch::Tensor system_matrix() const;
+		
+		// actual weight matrix of the layer
+		torch::Tensor systemMatrix() const;
 
 		torch::Tensor weight;
 		torch::Tensor diffusion;
