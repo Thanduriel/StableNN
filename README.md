@@ -25,5 +25,5 @@ The programs where testest with libtorch-1.7.0 and both g++-11.1 and msvc-19.29.
 ## Usage
 Each simulation has its own executable, `pendulum` and `heateq`. All parameters are set in the code and require recompiling. General settings including the mode (training or evaluation) are set in `defs.hpp`. Parameters of the systems and networks can be found in `mainpendulum.cpp` + `pendulumeval.hpp` and `mainheateq.cpp` + `heateqeval.hpp`.
 
-Most parameters are saved with the network during training in an .hparam file the the same name. However, to load a network a few compile time parameters need to set manually. These are the network type, `UseWrapper` and `NUM_INPUTS`.
+Most parameters are saved with the network during training in an .hparam file the the same name. However, to load a network a few compile time parameters need to set manually. These are the `NetType`, `UseWrapper` and `NUM_INPUTS`.
 

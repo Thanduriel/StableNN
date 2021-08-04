@@ -80,6 +80,8 @@ namespace nn {
 			numOptions *= values.size();
 		}
 
+		std::cout << "Running grid search with " << numOptions << " different configurations.\n";
+
 		std::vector<double> results(numOptions);
 		std::vector<std::string> names(numOptions);
 		double bestResult = std::numeric_limits<double>::max();

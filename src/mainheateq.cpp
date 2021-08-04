@@ -126,7 +126,7 @@ int main()
 	params["loss_factor"] = 100.0;
 	params["loss_energy"] = 100.0;
 	params["train_gpu"] = true;
-	params["seed"] = static_cast<uint64_t>(7469126240319926998ull);
+	params["seed"] = static_cast<uint64_t>(418970542659199878ull);
 
 	// optimizer
 	params["lr"] = USE_LBFGS ? 0.005 : 0.001;
@@ -212,17 +212,17 @@ int main()
 
 		if constexpr (MODE == Mode::TRAIN_MULTI)
 		{
-			constexpr int numSeeds = 8;
+			constexpr int numSeeds = 4;
 			std::mt19937_64 rng;
 			std::vector<nn::ExtAny> seeds(numSeeds);
 			std::generate(seeds.begin(), seeds.end(), rng);
 
 			nn::GridSearchOptimizer hyperOptimizer(trainNetwork,
-				{	{"kernel_size", {3, 5, 7}},
-					{"hidden_channels", {2,4,6}},
+				{//	{"kernel_size", {3, 5, 7}},
+				//	{"hidden_channels", {2,4,6}},
 				//	{"residual", {false, true}},
 				//	{"bias", {false, true}},
-					{"depth", {3,4,5}},
+					{"depth", {3,4}},
 				//	{"lr", {0.02, 0.025, 0.03}},
 				//	{"lr", {0.015, 0.01, 0.005}},
 				//	{"lr_decay", {0.995, 0.994, 0.993}},
