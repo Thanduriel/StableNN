@@ -40,7 +40,7 @@ namespace nn {
 				register_module("layer" + std::to_string(i), layers.back());
 			}
 
-			// final layer only reduces the number of channels
+			// final layer only reduces the number of channels unless it is the only channel
 			convOptions.kernel_size(1);
 			convOptions.padding(0);
 			convOptions.symmetric(false);

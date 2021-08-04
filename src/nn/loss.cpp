@@ -6,7 +6,7 @@ namespace nn {
 	{
 		assert(input.squeeze().dim() <= 2); // currently no support for multidimensional data
 		torch::Tensor dif = input - target;
-		return (input - target).norm(p, dif.dim() - 1).mean() * 100;
+		return (input - target).norm(p, dif.dim() - 1).mean();
 	}
 
 	torch::Tensor energyLoss(const torch::Tensor& netInput, const torch::Tensor& netOutput)
@@ -19,20 +19,21 @@ namespace nn {
 	LossFn makeLossFunction(const HyperParams& _params, bool _train)
 	{
 		const int p = _params.get<int>("loss_p", 2);
-		const int e = _params.get<double>("loss_energy", 0.0);
+		const double l = _train ? _params.get<double>("loss_factor", 1.0) : 1.0;
+		const double e = _params.get<double>("loss_energy", 0.0);
 
 		if (e == 0.0 || !_train)
 		{
-			return [p](const torch::Tensor& self, const torch::Tensor& target, const torch::Tensor& data)
+			return [l,p](const torch::Tensor& self, const torch::Tensor& target, const torch::Tensor& data)
 			{
-				return nn::lpLoss(self, target, p);
+				return l * nn::lpLoss(self, target, p);
 			};
 		}
 		else
 		{
-			return [p, e](const torch::Tensor& self, const torch::Tensor& target, const torch::Tensor& data)
+			return [p, l, e](const torch::Tensor& self, const torch::Tensor& target, const torch::Tensor& data)
 			{
-				return nn::lpLoss(self, target, p) + e * energyLoss(data, self);
+				return l * nn::lpLoss(self, target, p) + e * energyLoss(data, self);
 			};
 		}
 	}

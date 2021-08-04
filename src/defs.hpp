@@ -19,7 +19,7 @@ enum struct Mode {
 	TRAIN_EVALUATE
 };
 
-constexpr Mode MODE = Mode::TRAIN;
+constexpr Mode MODE = Mode::TRAIN_EVALUATE;
 
 // If > 1, the network is applied NUM_FORWARDS before doing a backward pass. 
 // The time-series data is adjusted accordingly to expect results further in the future.
@@ -40,7 +40,8 @@ enum struct Optimizer {
 	RMSPROP,
 	LBFGS
 };
-constexpr Optimizer OPTIMIZER = Optimizer::ADAM;
+// Recommended is LBFGS for pendulum and ADAM for Heateq.
+constexpr Optimizer OPTIMIZER = Optimizer::LBFGS;
 constexpr bool USE_LBFGS = OPTIMIZER == Optimizer::LBFGS;
 
 // only relevant in TRAIN_MULTI to enforce consistent rng state for all networks during initialization
@@ -51,7 +52,8 @@ constexpr bool USE_SEQ_SAMPLER = USE_LBFGS;
 
 // The seed used to initialize torch when the training begins.
 // In TRAIN_MULTI context can still be non-deterministic if the random sampler is used.
-constexpr uint64_t TORCH_SEED = 9378341130ull; // 9378341130ul
+// This value can be overwritten as hyperparam.
+constexpr uint64_t TORCH_SEED = 9378341130ull;
 
 // evaluation
 // only set to true if build option USE_GRAPHICS=true

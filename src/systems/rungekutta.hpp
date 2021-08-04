@@ -6,7 +6,7 @@
 namespace systems {
 namespace discretization{
 
-	// Butcher tableaus for p-stage methods ( fo the listed methods Order == Stage ) 
+	// Butcher tableaus for p-stage methods ( for the listed methods Order == stage ) 
 	// see https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods#Explicit_Runge.E2.80.93Kutta_methods
 	template<int Order>
 	using RKMatrix = std::array<double, (Order - 1)* (Order - 1)>;
@@ -15,7 +15,7 @@ namespace discretization{
 	template<int Order>
 	using RKNodes = std::array<double, Order - 1>;
 
-	// common Runge Kutta methods
+	// common Runge-Kutta methods
 	// see https://en.wikipedia.org/wiki/List_of_Runge%E2%80%93Kutta_methods
 
 	struct RK2_midpoint
@@ -163,8 +163,8 @@ namespace discretization{
 		}
 	};
 
-	// Generic Runge Kutta implementation without loops and 
-	// explicit skipping of 0 valued coefficients
+	// Generic Runge Kutta implementation without loops and explicit skipping 
+	// of 0 valued coefficients. Use this as the Method for ODEIntegrator.
 	template<typename Params>
 	class RungeKutta
 	{

@@ -59,7 +59,7 @@ void evaluate(
 		// copy integrator because nn::Integrator may have an internal state
 		auto integrators = std::make_tuple(nn::Integrator<System, Networks, NumTimeSteps>(system, _networks, initialStates)...);
 		auto visState = initialState;
-		// warmup to see long term behavior
+		// warm-up to see long term behavior
 		for (int i = 0; i < 10000; ++i)
 		{
 			visState = std::get<0>(integrators)(visState);
@@ -72,12 +72,6 @@ void evaluate(
 		});
 		renderer.run();
 	}
-
-	/*	auto cosRef = [&, t=0.0](const State& _state) mutable
-		{
-			t += _timeStep;
-			return State{ std::cos(t / 2.30625 * 2.0 * PI) * _initialState.position, 0.0 };
-		};*/
 
 	eval::evaluate(system,
 		initialState,
@@ -227,6 +221,8 @@ void makeStableFrequencyData(const System& system, const nn::HyperParams& params
 }
 
 // evaluate the Jacobian on a grid
+// @param _discard Functor that decides whether a state should be ignored. 
+//		Used to get domain that is not a rectangle.
 // @return the largest singular value or Lipschitz constant
 template<typename Network, typename Fn, typename RefNet = int>
 double makeJacobianData(
@@ -420,7 +416,8 @@ void makeRuntimeData(const System& _system, double _timeStep, int _numSteps, Int
 }
 
 namespace nn {
-	// implementation of the verlet integrator with torch
+	// Implementation of the Verlet integrator with torch. useful to compute
+	// its linearization.
 	class VerletPendulumImpl : public torch::nn::Cloneable<VerletPendulumImpl>
 	{
 	public:
@@ -529,7 +526,8 @@ public:
 };
 
 /*
-// hard coded network with Eigen for performance tests
+// Hard coded network with Eigen for performance tests.
+// You need to #include <Eigen/Dense> for this to compile.
 template<typename T, std::size_t N, std::size_t M>
 static Eigen::Map<Eigen::Matrix<T, N, M, Eigen::RowMajor>> toEigen(const systems::Matrix<T, N, M>& a)
 {

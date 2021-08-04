@@ -234,6 +234,7 @@ namespace nn {
 			const auto& [name, values] = m_hyperGrid[k];
 			if (name == "seed")
 			{
+				std::cout << "\nbest result per seed: \n";
 				std::vector<size_t> bestIndex(numOptions / values.size(), std::numeric_limits<size_t>::max());
 				for (size_t i = 0; i < numOptions; ++i)
 				{
