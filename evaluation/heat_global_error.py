@@ -5,7 +5,7 @@ import math
 
 matplotlib.style.use('seaborn')
 
-data = np.genfromtxt(fname="../build/relative_error.txt", # globalerror / relative_error / random_avg_error
+data = np.genfromtxt(fname="../build/random_avg_error.txt", # globalerror / relative_error / random_avg_error
                        dtype=np.float32,
                        delimiter=' ',
                        skip_header=0)

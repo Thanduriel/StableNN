@@ -69,7 +69,7 @@ def plot_training_error(files, begin = 0, end = 0, show_valid_err = True, smooth
     data = np.array(data)
  #   data = np.delete(data, list(range(0, data.shape[0], 2)), axis=0)
  #   data = np.delete(data, list(range(0, data.shape[0], 2)), axis=0)
-    np.savetxt("validation_loss.txt", np.transpose(data), fmt='%1.4e')
+ #   np.savetxt("validation_loss.txt", np.transpose(data), fmt='%1.4e')
 
     plt.legend()
     plt.show()
@@ -77,9 +77,12 @@ def plot_training_error(files, begin = 0, end = 0, show_valid_err = True, smooth
 plot_training_error([#("tcn/0_5_tcn", "TCN "),
                      #("tcn/0_tcn_no_res", "TCN Avg No Res"),
                      #("tcn/1_4_tcn", "TCN Avg")
-                     ("conv_repeat/1_1_conv_repeat", "CNN"), 
-                     ("conv_repeat/0_3_conv_repeat", "CNN NoBias"),
-                      ("conv_repeat/7_conv_repeat_sym", "CNN Sym")
+					 ("cnn_scale_size/2_2_2_2_cnn_size", "CNN large"), 
+					 ("cnn_scale_size/1_1_1_3_cnn_size", "CNN reg"), 
+					 ("cnn_scale_size/0_0_0_2_cnn_size", "CNN small"), 
+            #         ("conv_repeat/1_1_conv_repeat", "CNN"), 
+            #         ("conv_repeat/0_3_conv_repeat", "CNN NoBias"),
+            #          ("conv_repeat/7_conv_repeat_sym", "CNN Sym")
             #         ("symmetric/3_conv_sym_res_seed", "CNN Sym"),
             #         ("symmetric/5_conv_res_seed", "CNN"), 
             #         ("con_bias_reg_new/1_2_0_conv_bias_reg", "CNN Reg"),
