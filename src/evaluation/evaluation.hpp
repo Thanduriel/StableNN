@@ -222,7 +222,7 @@ namespace eval {
 			evalSteps(spaceTimeFile, [&](std::ostream& out, const State& state, const State&, double, int, int)
 				{
 					out << state;
-				}, ", ");
+				}, " ");
 		}
 
 		if (_options.writeGlobalError)

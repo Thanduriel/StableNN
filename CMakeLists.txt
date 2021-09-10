@@ -19,6 +19,7 @@ list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/pendulumeval.cpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/pendulumeval.hpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainheateq.cpp")
 list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/heateqeval.hpp")
+list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/mainoscillator.cpp")
 
 if(NOT USE_GRAPHICS)
 	list(REMOVE_ITEM SOURCE_FILES "${CMAKE_CURRENT_LIST_DIR}/src/evaluation/renderer.cpp")
@@ -60,6 +61,13 @@ set_target_properties(heateq PROPERTIES
     CXX_STANDARD_REQUIRED YES
 )
 target_link_libraries(heateq stableNN)
+
+add_executable(oscillator "src/mainoscillator.cpp")
+set_target_properties(oscillator PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED YES
+)
+target_link_libraries(oscillator stableNN)
 
 # enable link time code gen if supported
 include(CheckIPOSupported)

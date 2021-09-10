@@ -118,6 +118,6 @@ template<typename T, std::size_t Size>
 std::ostream& operator << (std::ostream& out, const std::array<T, Size>& s)
 {
 	for (const T& el : s)
-		std::cout << el << " ";
+		out << el << " ";
 	return out;
 }
